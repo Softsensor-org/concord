@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "artifact": "softsensor-concord",
+  "donor_commit": "4d4c43c5c1b33ee166e4be9736a518eb090d7ad7",
+  "donor_commit_short": "4d4c43c",
+  "donor_branch": "feat/coord-gov-gate-bash-fallback-and-grooming-verbs",
+  "donor_tree_state": "clean",
+  "build_timestamp": "2026-06-18T19:45:28Z",
+  "builder": "release/build-public-release.sh",
+  "builder_version": "2"
+}
