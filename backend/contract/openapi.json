@@ -1,0 +1,39 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Backend Reference API",
+    "version": "0.1.0",
+    "description": "Minimal example OpenAPI contract for the template backend stub (MSRV/CONTRACT-002). This is the SOURCE OF TRUTH the frontend generates its API client from via `contract:gen`. Real projects emit this from their framework (e.g. an OpenAPI export). The frontend resolves this path config-driven through coord/project.config.js (repos.F.contract), not a hardcoded sibling path."
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Liveness probe",
+        "responses": {
+          "200": { "description": "Service is healthy" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "login",
+        "summary": "Authenticate and receive a session token",
+        "responses": {
+          "200": { "description": "Authenticated" },
+          "401": { "description": "Invalid credentials" }
+        }
+      }
+    },
+    "/users/me": {
+      "get": {
+        "operationId": "getCurrentUser",
+        "summary": "Fetch the authenticated user profile",
+        "responses": {
+          "200": { "description": "The current user" },
+          "401": { "description": "Unauthenticated" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "_about": "Data-driven price table for the cost-ledger (COORD-026, TOKEN_ECONOMICS.md lever #1). Prices are USD per 1,000,000 tokens, split into input and output. `gov record-cost` uses this table to estimate USD when --usd is omitted. NEVER hardcode prices in governance.js; edit them here. Model keys are matched case-insensitively; an exact key match wins, otherwise the longest matching key prefix wins, otherwise the `default` fallback is used. The `default` entry is intentionally conservative so an unknown model is never silently costed at zero. Numbers below are illustrative placeholders for the adopter's own model classes — replace with the rates negotiated with your provider.",
+  "currency": "USD",
+  "unit": "per_1m_tokens",
+  "models": {
+    "small": { "input": 0.25, "output": 1.25 },
+    "standard": { "input": 3.0, "output": 15.0 },
+    "frontier": { "input": 15.0, "output": 75.0 }
+  },
+  "default": {
+    "input": 15.0,
+    "output": 75.0,
+    "_note": "Unknown-model fallback: priced at the highest known class so unrecognized models are never undercounted. Override per model under `models`."
+  }
+}
