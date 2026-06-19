@@ -1,0 +1,9 @@
+node_modules/
+artifacts/
+coverage/
+apps/
+**/.next/
+package-lock.json
+# Markdown + env files are governed by project conventions, not the JS formatter.
+*.md
+.env*

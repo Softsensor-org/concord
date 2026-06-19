@@ -1,0 +1,131 @@
+# public-ci.yml — CI that ships INSIDE the public artifact (Softsensor Concord).
+#
+# Copied verbatim into <OUT>/.github/workflows/public-ci.yml by
+# release/build-public-release.sh. When the public repo is pushed / a PR is
+# opened, this enforces the SAME publishable-shape hygiene the release builder
+# verifies — against the PUBLIC artifact's own (green) governance suite.
+#
+# This is NOT the donor's governance-suite.yml (which runs a config-matrix engine
+# self-test against donor-only fixtures). This workflow runs the adopter-facing
+# checks: board validation, the public governance suite, template-sync, package
+# sanity, and a lightweight secret/binary scan.
+name: public-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  dco:
+    # Enforce the Developer Certificate of Origin: every commit in a PR must be
+    # signed off (`git commit -s`). See CONTRIBUTING.md / DCO. Dependency-free.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    name: DCO sign-off
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify Signed-off-by on every PR commit
+        run: |
+          set -euo pipefail
+          base="origin/${{ github.base_ref }}"
+          git fetch origin "${{ github.base_ref }}" --depth=50 || true
+          missing=0
+          while IFS= read -r sha; do
+            [ -z "$sha" ] && continue
+            if ! git show -s --format=%B "$sha" | grep -qiE '^Signed-off-by: .+ <.+@.+>'; then
+              echo "✗ commit $sha is missing a Signed-off-by line"; missing=1
+            fi
+          done < <(git rev-list "$base..HEAD")
+          if [ "$missing" -ne 0 ]; then
+            echo "DCO check failed — sign off your commits with 'git commit -s' (see CONTRIBUTING.md)."; exit 1
+          fi
+          echo "✓ all PR commits are signed off"
+
+  hygiene:
+    runs-on: ubuntu-latest
+    name: public release hygiene
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Template-sync hash check
+        run: bash coord/scripts/check-template-sync.sh
+
+      - name: Board validation
+        run: node coord/board/board.js validate
+
+      - name: Governance suite
+        run: node --test --test-concurrency=1 coord/scripts/*.test.js coord/board/*.test.js
+
+      - name: Package sanity (every package.json parses; declared targets resolve)
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r pj; do
+            node -e '
+              const fs=require("fs"),path=require("path");
+              const pj=process.argv[1];
+              let d; try{d=JSON.parse(fs.readFileSync(pj,"utf8"));}catch(e){console.error(pj+": "+e.message);process.exit(1);}
+              const dir=path.dirname(pj); const miss=[];
+              const chk=(r)=>{ if(typeof r==="string"&&r.startsWith(".")&&!fs.existsSync(path.resolve(dir,r))) miss.push(r); };
+              if(d.main) chk(d.main);
+              if(typeof d.bin==="string") chk(d.bin); else if(d.bin) for(const v of Object.values(d.bin)) chk(v);
+              if(miss.length){console.error(pj+": missing "+miss.join(","));process.exit(1);}
+            ' "$pj" || fail=1
+          done < <(find . -name package.json -not -path '*/node_modules/*' -not -path '*/.git/*')
+          exit $fail
+
+      - name: Public scan (no secrets / private keys / office binaries)
+        run: |
+          set -uo pipefail
+          fail=0
+          if grep -rIlE "AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY" . 2>/dev/null | grep -vq '\.git/'; then
+            echo "secret-like content found"; fail=1
+          fi
+          if find . -not -path './.git/*' -type f \( -iname '*.pptx' -o -iname '*.doc*' -o -iname '*.xls*' -o -iname '*.pdf' -o -iname '*.zip' -o -iname '*.tar*' -o -iname '*.gz' \) 2>/dev/null | grep -q .; then
+            echo "office/binary docs found"; fail=1
+          fi
+          exit $fail
+
+  coord-ui:
+    # Build + typecheck the read-only local cockpit (frontend/apps/coord-ui) so a
+    # build/typecheck regression (e.g. the createRequire one) is caught publicly.
+    # Runs as a separate, parallel job for legible failures. Skips cleanly if the
+    # cut ships without coord-ui (the dir is absent).
+    runs-on: ubuntu-latest
+    name: coord-ui build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Detect coord-ui
+        id: detect
+        run: |
+          if [ -d frontend/apps/coord-ui ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "frontend/apps/coord-ui not present — skipping coord-ui build"
+          fi
+
+      - name: Install deps
+        if: steps.detect.outputs.present == 'true'
+        working-directory: frontend/apps/coord-ui
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Typecheck
+        if: steps.detect.outputs.present == 'true'
+        working-directory: frontend/apps/coord-ui
+        run: npm run typecheck
+
+      - name: Build
+        if: steps.detect.outputs.present == 'true'
+        working-directory: frontend/apps/coord-ui
+        run: npm run build

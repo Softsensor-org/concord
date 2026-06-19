@@ -1,0 +1,1401 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const {
+  GovernanceError,
+  __testing,
+  runGit,
+  writeRepoFile,
+  createTempGitRepo,
+  createTempGitRepoWithOrigin,
+} = require("./governance-test-utils.js");
+const { DEFAULT_PATHS: ACTIVE_PATHS } = require("./governance-context.js");
+
+// COORD-098 (governance.test residual split, slice 3): validation / readiness
+// behavior. Every subject here is DEFINED in governance-validation.js — the
+// module that owns readiness evaluation and closeout/landing validation rules:
+//   - deriveGovernanceReadiness / collectStartReadinessBlockers / evaluateReadiness
+//   - collectReviewPlanReadinessIssues / assertReviewPlanReady / submitRequiresReviewPlanCheck
+//   - deriveTestingInfrastructureAudit / deriveFeatureProofAudit / validateFeatureProofEntry
+//   - assertAlreadyLandedNoPrReconcileReady / assertLandingIntegrity / classifyLandingRecord
+//   - detectSupersedeLandingBypass
+//   - replaceSelfReviewCycles / inferRequiredReviewRound (self-review-cycle helpers)
+// Landing-side neighbors stay in their owning suites: landing-resolution.test.js
+// keeps commit/base-ref resolution, landing-audit.test.js keeps audit/report
+// writers, and lifecycle-owned validation (assertCommittedReviewState,
+// appendReviewFollowupPlan, ensurePlanStub) plus the cross-module facade cases
+// remain in governance.test.js.
+//
+// Hermetic session env: strip any ambient provider id the host injects (e.g.
+// Claude Code exports CLAUDE_CODE_SESSION_ID) so it cannot leak into readiness
+// fixtures that control identity explicitly.
+delete process.env.CODEX_THREAD_ID;
+delete process.env.CLAUDE_CODE_SESSION_ID;
+delete process.env.CLAUDE_SESSION_ID;
+delete process.env.GEMINI_THREAD_ID;
+delete process.env.GROK_THREAD_ID;
+
+// COORD-071: feature-proof normalization infers a ticket's repo from its id
+// prefix (project.config.js `ticketPrefixes`). The proof-normalization test
+// below passes no board/row context, so its ticket id must use a prefix that
+// maps to repo B under whichever config-matrix leg is running (default "MSRV",
+// non-default "API"). Derive a B-mapped prefix from the active registry.
+const B_TICKET_PREFIX =
+  Object.entries(ACTIVE_PATHS.ticketPrefixToRepoCode || {}).find(([, code]) => code === "B")?.[0] || "MSRV";
+
+test("deriveGovernanceReadiness respects explicit required_question_logged=false in plan governance", () => {
+  const readiness = __testing.deriveGovernanceReadiness(
+    "FE-999",
+    { ID: "FE-999", Repo: "F", Type: "bug", Description: "test ticket" },
+    { metadata: {}, sections: [] },
+    null,
+    {
+      startup_checklist: ["completed"],
+      traceability_gate: ["verified"],
+      repo_gates: ["pnpm test"],
+      feature_proof: ["path:frontend/file.tsx"],
+      governance: {
+        expected_closeout: {
+          method: "pr",
+          base_ref: "dev",
+          provenance_note: null,
+        },
+        review_profile: "standard",
+        ticket_local_repairs: [
+          {
+            kind: "recover",
+            required_question_logged: false,
+            note: "missing resolved question log",
+          },
+        ],
+      },
+    },
+    { required: false }
+  );
+
+  assert.equal(readiness.closeout.repair_ticket_local, true);
+  assert.equal(readiness.closeout.repair_question_logged, false);
+});
+
+test("deriveTestingInfrastructureAudit normalizes worktree paths and records branch-reachability evidence", () => {
+  const recordsDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-gate-audit-records-"));
+  const { repoRoot, head } = createTempGitRepo("ebmr-gate-audit-backend-", {
+    "package.json": JSON.stringify({
+      name: "@template/backend",
+      scripts: {
+        "gate:default": "node tools/gates/run-gate.mjs --lane default",
+        "gate:full": "node tools/gates/run-gate.mjs --lane full",
+        "gate:extended": "node tools/gates/run-gate.mjs --lane extended",
+      },
+    }, null, 2),
+    "README.md": "# backend\n",
+    "tools/gates/run-gate.mjs": "console.log('gate');\n",
+    "tools/testing/run-test-lane.mjs": "console.log('lane');\n",
+  }, "gate infra");
+  const original = {
+    PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+    REPO_ROOTS: { ...__testing.paths.REPO_ROOTS },
+  };
+
+  fs.writeFileSync(path.join(recordsDir, "MSRV-041.json"), JSON.stringify({
+    schema_version: 1,
+    ticket_id: "MSRV-041",
+    markdown_heading: "## MSRV-041 — 2026-04-02T00:00:00.000Z",
+    startup_checklist: ["completed"],
+    traceability_gate: ["closing-gap"],
+    review_round: 1,
+    baseline_reproduction: ["Command: pnpm gate:default", "Outcome: reproduced missing CI/hook wiring"],
+    prior_findings: [],
+    intended_files: [
+      "backend/.worktrees/unassigned/MSRV-041/tools/gates/run-gate.mjs",
+      "backend/.worktrees/unassigned/MSRV-041/README.md",
+    ],
+    change_summary: ["Wire backend gate automation and make the closeout contract auditable."],
+    verification_commands: [
+      "node tools/testing/run-test-lane.mjs",
+      "pnpm gate:default",
+      "pnpm gate:full",
+      "pnpm gate:extended",
+    ],
+    critical_invariants: ["Default/full/extended lanes stay truthful.", "Canonical dev must carry the landed gate scripts."],
+    requirement_closure: ["Ticket ask: auditing", "Implemented: auditing", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    repo_gates: ["pnpm gate:default", "pnpm gate:full", "pnpm gate:extended"],
+    self_review_cycles: [],
+    rollback_strategy: ["revert"],
+    security_surface: "no",
+  }, null, 2), "utf8");
+
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  __testing.paths.REPO_ROOTS = {
+    ...original.REPO_ROOTS,
+    B: repoRoot,
+  };
+
+  try {
+    const landing = {
+      base_ref: "dev",
+      method: "no_pr",
+      commit_sha: head,
+      evidence: [`local-review ${head}`],
+    };
+    const row = {
+      ID: "MSRV-041",
+      Repo: "B",
+      Type: "infra",
+      Description: "Wire the backend default/full/extended gates into CI and documented hook flow.",
+    };
+
+    const audit = __testing.deriveTestingInfrastructureAudit("MSRV-041", row, landing);
+
+    assert.deepEqual(audit.requiredFiles, [
+      "README.md",
+      "package.json",
+      "tools/gates/run-gate.mjs",
+      "tools/testing/run-test-lane.mjs",
+    ]);
+    assert.deepEqual(audit.requiredScripts, [
+      "gate:default",
+      "gate:extended",
+      "gate:full",
+    ]);
+
+    __testing.ensureTestingInfrastructureLandingAudit("MSRV-041", row, landing, { recordEvidence: true });
+    assert.equal(
+      landing.evidence.some((entry) => new RegExp(`testing-infra audit: commit .* is an ancestor of ${audit.repoLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\/dev`).test(entry)),
+      true
+    );
+  } finally {
+    __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;
+    __testing.paths.REPO_ROOTS = original.REPO_ROOTS;
+  }
+});
+
+test("deriveTestingInfrastructureAudit ignores feature tickets with feed-runner wording and incidental package manifests", () => {
+  const recordsDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-gate-audit-backend051-"));
+  const { repoRoot, head } = createTempGitRepo("ebmr-gate-audit-feature-", {
+    "apps/ingest-worker/src/feed-runner.ts": "export function createFeedRunner() { return 'ok'; }\n",
+    "apps/ingest-worker/src/feed-runner.test.ts": "export {};\n",
+    "apps/ingest-worker/src/main.ts": "export const main = true;\n",
+    "apps/ingest-worker/package.json": JSON.stringify({
+      name: "@template/ingest-worker",
+      dependencies: {
+        "@template/http-contracts": "workspace:*",
+      },
+    }, null, 2),
+  }, "feature ticket with feed runner");
+  const original = {
+    PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+    REPO_ROOTS: { ...__testing.paths.REPO_ROOTS },
+  };
+
+  fs.writeFileSync(path.join(recordsDir, "MSRV-051.json"), JSON.stringify({
+    schema_version: 1,
+    ticket_id: "MSRV-051",
+    markdown_heading: "## MSRV-051 — 2026-04-03T00:00:00.000Z",
+    startup_checklist: ["completed"],
+    traceability_gate: ["closing-gap"],
+    review_round: 1,
+    baseline_reproduction: ["Command: not-required", "Outcome: feature ticket"],
+    prior_findings: [],
+    intended_files: [
+      "backend/.worktrees/claudea37/MSRV-051/apps/ingest-worker/src/feed-runner.ts,backend/.worktrees/claudea37/MSRV-051/apps/ingest-worker/src/feed-runner.test.ts,backend/.worktrees/claudea37/MSRV-051/apps/ingest-worker/src/main.ts,backend/.worktrees/claudea37/MSRV-051/apps/ingest-worker/package.json",
+    ],
+    change_summary: [
+      "Wire integration adapters to ingest-worker with feed-runner engine and dead-letter retry queue.",
+    ],
+    verification_commands: [
+      "node --experimental-strip-types --test apps/ingest-worker/src/feed-runner.test.ts",
+    ],
+    critical_invariants: ["Feed jobs preserve retry count.", "Dedup still rejects duplicates."],
+    requirement_closure: ["Ticket ask: feature", "Implemented: feature", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    repo_gates: [
+      "git diff --check dev...HEAD: pass",
+      "testing-infra audit: MSRV-051 is a feature ticket that touched apps/ingest-worker/package.json to add http-contracts dep. No testing infrastructure added. Feed-runner and dead-letter retry are ingest-worker domain features.",
+    ],
+    self_review_cycles: [],
+    rollback_strategy: ["revert"],
+    security_surface: "no",
+  }, null, 2), "utf8");
+
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  __testing.paths.REPO_ROOTS = {
+    ...original.REPO_ROOTS,
+    B: repoRoot,
+  };
+
+  try {
+    const row = {
+      ID: "MSRV-051",
+      Repo: "B",
+      Type: "feature",
+      Description: "Wire integration adapter feed jobs to the ingest-worker app and implement dead-letter retry.",
+    };
+    const planState = JSON.parse(fs.readFileSync(path.join(recordsDir, "MSRV-051.json"), "utf8"));
+    const landing = {
+      base_ref: "dev",
+      method: "no_pr",
+      commit_sha: head,
+      evidence: [`landing audit backfill: git merge-base --is-ancestor ${head} dev == true`],
+    };
+
+    assert.equal(__testing.isTestingInfrastructureTicket(row, planState), false);
+    assert.equal(__testing.deriveTestingInfrastructureAudit("MSRV-051", row, landing), null);
+  } finally {
+    __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;
+    __testing.paths.REPO_ROOTS = original.REPO_ROOTS;
+  }
+});
+
+test("deriveFeatureProofAudit verifies canonical path, symbol, and route proofs", () => {
+  const recordsDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-feature-proof-records-"));
+  const frontendRepo = createTempGitRepo("ebmr-feature-proof-frontend-", {
+    "apps/public-web/app/[flow]/page.tsx": "export function SecureLinkProofPage() { return '/proof'; }\n",
+    "apps/public-web/app/page.tsx": "export default function PublicHome() { return null; }\n",
+  }, "public flow");
+  const original = {
+    PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+    REPO_ROOTS: { ...__testing.paths.REPO_ROOTS },
+  };
+
+  fs.writeFileSync(path.join(recordsDir, "FE-079.json"), JSON.stringify({
+    schema_version: 1,
+    ticket_id: "FE-079",
+    markdown_heading: "## FE-079 — 2026-04-02T00:00:00.000Z",
+    startup_checklist: ["completed"],
+    traceability_gate: ["closing-gap"],
+    review_round: 1,
+    baseline_reproduction: ["Command: pnpm test", "Outcome: public flow stub reproduced"],
+    prior_findings: [],
+    intended_files: ["frontend/apps/public-web/app/[flow]/page.tsx"],
+    change_summary: ["Recover the public secure-link proof flow."],
+    verification_commands: ["pnpm test:components"],
+    critical_invariants: ["Secure-link proof route must exist.", "Public flow shell must be canonical."],
+    requirement_closure: ["Ticket ask: recover FE-007 flow", "Implemented: public proof flow", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    feature_proof: [
+      "path:apps/public-web/app/[flow]/page.tsx",
+      "symbol:apps/public-web/app/[flow]/page.tsx#SecureLinkProofPage",
+      "route:/proof",
+    ],
+    repo_gates: ["pnpm test:components"],
+    self_review_cycles: [],
+    rollback_strategy: ["revert public flow"],
+    security_surface: "yes",
+  }, null, 2), "utf8");
+
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  __testing.paths.REPO_ROOTS = {
+    ...original.REPO_ROOTS,
+    F: frontendRepo.repoRoot,
+  };
+
+  try {
+    const landing = {
+      base_ref: "dev",
+      method: "no_pr",
+      commit_sha: frontendRepo.head,
+      evidence: [`local-review ${frontendRepo.head}`],
+    };
+    const row = {
+      ID: "FE-079",
+      Repo: "F",
+      Type: "feature",
+      Description: "Recover the public secure-link flow.",
+    };
+
+    const audit = __testing.deriveFeatureProofAudit("FE-079", row, landing, {
+      feature_proof_required_from_ticket: {
+        F: "FE-079",
+      },
+    });
+
+    assert.deepEqual(audit.proofs, [
+      "path:apps/public-web/app/[flow]/page.tsx",
+      "symbol:apps/public-web/app/[flow]/page.tsx#SecureLinkProofPage",
+      "route:/proof",
+    ]);
+    __testing.ensureFeatureProofLandingAudit("FE-079", row, landing, {
+      feature_proof_required_from_ticket: {
+        F: "FE-079",
+      },
+    }, { recordEvidence: true });
+    assert.equal(
+      landing.evidence.some((entry) => new RegExp(`feature-proof audit: commit .* verified 3 proof\\(s\\) on ${__testing.repoNameForCode("F").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\/dev`).test(entry)),
+      true
+    );
+  } finally {
+    __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;
+    __testing.paths.REPO_ROOTS = original.REPO_ROOTS;
+  }
+});
+
+test("deriveFeatureProofAudit normalizes repo-prefixed proofs and prefers origin/dev when local dev is stale", () => {
+  const recordsDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-feature-proof-origin-fallback-"));
+  const backendRepo = createTempGitRepoWithOrigin("ebmr-feature-proof-backend-", {
+    "packages/platform/core/src/event-bus.ts": "export function emitEvent() { return true; }\n",
+    "packages/modules/planning-dispatch/src/planning-dispatch.core.ts": "export function transitionRouteForActor() { return true; }\n",
+    "apps/api/src/http/events.controller.ts": "export class EventsController {}\n",
+  }, "event stream");
+  const original = {
+    PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+    REPO_ROOTS: { ...__testing.paths.REPO_ROOTS },
+  };
+
+  const updaterRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-feature-proof-origin-fallback-updater-"));
+  runGit(path.dirname(updaterRoot), ["clone", backendRepo.remoteRoot, updaterRoot]);
+  runGit(updaterRoot, ["checkout", "dev"]);
+  runGit(updaterRoot, ["config", "user.email", "governance-tests@example.com"]);
+  runGit(updaterRoot, ["config", "user.name", "Governance Tests"]);
+  writeRepoFile(updaterRoot, "packages/platform/core/src/event-store.ts", "export function createStore() { return true; }\n");
+  runGit(updaterRoot, ["add", "."]);
+  runGit(updaterRoot, ["commit", "-m", "remote-only advance"]);
+  runGit(updaterRoot, ["push", "origin", "dev"]);
+  runGit(backendRepo.repoRoot, ["fetch", "origin"]);
+
+  const tid = `${B_TICKET_PREFIX}-085`;
+  fs.writeFileSync(path.join(recordsDir, `${tid}.json`), JSON.stringify({
+    schema_version: 1,
+    ticket_id: tid,
+    markdown_heading: `## ${tid} — 2026-04-06T00:00:00.000Z`,
+    startup_checklist: ["completed"],
+    traceability_gate: ["closing-gap"],
+    review_round: 1,
+    baseline_reproduction: ["not-required"],
+    prior_findings: [],
+    intended_files: [`${__testing.repoPrefixForCode("B")}packages/platform/core/src/event-bus.ts`],
+    change_summary: ["Add backend event stream APIs."],
+    verification_commands: ["pnpm gate:default"],
+    critical_invariants: ["Events persist before broadcast.", "Replay cursors stay stable."],
+    requirement_closure: ["Ticket ask: add SSE event APIs", "Implemented: event bus and store", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    feature_proof: [
+      `path:${__testing.repoPrefixForCode("B")}packages/platform/core/src/event-bus.ts`,
+      `path:${__testing.repoPrefixForCode("B")}apps/api/src/http/events.controller.ts`,
+      `symbol:${__testing.repoPrefixForCode("B")}packages/modules/planning-dispatch/src/planning-dispatch.core.ts#transitionRouteForActor`,
+    ],
+    repo_gates: ["pnpm gate:default"],
+    self_review_cycles: [],
+    rollback_strategy: ["revert"],
+    security_surface: "yes",
+  }, null, 2), "utf8");
+
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  __testing.paths.REPO_ROOTS = {
+    ...original.REPO_ROOTS,
+    B: backendRepo.repoRoot,
+  };
+
+  try {
+    const originHead = runGit(backendRepo.repoRoot, ["rev-parse", "origin/dev"]);
+    const localHead = runGit(backendRepo.repoRoot, ["rev-parse", "dev"]);
+    assert.notEqual(originHead, localHead);
+
+    const landing = {
+      base_ref: "dev",
+      method: "pr",
+      commit_sha: originHead,
+      evidence: [`merged ${originHead}`],
+    };
+    const row = {
+      ID: tid,
+      Repo: "B",
+      Type: "feature",
+      Description: "Add backend event stream APIs.",
+    };
+
+    const audit = __testing.deriveFeatureProofAudit(tid, row, landing, {
+      feature_proof_required_from_ticket: {
+        B: tid,
+      },
+    });
+
+    assert.equal(audit.baseRef, "origin/dev");
+    assert.deepEqual(audit.proofs, [
+      "path:packages/platform/core/src/event-bus.ts",
+      "path:apps/api/src/http/events.controller.ts",
+      "symbol:packages/modules/planning-dispatch/src/planning-dispatch.core.ts#transitionRouteForActor",
+    ]);
+    // Evidence label is the registry-derived repo display name
+    // (repoNameForCode = basename of REPO_ROOTS[code]); derive it the same way
+    // so the assertion holds for any active registry (GOV-015).
+    assert.match(audit.evidence, new RegExp(`on ${__testing.repoNameForCode("B").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\/origin\\/dev:`));
+  } finally {
+    __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;
+    __testing.paths.REPO_ROOTS = original.REPO_ROOTS;
+  }
+});
+
+test("validateFeatureProofEntry accepts text and route proofs documented in governance", () => {
+  assert.doesNotThrow(() => __testing.validateFeatureProofEntry("text:actionTemplate"));
+  assert.doesNotThrow(() => __testing.validateFeatureProofEntry("route:/proof"));
+});
+
+test("replaceSelfReviewCycles overwrites scaffold TODO review cycles with real entries", () => {
+  const block = `## IMP-228 — 2026-03-28T00:00:00Z
+
+- Repo gates:
+  - pytest -q tests/test_reference_data.py
+- Self-review cycle 1/3: lens=TODO contract/state invariants; diff=TODO git diff origin/dev...HEAD -- <paths>; risks=TODO failure mode 1, TODO failure mode 2; findings=TODO none or describe issues fixed; verification=TODO command rerun; verdict=TODO pass or fail
+- Self-review cycle 2/3: lens=TODO auth/security/failure modes; diff=TODO git diff origin/dev...HEAD -- <paths>; risks=TODO failure mode 1, TODO failure mode 2; findings=TODO none or describe issues fixed; verification=TODO command rerun; verdict=TODO pass or fail
+- Self-review cycle 3/3: lens=TODO tests/operability/performance; diff=TODO git diff origin/dev...HEAD -- <paths>; risks=TODO failure mode 1, TODO failure mode 2; findings=TODO none or describe issues fixed; verification=TODO command rerun; verdict=TODO pass or fail
+- Rollback strategy:
+  - revert
+`;
+
+  assert.equal(__testing.hasOnlyScaffoldSelfReviewCycles(block), true);
+
+  const updated = __testing.replaceSelfReviewCycles(block, [
+    "lens=contract/state invariants; diff=git diff -- services/audit.py; risks=route bypass could still commit, helper could raise after persistence; findings=none; verification=pytest -q tests/test_form_types.py; verdict=pass",
+    "lens=auth/security/failure modes; diff=git diff -- routes/users.py tests/test_integration.py; risks=signature scope mismatch, stale admin payloads could 422 before audit assertions; findings=repaired stale integration expectations; verification=pytest -q tests/test_integration.py -k s8_site_create_audited; verdict=pass",
+    "lens=tests/operability/performance; diff=git diff -- tests/test_reference_data.py tests/test_users.py; risks=stable seam coverage could miss adapter regressions, full-suite debt could hide local confidence; findings=none; verification=pytest -q tests/test_reference_data.py tests/test_users.py; verdict=pass",
+  ]);
+
+  assert.equal(__testing.hasOnlyScaffoldSelfReviewCycles(updated), false);
+  assert.doesNotMatch(updated, /TODO contract\/state invariants/);
+  assert.match(updated, /- Self-review cycle 1\/3: lens=contract\/state invariants;/);
+  assert.match(updated, /- Self-review cycle 3\/3: lens=tests\/operability\/performance;/);
+});
+
+test("review round helpers default initial review to round 1 and honor latest finding round", () => {
+  assert.equal(__testing.inferRequiredReviewRound([]), 1);
+  assert.equal(__testing.inferRequiredReviewRound([{ id: "IMP-200-F1", round: 1 }]), 1);
+  assert.equal(
+    __testing.inferRequiredReviewRound([
+      { id: "IMP-200-F1", round: 1 },
+      { id: "IMP-200-F2", round: 2 },
+    ]),
+    2
+  );
+
+  const block = `## IMP-200 — 2026-03-25T15:00:00Z
+
+- Review round:
+  - 2
+`;
+  assert.equal(__testing.readPlanScalarField(block, "Review round"), "2");
+});
+
+test("submitRequiresReviewPlanCheck only triggers before first PR creation", () => {
+  const row = {
+    ID: "IMP-240",
+    Status: "doing",
+  };
+
+  assert.equal(
+    __testing.submitRequiresReviewPlanCheck({ pr_index: {} }, row, "IMP-240", {}),
+    true
+  );
+  assert.equal(
+    __testing.submitRequiresReviewPlanCheck(
+      { pr_index: { "IMP-240": ["https://github.com/example/repo/pull/57"] } },
+      row,
+      "IMP-240",
+      {}
+    ),
+    false
+  );
+  assert.equal(
+    __testing.submitRequiresReviewPlanCheck(
+      { pr_index: {} },
+      row,
+      "IMP-240",
+      { pr: ["https://github.com/example/repo/pull/57"] }
+    ),
+    false
+  );
+  assert.equal(
+    __testing.submitRequiresReviewPlanCheck({ pr_index: {} }, { ID: "IMP-240", Status: "review" }, "IMP-240", {}),
+    false
+  );
+});
+
+test("assertAlreadyLandedNoPrReconcileReady validates explicit no-PR landing evidence against canonical dev", () => {
+  const backendRepo = createTempGitRepo("ebmr-already-landed-", {
+    "package.json": JSON.stringify({ name: "@template/backend" }, null, 2),
+  }, "backend seed");
+  runGit(backendRepo.repoRoot, ["checkout", "-b", "agent/codexa34-backend-900-reconcile-path"]);
+  writeRepoFile(backendRepo.repoRoot, "feature.txt", "recovered\n");
+  runGit(backendRepo.repoRoot, ["add", "."]);
+  runGit(backendRepo.repoRoot, ["commit", "-m", "MSRV-900 recover merge-before-review closeout"]);
+  const sourceHead = runGit(backendRepo.repoRoot, ["rev-parse", "HEAD"]);
+  runGit(backendRepo.repoRoot, ["checkout", "dev"]);
+  runGit(backendRepo.repoRoot, ["merge", "--ff-only", sourceHead]);
+
+  const originalRepoRoots = { ...__testing.paths.REPO_ROOTS };
+  const originalBranches = { ...__testing.paths.REPO_INTEGRATION_BRANCHES };
+  __testing.paths.REPO_ROOTS = {
+    ...originalRepoRoots,
+    B: backendRepo.repoRoot,
+  };
+  __testing.paths.REPO_INTEGRATION_BRANCHES = {
+    ...originalBranches,
+    B: "dev",
+  };
+
+  try {
+    const board = {
+      sections: [],
+      review_findings: {},
+      pr_index: {},
+      landing_index: {},
+    };
+    assert.equal(
+      __testing.assertAlreadyLandedNoPrReconcileReady(
+        "MSRV-900",
+        board,
+        { Repo: "B", Type: "feature" },
+        ["local-review (no PR)"],
+        {
+          alreadyLanded: true,
+          landed: [`backend/dev landed at ${sourceHead} via local-review no-pr closeout`],
+          sourceCommit: sourceHead,
+        }
+      ),
+      true
+    );
+  } finally {
+    __testing.paths.REPO_ROOTS = originalRepoRoots;
+    __testing.paths.REPO_INTEGRATION_BRANCHES = originalBranches;
+  }
+});
+
+test("assertLandingIntegrity accepts no-pr landing commits that are ancestors of origin/dev when local dev is stale", () => {
+  const frontendRepo = createTempGitRepoWithOrigin("ebmr-no-pr-integrity-origin-", {
+    "package.json": JSON.stringify({ name: "@template/frontend" }, null, 2),
+  }, "frontend seed");
+  runGit(frontendRepo.repoRoot, ["checkout", "-b", "agent/codexa44-fe-903-no-pr-integrity"]);
+  writeRepoFile(frontendRepo.repoRoot, "feature.txt", "no-pr-integrity\n");
+  runGit(frontendRepo.repoRoot, ["add", "."]);
+  runGit(frontendRepo.repoRoot, ["commit", "-m", "FE-903 no-pr landing"]);
+  const landedCommit = runGit(frontendRepo.repoRoot, ["rev-parse", "HEAD"]);
+  runGit(frontendRepo.repoRoot, ["checkout", "dev"]);
+  runGit(frontendRepo.repoRoot, ["merge", "--ff-only", landedCommit]);
+  runGit(frontendRepo.repoRoot, ["push", "origin", "dev"]);
+  runGit(frontendRepo.repoRoot, ["reset", "--hard", "HEAD~1"]);
+
+  const originalRepoRoots = { ...__testing.paths.REPO_ROOTS };
+  __testing.paths.REPO_ROOTS = {
+    ...originalRepoRoots,
+    F: frontendRepo.repoRoot,
+  };
+
+  try {
+    assert.doesNotThrow(() => __testing.assertLandingIntegrity("FE-903", { Repo: "F" }, {
+      base_ref: "dev",
+      method: "no_pr",
+      commit_sha: landedCommit,
+      evidence: [`local-review ${landedCommit}`],
+    }));
+  } finally {
+    __testing.paths.REPO_ROOTS = originalRepoRoots;
+  }
+});
+
+test("classifyLandingRecord treats no-pr landing commits on origin/dev as merged when local dev is stale", () => {
+  const frontendRepo = createTempGitRepoWithOrigin("ebmr-no-pr-classify-origin-", {
+    "package.json": JSON.stringify({ name: "@template/frontend" }, null, 2),
+  }, "frontend seed");
+  runGit(frontendRepo.repoRoot, ["checkout", "-b", "agent/codexa44-fe-904-no-pr-classify"]);
+  writeRepoFile(frontendRepo.repoRoot, "feature.txt", "no-pr-classify\n");
+  runGit(frontendRepo.repoRoot, ["add", "."]);
+  runGit(frontendRepo.repoRoot, ["commit", "-m", "FE-904 no-pr landing"]);
+  const landedCommit = runGit(frontendRepo.repoRoot, ["rev-parse", "HEAD"]);
+  runGit(frontendRepo.repoRoot, ["checkout", "dev"]);
+  runGit(frontendRepo.repoRoot, ["merge", "--ff-only", landedCommit]);
+  runGit(frontendRepo.repoRoot, ["push", "origin", "dev"]);
+  runGit(frontendRepo.repoRoot, ["reset", "--hard", "HEAD~1"]);
+
+  const originalRepoRoots = { ...__testing.paths.REPO_ROOTS };
+  __testing.paths.REPO_ROOTS = {
+    ...originalRepoRoots,
+    F: frontendRepo.repoRoot,
+  };
+
+  try {
+    const entry = __testing.classifyLandingRecord("FE-904", { Repo: "F" }, {
+      base_ref: "dev",
+      method: "no_pr",
+      commit_sha: landedCommit,
+      evidence: [`local-review ${landedCommit}`],
+    });
+    assert.equal(entry.status, "merged");
+    assert.equal(entry.base_ref, "origin/dev");
+  } finally {
+    __testing.paths.REPO_ROOTS = originalRepoRoots;
+  }
+});
+
+test("detectSupersedeLandingBypass catches ticket-affiliated source commits that already landed on dev", () => {
+  const backendRepo = createTempGitRepo("ebmr-supersede-landed-", {
+    "package.json": JSON.stringify({ name: "@template/backend" }, null, 2),
+  }, "backend seed");
+  runGit(backendRepo.repoRoot, ["checkout", "-b", "agent/codexa34-backend-901-supersede-guard"]);
+  writeRepoFile(backendRepo.repoRoot, "feature.txt", "guard\n");
+  runGit(backendRepo.repoRoot, ["add", "."]);
+  runGit(backendRepo.repoRoot, ["commit", "-m", "MSRV-901 land before review"]);
+  const sourceHead = runGit(backendRepo.repoRoot, ["rev-parse", "HEAD"]);
+  runGit(backendRepo.repoRoot, ["checkout", "dev"]);
+  runGit(backendRepo.repoRoot, ["merge", "--ff-only", sourceHead]);
+
+  const originalRepoRoots = { ...__testing.paths.REPO_ROOTS };
+  const originalBranches = { ...__testing.paths.REPO_INTEGRATION_BRANCHES };
+  __testing.paths.REPO_ROOTS = {
+    ...originalRepoRoots,
+    B: backendRepo.repoRoot,
+  };
+  __testing.paths.REPO_INTEGRATION_BRANCHES = {
+    ...originalBranches,
+    B: "dev",
+  };
+
+  try {
+    const detected = __testing.detectSupersedeLandingBypass(
+      "MSRV-901",
+      { Repo: "B", Type: "feature" },
+      { pr_index: {}, landing_index: {} },
+      { sourceCommit: sourceHead }
+    );
+    assert.deepEqual(detected, {
+      kind: "source_commit",
+      commitSha: sourceHead,
+      baseRef: "dev",
+    });
+  } finally {
+    __testing.paths.REPO_ROOTS = originalRepoRoots;
+    __testing.paths.REPO_INTEGRATION_BRANCHES = originalBranches;
+  }
+});
+
+test("detectSupersedeLandingBypass catches ticket-affiliated source commits already landed on origin/dev when local dev is stale", () => {
+  const backendRepo = createTempGitRepoWithOrigin("ebmr-supersede-remote-origin-", {
+    "package.json": JSON.stringify({ name: "@template/backend" }, null, 2),
+  }, "backend seed");
+  runGit(backendRepo.repoRoot, ["checkout", "-b", "agent/codexa34-backend-903-supersede-guard"]);
+  writeRepoFile(backendRepo.repoRoot, "feature.txt", "guard-remote\n");
+  runGit(backendRepo.repoRoot, ["add", "."]);
+  runGit(backendRepo.repoRoot, ["commit", "-m", "MSRV-903 land before review"]);
+  const sourceHead = runGit(backendRepo.repoRoot, ["rev-parse", "HEAD"]);
+  runGit(backendRepo.repoRoot, ["checkout", "dev"]);
+  runGit(backendRepo.repoRoot, ["merge", "--ff-only", sourceHead]);
+  runGit(backendRepo.repoRoot, ["push", "origin", "dev"]);
+  runGit(backendRepo.repoRoot, ["reset", "--hard", "HEAD~1"]);
+
+  const originalRepoRoots = { ...__testing.paths.REPO_ROOTS };
+  const originalBranches = { ...__testing.paths.REPO_INTEGRATION_BRANCHES };
+  __testing.paths.REPO_ROOTS = {
+    ...originalRepoRoots,
+    B: backendRepo.repoRoot,
+  };
+  __testing.paths.REPO_INTEGRATION_BRANCHES = {
+    ...originalBranches,
+    B: "dev",
+  };
+
+  try {
+    const detected = __testing.detectSupersedeLandingBypass(
+      "MSRV-903",
+      { Repo: "B", Type: "feature" },
+      { pr_index: {}, landing_index: {} },
+      { sourceCommit: sourceHead }
+    );
+    assert.deepEqual(detected, {
+      kind: "source_commit",
+      commitSha: sourceHead,
+      baseRef: "origin/dev",
+    });
+  } finally {
+    __testing.paths.REPO_ROOTS = originalRepoRoots;
+    __testing.paths.REPO_INTEGRATION_BRANCHES = originalBranches;
+  }
+});
+
+test("detectSupersedeLandingBypass ignores base commits that do not affiliate with the ticket", () => {
+  const backendRepo = createTempGitRepo("ebmr-supersede-safe-", {
+    "package.json": JSON.stringify({ name: "@template/backend" }, null, 2),
+  }, "backend seed");
+
+  const originalRepoRoots = { ...__testing.paths.REPO_ROOTS };
+  __testing.paths.REPO_ROOTS = {
+    ...originalRepoRoots,
+    B: backendRepo.repoRoot,
+  };
+
+  try {
+    const detected = __testing.detectSupersedeLandingBypass(
+      "MSRV-902",
+      { Repo: "B", Type: "feature" },
+      { pr_index: {}, landing_index: {} },
+      { sourceCommit: backendRepo.head }
+    );
+    assert.equal(detected, null);
+  } finally {
+    __testing.paths.REPO_ROOTS = originalRepoRoots;
+  }
+});
+
+test("collectStartReadinessBlockers avoids follow-up rewrite suggestions when multiple dependencies are present", () => {
+  const blockers = __testing.collectStartReadinessBlockers(
+    "DEBT-042",
+    {
+      ID: "DEBT-042",
+      Repo: "X",
+      Type: "infra",
+      Status: "todo",
+      Owner: "unassigned",
+      Description: "Follow-up dependency repair",
+      "Depends On": "IMP-245, IMP-246",
+    },
+    {
+      sections: [
+        {
+          rows: [
+            {
+              ID: "DEBT-042",
+              Repo: "X",
+              Type: "infra",
+              Status: "todo",
+              Owner: "unassigned",
+              Description: "Follow-up dependency repair",
+              "Depends On": "IMP-245, IMP-246",
+            },
+            {
+              ID: "IMP-245",
+              Repo: "X",
+              Type: "infra",
+              Status: "doing",
+              Owner: "codexa00",
+              Description: "Parent one",
+              "Depends On": "",
+            },
+            {
+              ID: "IMP-246",
+              Repo: "X",
+              Type: "infra",
+              Status: "review",
+              Owner: "codexa01",
+              Description: "Parent two",
+              "Depends On": "",
+            },
+          ],
+        },
+      ],
+      prompt_index: {
+        "DEBT-042": "coord/prompts/DEBT-042.md",
+      },
+      followup_exceptions: {},
+    }
+  );
+
+  const dependencyBlocker = blockers.find((entry) => entry.code === "dependencies");
+  assert.ok(dependencyBlocker);
+  assert.deepEqual(dependencyBlocker.next_steps, [
+    "coord/scripts/gov explain IMP-245",
+    "coord/scripts/gov explain IMP-246",
+  ]);
+});
+
+test("collectStartReadinessBlockers blocks manual reopen attempts when historical closeout evidence exists", () => {
+  const board = {
+    sections: [
+      {
+        rows: [
+          {
+            ID: "IMP-100",
+            Repo: "B",
+            Type: "bug",
+            Pri: "P1",
+            Status: "todo",
+            Owner: "unassigned",
+            Description: "Legacy ticket manually reset after closeout",
+            "Depends On": "",
+          },
+        ],
+      },
+    ],
+    prompt_index: {},
+    pr_index: {
+      "IMP-100": ["https://github.com/example/repo/pull/100"],
+    },
+    landing_index: {},
+    review_findings: {},
+    followup_exceptions: {},
+    waiver_index: {},
+  };
+
+  const blockers = __testing.collectStartReadinessBlockers("IMP-100", board.sections[0].rows[0], board);
+
+  assert.equal(blockers.length, 1);
+  assert.equal(blockers[0].code, "closed_ticket_history");
+  assert.match(blockers[0].message, /cannot be restarted/i);
+  assert.deepEqual(blockers[0].next_steps, [
+    'coord/scripts/gov open-followup <NEW-FOLLOWUP-ID> --depends-on IMP-100 --repo B --type bug --pri P1 --description "Follow-up for post-close finding"',
+  ]);
+});
+
+test("collectStartReadinessBlockers surfaces gov plan --seed when plan state is missing", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-start-readiness-"));
+  const original = {
+    PLAN_PATH: __testing.paths.PLAN_PATH,
+    PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+  };
+  fs.mkdirSync(path.join(tempDir, "plans"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, "PLAN.md"), "", "utf8");
+  __testing.paths.PLAN_PATH = path.join(tempDir, "PLAN.md");
+  __testing.paths.PLAN_RECORDS_DIR = path.join(tempDir, "plans");
+
+  try {
+    const blockers = __testing.collectStartReadinessBlockers(
+      "DEBT-043",
+      {
+        ID: "DEBT-043",
+        Repo: "B",
+        Type: "test",
+        Status: "todo",
+        Owner: "unassigned",
+        Description: "Bootstrap readiness",
+        "Depends On": "",
+      },
+      {
+        sections: [
+          {
+            rows: [
+              {
+                ID: "DEBT-043",
+                Repo: "B",
+                Type: "test",
+                Status: "todo",
+                Owner: "unassigned",
+                Description: "Bootstrap readiness",
+                "Depends On": "",
+              },
+            ],
+          },
+        ],
+        prompt_index: {
+          "DEBT-043": "coord/prompts/DEBT-043.md",
+        },
+      }
+    );
+
+    const missingPlan = blockers.find((entry) => entry.code === "missing_plan_state");
+    assert.ok(missingPlan);
+    assert.deepEqual(missingPlan.next_steps, [
+      "coord/scripts/gov plan DEBT-043 --seed",
+    ]);
+  } finally {
+    __testing.paths.PLAN_PATH = original.PLAN_PATH;
+    __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;
+  }
+});
+
+test("collectStartReadinessBlockers offers governed follow-up relation repairs for a single blocking dependency", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-start-followup-repair-"));
+  const original = {
+    PLAN_PATH: __testing.paths.PLAN_PATH,
+    PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+  };
+  fs.mkdirSync(path.join(tempDir, "plans"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, "PLAN.md"), "", "utf8");
+  fs.writeFileSync(path.join(tempDir, "plans", "DEBT-042.json"), JSON.stringify({
+    schema_version: 1,
+    ticket_id: "DEBT-042",
+    markdown_heading: "## DEBT-042 — 2026-03-29T17:00:00.000Z",
+    startup_checklist: ["completed"],
+    traceability_gate: ["exempt"],
+    review_round: 1,
+    baseline_reproduction: ["Command: not-required", "Outcome: not-required"],
+    prior_findings: [],
+    intended_files: ["coord/scripts/governance.js"],
+    change_summary: ["Repair follow-up guidance."],
+    verification_commands: ["node --test coord/scripts/governance.test.js"],
+    critical_invariants: ["Follow-up repair guidance must stay governed."],
+    repo_gates: ["not-required"],
+    self_review_cycles: [],
+    rollback_strategy: ["revert guidance change"],
+    security_surface: "no",
+    synced_from_markdown_at: "2026-03-29T17:00:00.000Z",
+  }, null, 2), "utf8");
+  __testing.paths.PLAN_PATH = path.join(tempDir, "PLAN.md");
+  __testing.paths.PLAN_RECORDS_DIR = path.join(tempDir, "plans");
+
+  try {
+    const blockers = __testing.collectStartReadinessBlockers(
+      "DEBT-042",
+      {
+        ID: "DEBT-042",
+        Repo: "X",
+        Type: "infra",
+        Status: "todo",
+        Owner: "unassigned",
+        Description: "Follow-up dependency repair",
+        "Depends On": "IMP-245",
+      },
+      {
+        sections: [
+          {
+            rows: [
+              {
+                ID: "DEBT-042",
+                Repo: "X",
+                Type: "infra",
+                Status: "todo",
+                Owner: "unassigned",
+                Description: "Follow-up dependency repair",
+                "Depends On": "IMP-245",
+              },
+              {
+                ID: "IMP-245",
+                Repo: "X",
+                Type: "infra",
+                Status: "doing",
+                Owner: "codexa00",
+                Description: "Parent ticket",
+                "Depends On": "",
+              },
+            ],
+          },
+        ],
+        prompt_index: {
+          "DEBT-042": "coord/prompts/DEBT-042.md",
+        },
+        followup_exceptions: {},
+      }
+    );
+
+    const dependencyBlocker = blockers.find((entry) => entry.code === "dependencies");
+    assert.ok(dependencyBlocker);
+    assert.match(dependencyBlocker.message, /repair the relation with set-followup-relation/);
+    assert.deepEqual(dependencyBlocker.next_steps, [
+      "coord/scripts/gov explain IMP-245",
+      "coord/scripts/gov set-followup-relation DEBT-042 --depends-on IMP-245 --relation related",
+      "coord/scripts/gov set-followup-relation DEBT-042 --depends-on IMP-245 --relation closeout-blocker",
+    ]);
+  } finally {
+    __testing.paths.PLAN_PATH = original.PLAN_PATH;
+    __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;
+  }
+});
+
+test("evaluateReadiness ignores related follow-up dependencies but still blocks normal ones", () => {
+  const byId = new Map([
+    ["IMP-245", { ID: "IMP-245", Status: "doing" }],
+    ["IMP-246", { ID: "IMP-246", Status: "review" }],
+  ]);
+
+  const relatedReadiness = __testing.evaluateReadiness(
+    { ID: "DEBT-042", "Depends On": "IMP-245" },
+    byId,
+    {
+      followup_exceptions: {
+        "DEBT-042": {
+          parent: "IMP-245",
+          type: "related-followup",
+        },
+      },
+    }
+  );
+  assert.equal(relatedReadiness.ready, true);
+  assert.deepEqual(relatedReadiness.blockedBy, []);
+
+  const blockingReadiness = __testing.evaluateReadiness(
+    { ID: "DEBT-042", "Depends On": "IMP-246" },
+    byId,
+    { followup_exceptions: {} }
+  );
+  assert.equal(blockingReadiness.ready, false);
+  assert.deepEqual(blockingReadiness.blockedBy, ["IMP-246"]);
+});
+
+test("evaluateReadiness surfaces transitive blocker chains for nested dependency graphs", () => {
+  const readiness = __testing.evaluateReadiness(
+    { ID: "DEBT-047", "Depends On": "IMP-245" },
+    new Map([
+      ["DEBT-047", { ID: "DEBT-047", Status: "todo", "Depends On": "IMP-245" }],
+      ["IMP-245", { ID: "IMP-245", Status: "review", "Depends On": "IMP-246" }],
+      ["IMP-246", { ID: "IMP-246", Status: "todo", "Depends On": "" }],
+    ]),
+    { followup_exceptions: {} }
+  );
+
+  assert.equal(readiness.ready, false);
+  assert.deepEqual(readiness.blockedBy, ["IMP-245"]);
+  assert.deepEqual(readiness.transitiveBlockedBy.sort(), ["IMP-245", "IMP-246"]);
+  assert.deepEqual(readiness.blockerChains, [["IMP-245", "IMP-246"]]);
+  assert.deepEqual(readiness.cycles, []);
+});
+
+test("evaluateReadiness detects circular dependencies and fails closed", () => {
+  const readiness = __testing.evaluateReadiness(
+    { ID: "DEBT-047", "Depends On": "DEBT-048" },
+    new Map([
+      ["DEBT-047", { ID: "DEBT-047", Status: "todo", "Depends On": "DEBT-048" }],
+      ["DEBT-048", { ID: "DEBT-048", Status: "todo", "Depends On": "DEBT-047" }],
+    ]),
+    { followup_exceptions: {} }
+  );
+
+  assert.equal(readiness.ready, false);
+  assert.deepEqual(readiness.blockedBy, ["DEBT-048"]);
+  assert.deepEqual(readiness.blockerChains, []);
+  assert.deepEqual(readiness.cycles, [["DEBT-047", "DEBT-048", "DEBT-047"]]);
+});
+
+test("collectStartReadinessBlockers fails closed on a fresh feature stub until startup evidence is explicit", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-start-stub-feature-"));
+  const planPath = path.join(tempDir, "PLAN.md");
+  const recordsDir = path.join(tempDir, "plans");
+  fs.mkdirSync(recordsDir, { recursive: true });
+
+  const originalPlanPath = __testing.paths.PLAN_PATH;
+  const originalRecordsDir = __testing.paths.PLAN_RECORDS_DIR;
+  __testing.paths.PLAN_PATH = planPath;
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  try {
+    __testing.ensurePlanStub("IMP-311", "F", "codexa00");
+    const blockers = __testing.collectStartReadinessBlockers(
+      "IMP-311",
+      { ID: "IMP-311", Repo: "F", Type: "feature", Status: "todo" },
+      { prompt_index: { "IMP-311": "coord/prompts/example.md" }, sections: [{ rows: [{ ID: "IMP-311" }] }] }
+    );
+
+    assert.deepEqual(blockers.map((blocker) => blocker.code), ["startup_checklist", "traceability_gate"]);
+    const block = fs.readFileSync(planPath, "utf8");
+    assert.match(block, /TODO: completed/);
+    assert.match(block, /TODO: verified \| closing-gap \| exempt/);
+  } finally {
+    __testing.paths.PLAN_PATH = originalPlanPath;
+    __testing.paths.PLAN_RECORDS_DIR = originalRecordsDir;
+  }
+});
+
+test("collectStartReadinessBlockers keeps baseline reproduction mandatory for test tickets", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-start-stub-test-"));
+  const planPath = path.join(tempDir, "PLAN.md");
+  const recordsDir = path.join(tempDir, "plans");
+  fs.mkdirSync(recordsDir, { recursive: true });
+
+  const originalPlanPath = __testing.paths.PLAN_PATH;
+  const originalRecordsDir = __testing.paths.PLAN_RECORDS_DIR;
+  __testing.paths.PLAN_PATH = planPath;
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  try {
+    __testing.ensurePlanStub("TST-002", "B", "codexa00");
+    const blockers = __testing.collectStartReadinessBlockers(
+      "TST-002",
+      { ID: "TST-002", Repo: "B", Type: "test", Status: "todo" },
+      { prompt_index: { "TST-002": "coord/prompts/example.md" }, sections: [{ rows: [{ ID: "TST-002" }] }] }
+    );
+
+    assert.deepEqual(
+      blockers.map((blocker) => blocker.code),
+      ["startup_checklist", "traceability_gate", "baseline_reproduction"]
+    );
+    const block = fs.readFileSync(planPath, "utf8");
+    assert.match(block, /TODO: completed/);
+    assert.match(block, /TODO: verified \| closing-gap \| exempt/);
+    assert.match(block, /TODO: Command: <required for test\/contract\/infra tickets/);
+    assert.match(block, /TODO: Outcome: <required for test\/contract\/infra tickets/);
+  } finally {
+    __testing.paths.PLAN_PATH = originalPlanPath;
+    __testing.paths.PLAN_RECORDS_DIR = originalRecordsDir;
+  }
+});
+
+test("assertReviewPlanReady fails closed when a canonical record exists but self-review cycles are missing", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-review-plan-ready-"));
+  const planPath = path.join(tempDir, "PLAN.md");
+  const recordsDir = path.join(tempDir, "plans");
+  const boardPath = path.join(tempDir, "tasks.json");
+  fs.mkdirSync(recordsDir, { recursive: true });
+
+  fs.writeFileSync(planPath, `## DEBT-021 — 2026-03-25T22:13:17.979Z
+
+- Review round:
+  - 1
+- Critical invariants:
+  - Canonical record should be authoritative.
+  - Stale markdown must not satisfy review readiness.
+- Repo gates:
+  - not-required
+- Self-review cycle 1/3: lens=contract/state invariants; diff=manual; risks=state drift, stale evidence; findings=none; verification=node coord/board/board.js validate; verdict=pass
+- Self-review cycle 2/3: lens=auth/security/failure modes; diff=manual; risks=auth drift, invalid fallback; findings=none; verification=node coord/board/board.js validate; verdict=pass
+- Self-review cycle 3/3: lens=tests/operability/performance; diff=manual; risks=missing coverage, false readiness; findings=none; verification=node coord/board/board.js validate; verdict=pass
+`, "utf8");
+
+  fs.writeFileSync(boardPath, JSON.stringify({
+    version: 1,
+    sections: [],
+    review_findings: {},
+    pr_index: {},
+    landing_index: {},
+  }, null, 2), "utf8");
+
+  const recordPath = path.join(recordsDir, "DEBT-021.json");
+  fs.writeFileSync(recordPath, JSON.stringify({
+    schema_version: 1,
+    ticket_id: "DEBT-021",
+    markdown_heading: "## DEBT-021 — 2026-03-25T22:13:17.979Z",
+    startup_checklist: ["completed"],
+    traceability_gate: ["closing-gap"],
+    review_round: 1,
+    baseline_reproduction: ["Command: not-required", "Outcome: canonical record intentionally missing review cycles"],
+    prior_findings: [],
+    intended_files: ["coord/scripts/governance.js"],
+    change_summary: ["Remove markdown parser enforcement."],
+    verification_commands: ["node coord/scripts/governance.test.js"],
+    critical_invariants: [
+      "Canonical record must remain authoritative once it exists.",
+      "Missing canonical self-review cycles must fail closed.",
+    ],
+    repo_gates: ["not-required"],
+    self_review_cycles: [],
+    rollback_strategy: ["revert"],
+    security_surface: "no",
+    synced_from_markdown_at: "2026-03-25T22:13:17.983Z",
+  }, null, 2), "utf8");
+
+  const originalBoardPath = __testing.paths.BOARD_PATH;
+  const originalPlanPath = __testing.paths.PLAN_PATH;
+  const originalRecordsDir = __testing.paths.PLAN_RECORDS_DIR;
+  __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.PLAN_PATH = planPath;
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  try {
+    assert.throws(
+      () => __testing.assertReviewPlanReady("DEBT-021", { ID: "DEBT-021", Repo: "X", Type: "debt" }),
+      (error) => error instanceof GovernanceError && /must record at least 3 self-review cycles/i.test(error.message)
+    );
+  } finally {
+    __testing.paths.BOARD_PATH = originalBoardPath;
+    __testing.paths.PLAN_PATH = originalPlanPath;
+    __testing.paths.PLAN_RECORDS_DIR = originalRecordsDir;
+  }
+});
+
+test("collectReviewPlanReadinessIssues reports the full missing review-plan stack", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-review-plan-blockers-"));
+  const boardPath = path.join(tempDir, "tasks.json");
+  const planPath = path.join(tempDir, "PLAN.md");
+  const recordsDir = path.join(tempDir, "plans");
+  fs.mkdirSync(recordsDir, { recursive: true });
+  fs.writeFileSync(planPath, "", "utf8");
+  fs.writeFileSync(boardPath, JSON.stringify({
+    version: 1,
+    sections: [],
+    review_findings: {},
+    pr_index: {},
+    landing_index: {},
+  }, null, 2), "utf8");
+
+  fs.writeFileSync(path.join(recordsDir, "IMP-245.json"), JSON.stringify({
+    schema_version: 1,
+    ticket_id: "IMP-245",
+    markdown_heading: "## IMP-245 — 2026-03-29T22:13:17.979Z",
+    startup_checklist: ["completed"],
+    traceability_gate: ["verified"],
+    review_round: 1,
+    baseline_reproduction: ["Command: pytest -q tests/test_signatures.py", "Outcome: reproduced"],
+    prior_findings: [],
+    intended_files: ["services/signature.py"],
+    change_summary: ["Enforce functional-area separation of duties for signatures."],
+    verification_commands: ["pytest -q tests/test_signatures.py"],
+    critical_invariants: [],
+    requirement_closure: [],
+    repo_gates: [],
+    self_review_cycles: [],
+    rollback_strategy: ["revert"],
+    security_surface: "yes",
+    synced_from_markdown_at: "2026-03-29T22:13:17.983Z",
+  }, null, 2), "utf8");
+
+  const originalBoardPath = __testing.paths.BOARD_PATH;
+  const originalPlanPath = __testing.paths.PLAN_PATH;
+  const originalRecordsDir = __testing.paths.PLAN_RECORDS_DIR;
+  __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.PLAN_PATH = planPath;
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  try {
+    const issues = __testing.collectReviewPlanReadinessIssues("IMP-245", { ID: "IMP-245", Repo: "B", Type: "feature" });
+    assert.deepEqual(
+      issues.map((issue) => issue.code),
+      [
+        "critical_invariants",
+        "repo_gates",
+        "requirement_closure",
+        "self_review_cycle_count",
+      ]
+    );
+    assert.match(issues[0].next_steps[0], /--invariant/);
+    assert.match(issues[1].next_steps[0], /--repo-gate/);
+    assert.match(issues[2].next_steps[0], /--closure/);
+    assert.match(issues[3].next_steps[0], /--review-cycle/);
+  } finally {
+    __testing.paths.BOARD_PATH = originalBoardPath;
+    __testing.paths.PLAN_PATH = originalPlanPath;
+    __testing.paths.PLAN_RECORDS_DIR = originalRecordsDir;
+  }
+});
+
+test("collectReviewPlanReadinessIssues allows bounded repair tickets to pass with three focused review cycles", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-review-plan-bounded-pass-"));
+  const boardPath = path.join(tempDir, "tasks.json");
+  const planPath = path.join(tempDir, "PLAN.md");
+  const recordsDir = path.join(tempDir, "plans");
+  fs.mkdirSync(recordsDir, { recursive: true });
+  fs.writeFileSync(planPath, "", "utf8");
+  fs.writeFileSync(boardPath, JSON.stringify({
+    version: 1,
+    metadata: {},
+    sections: [],
+    review_findings: {},
+    pr_index: {},
+    landing_index: {},
+  }, null, 2), "utf8");
+
+  fs.writeFileSync(path.join(recordsDir, "IMP-246.json"), JSON.stringify({
+    schema_version: 1,
+    ticket_id: "IMP-246",
+    markdown_heading: "## IMP-246 — 2026-04-04T20:00:00.000Z",
+    startup_checklist: ["completed"],
+    traceability_gate: ["verified"],
+    governance: {
+      expected_closeout: {
+        method: "pr",
+        base_ref: "dev",
+        provenance_note: null,
+      },
+      review_profile: "bounded_repair",
+      ticket_local_repairs: [],
+    },
+    review_round: 1,
+    baseline_reproduction: ["Command: pnpm test:reports", "Outcome: reproduced"],
+    prior_findings: [],
+    intended_files: ["apps/ops-web/app/reports/data.ts", "apps/ops-web/app/reports/data.test.ts"],
+    change_summary: ["Repair report fallback handling without widening product scope."],
+    verification_commands: ["pnpm test:reports"],
+    critical_invariants: ["Fallback reports must not throw without an actor.", "Report defaults must still use tenant-local date boundaries."],
+    requirement_closure: ["Ticket ask: fix reports fallback", "Implemented: fixed fallback guard", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    feature_proof: ["path:apps/ops-web/app/reports/data.ts"],
+    repo_gates: ["pnpm test:reports"],
+    self_review_cycles: [
+      {
+        cycle: 1,
+        total: 3,
+        lens: "contract/state invariants",
+        diff: "git diff -- apps/ops-web/app/reports/data.ts",
+        risks: ["fallback state drift", "timezone regression"],
+        findings: "none",
+        verification: "pnpm test:reports",
+        verdict: "pass",
+        raw: "lens=contract/state invariants; diff=git diff -- apps/ops-web/app/reports/data.ts; risks=fallback state drift, timezone regression; findings=none; verification=pnpm test:reports; verdict=pass",
+      },
+      {
+        cycle: 2,
+        total: 3,
+        lens: "auth/security/failure modes",
+        diff: "git diff -- apps/ops-web/app/reports/data.ts",
+        risks: ["unauthenticated crash", "permission bypass"],
+        findings: "none",
+        verification: "pnpm test:reports",
+        verdict: "pass",
+        raw: "lens=auth/security/failure modes; diff=git diff -- apps/ops-web/app/reports/data.ts; risks=unauthenticated crash, permission bypass; findings=none; verification=pnpm test:reports; verdict=pass",
+      },
+      {
+        cycle: 3,
+        total: 3,
+        lens: "tests/operability/performance",
+        diff: "git diff -- apps/ops-web/app/reports/data.test.ts",
+        risks: ["regression gap", "test runtime drift"],
+        findings: "none",
+        verification: "pnpm test:reports",
+        verdict: "pass",
+        raw: "lens=tests/operability/performance; diff=git diff -- apps/ops-web/app/reports/data.test.ts; risks=regression gap, test runtime drift; findings=none; verification=pnpm test:reports; verdict=pass",
+      },
+    ],
+    rollback_strategy: ["revert reports fallback repair"],
+    security_surface: "yes",
+    synced_from_markdown_at: "2026-04-04T20:00:00.000Z",
+  }, null, 2), "utf8");
+
+  const originalBoardPath = __testing.paths.BOARD_PATH;
+  const originalPlanPath = __testing.paths.PLAN_PATH;
+  const originalRecordsDir = __testing.paths.PLAN_RECORDS_DIR;
+  __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.PLAN_PATH = planPath;
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  try {
+    const issues = __testing.collectReviewPlanReadinessIssues("IMP-246", { ID: "IMP-246", Repo: "F", Type: "bug" });
+    assert.deepEqual(issues, []);
+  } finally {
+    __testing.paths.BOARD_PATH = originalBoardPath;
+    __testing.paths.PLAN_PATH = originalPlanPath;
+    __testing.paths.PLAN_RECORDS_DIR = originalRecordsDir;
+  }
+});
+
+test("collectReviewPlanReadinessIssues rejects bounded repair profile when the repair scope is not actually bounded", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-review-plan-bounded-reject-"));
+  const boardPath = path.join(tempDir, "tasks.json");
+  const planPath = path.join(tempDir, "PLAN.md");
+  const recordsDir = path.join(tempDir, "plans");
+  fs.mkdirSync(recordsDir, { recursive: true });
+  fs.writeFileSync(planPath, "", "utf8");
+  fs.writeFileSync(boardPath, JSON.stringify({
+    version: 1,
+    metadata: {},
+    sections: [],
+    review_findings: {},
+    pr_index: {},
+    landing_index: {},
+  }, null, 2), "utf8");
+
+  fs.writeFileSync(path.join(recordsDir, "IMP-247.json"), JSON.stringify({
+    schema_version: 1,
+    ticket_id: "IMP-247",
+    markdown_heading: "## IMP-247 — 2026-04-04T20:30:00.000Z",
+    startup_checklist: ["completed"],
+    traceability_gate: ["verified"],
+    governance: {
+      expected_closeout: {
+        method: "pr",
+        base_ref: "dev",
+        provenance_note: null,
+      },
+      review_profile: "bounded_repair",
+      ticket_local_repairs: [],
+    },
+    review_round: 1,
+    baseline_reproduction: ["Command: pnpm test", "Outcome: reproduced"],
+    prior_findings: [],
+    intended_files: ["a.ts", "b.ts", "c.ts", "d.ts"],
+    change_summary: ["Broader change still marked as bounded repair."],
+    verification_commands: ["pnpm test"],
+    critical_invariants: ["invariant 1", "invariant 2"],
+    requirement_closure: ["Ticket ask: broader change", "Implemented: broader change", "Not implemented: follow-up", "Deferred to: FE-999", "Closeout verdict: complete"],
+    feature_proof: ["path:a.ts"],
+    repo_gates: ["pnpm test"],
+    self_review_cycles: [],
+    rollback_strategy: ["revert"],
+    security_surface: "yes",
+    synced_from_markdown_at: "2026-04-04T20:30:00.000Z",
+  }, null, 2), "utf8");
+
+  const originalBoardPath = __testing.paths.BOARD_PATH;
+  const originalPlanPath = __testing.paths.PLAN_PATH;
+  const originalRecordsDir = __testing.paths.PLAN_RECORDS_DIR;
+  __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.PLAN_PATH = planPath;
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  try {
+    const issues = __testing.collectReviewPlanReadinessIssues("IMP-247", { ID: "IMP-247", Repo: "F", Type: "bug" });
+    assert.equal(issues[0].code, "bounded_repair_ineligible");
+    assert.match(issues[0].message, /1-3 intended files/);
+    assert.match(issues[0].message, /Not implemented: none/);
+    assert.match(issues[0].message, /Deferred to: none/);
+  } finally {
+    __testing.paths.BOARD_PATH = originalBoardPath;
+    __testing.paths.PLAN_PATH = originalPlanPath;
+    __testing.paths.PLAN_RECORDS_DIR = originalRecordsDir;
+  }
+});
