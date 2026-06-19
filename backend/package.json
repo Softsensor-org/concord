@@ -1,0 +1,23 @@
+{
+  "name": "backend",
+  "version": "0.1.4",
+  "private": true,
+  "description": "Backend reference skeleton (BE-001). Zero-dependency Node; replace with your stack.",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "gate": "bash scripts/gate.sh"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0"
+  }
+}

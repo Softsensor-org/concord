@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "governance": {
+      "command": "node",
+      "args": ["coord/scripts/governance-mcp.js"],
+      "description": "Governed ticket lifecycle — 30 typed MCP tools for the core governed lifecycle (start, commit, submit, land, explain, doctor, and related operations). Covers the common lifecycle, not the full CLI verb set. No shell parsing needed."
+    },
+    "codetree": {
+      "command": "npx",
+      "args": ["-y", "codetree-mcp"],
+      "description": "Tree-sitter AST queries for codebase exploration. Agents see class, method, and export signatures with line numbers without reading full files. ~25x token reduction for exploration. No config needed."
+    },
+    "sentry": {
+      "command": "npx",
+      "args": ["-y", "@sentry/mcp-server@latest"],
+      "env": {
+        "SENTRY_AUTH_TOKEN": "",
+        "SENTRY_ORG": "",
+        "SENTRY_PROJECT": ""
+      }
+    },
+    "datadog": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/datadog-mcp-server@latest"],
+      "env": {
+        "DD_API_KEY": "",
+        "DD_APP_KEY": "",
+        "DD_SITE": "datadoghq.com"
+      }
+    }
+  }
+}

@@ -1,0 +1,345 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coord/board/tasks.schema.json",
+  "title": "Coordination Board",
+  "type": "object",
+  "required": ["version", "metadata", "sections", "prompt_index", "pr_index", "landing_index", "review_findings", "followup_exceptions"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["title", "last_updated", "canonical_references"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "last_updated": { "type": "string", "minLength": 1 },
+        "canonical_references": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "landing_index_required_from_ticket": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Z]+-\\d+$"
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "enum": ["X", "B", "F", "default"]
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[A-Z]+-\\d+$"
+              }
+            }
+          ]
+        },
+        "pr_index_required_from_ticket": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Z]+-\\d+$"
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "enum": ["X", "B", "F", "default"]
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[A-Z]+-\\d+$"
+              }
+            }
+          ]
+        },
+        "plan_records_required_from_ticket": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Z]+-\\d+$"
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "enum": ["X", "B", "F", "default"]
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[A-Z]+-\\d+$"
+              }
+            }
+          ]
+        },
+        "feature_proof_required_from_ticket": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Z]+-\\d+$"
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "enum": ["X", "B", "F", "default"]
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[A-Z]+-\\d+$"
+              }
+            }
+          ]
+        },
+        "plan_markdown_render_statuses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["doing", "review", "done", "deferred", "superseded", "todo"]
+          }
+        },
+        "preamble": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+                  "type": "object",
+                  "required": ["kind", "level", "heading", "separator_before"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["markdown", "table"]
+          },
+          "level": {
+            "type": "integer",
+            "enum": [2, 3]
+          },
+          "heading": {
+            "type": "string",
+            "minLength": 1
+          },
+          "separator_before": {
+            "type": "boolean"
+          },
+          "body": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "columns": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "Status": {
+                  "type": "string",
+                  "anyOf": [
+                    { "const": "todo" },
+                    { "const": "doing" },
+                    { "const": "review" },
+                    { "const": "done" },
+                    { "const": "deferred" },
+                    { "const": "superseded" },
+                    { "pattern": "^doing \\(blocked: .+\\)$" }
+                  ]
+                },
+                "Superseded By": {
+                  "type": "string",
+                  "description": "Optional supersession provenance: the ticket ID (or short reference) that replaces this one when Status is \"superseded\". Recorded by `gov supersede --consolidated-into`/`--reason` so a retired ticket is never left without a replacement pointer."
+                },
+                "Supersede Reason": {
+                  "type": "string",
+                  "description": "Optional human-readable reason a ticket was moved to \"superseded\". Recorded by `gov supersede --reason` so supersessions carry inline provenance on the board row, not just in the event log."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "prompt_index": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Z]+-\\d+$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "pr_index": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Z]+-\\d+$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "landing_index": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Z]+-\\d+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["recorded_at", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "recorded_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "base_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "method": {
+            "type": "string",
+            "enum": ["pr", "no_pr", "manual"]
+          },
+          "commit_sha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{7,40}$"
+          },
+          "source_commit_sha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{7,40}$"
+          },
+          "fulfilled_by_ticket": {
+            "type": "string",
+            "pattern": "^[A-Z]+-\\d+$"
+          },
+          "fulfilled_by_commit_sha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{7,40}$"
+          },
+          "provenance_status": {
+            "type": "string",
+            "enum": ["explicit", "legacy", "fulfilled_by", "unknown"]
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "review_findings": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Z]+-\\d+$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["id", "severity", "summary", "status", "round", "qref"],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Z]+-\\d+-F\\d+$"
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["HIGH", "MED", "LOW"]
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1
+            },
+            "status": {
+              "type": "string",
+              "enum": ["open", "resolved", "deferred", "consolidated"]
+            },
+            "deferred_to": {
+              "type": "string",
+              "pattern": "^[A-Z]+-\\d+$"
+            },
+            "consolidated_into": {
+              "type": "string",
+              "pattern": "^[A-Z]+-\\d+-F\\d+$"
+            },
+            "round": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "qref": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "waiver_index": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Z]+-\\d+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["code", "reason", "recorded_at", "recorded_by"],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": ["prompt_coverage"]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recorded_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recorded_by": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "followup_exceptions": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Z]+-\\d+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["parent", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "parent": {
+            "type": "string",
+            "pattern": "^[A-Z]+-\\d+$"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["closeout-blocker", "related-followup"]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "metadata": {
+    "title": "Acme — Demo Board",
+    "last_updated": "2026-06-01T00:00:00Z",
+    "canonical_references": ["coord/GOVERNANCE.md", "coord/product/REQUIREMENTS.md"],
+    "landing_index_required_from_ticket": "ZZZZ-999",
+    "pr_index_required_from_ticket": "ZZZZ-999",
+    "plan_records_required_from_ticket": "ZZZZ-999",
+    "plan_markdown_render_statuses": ["doing", "review"],
+    "preamble": [
+      "Demo board for the Concord cockpit. Shows a fully-evidenced done ticket, one in review, and one queued.",
+      "Run `npm run demo` in frontend/apps/coord-ui to explore it."
+    ]
+  },
+  "sections": [
+    {
+      "kind": "markdown",
+      "level": 2,
+      "heading": "Authentication",
+      "separator_before": false,
+      "body": ["Example feature work governed end-to-end by Concord."]
+    },
+    {
+      "kind": "table",
+      "level": 2,
+      "heading": "Backlog",
+      "separator_before": true,
+      "columns": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      "rows": [
+        {
+          "ID": "AUTH-101",
+          "Repo": "B",
+          "Type": "feature",
+          "Pri": "P1",
+          "Status": "done",
+          "Owner": "claudea11",
+          "Description": "Password reset with per-account rate limiting and audited token issuance.",
+          "Depends On": ""
+        },
+        {
+          "ID": "AUTH-102",
+          "Repo": "F",
+          "Type": "feature",
+          "Pri": "P2",
+          "Status": "review",
+          "Owner": "claudea12",
+          "Description": "Reset-password UI flow with verify-on-low-confidence states.",
+          "Depends On": "AUTH-101"
+        },
+        {
+          "ID": "AUTH-103",
+          "Repo": "B",
+          "Type": "feature",
+          "Pri": "P2",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "Append-only audit log for authentication events (login, reset, lockout).",
+          "Depends On": "AUTH-101"
+        }
+      ]
+    }
+  ],
+  "prompt_index": {},
+  "pr_index": {
+    "AUTH-101": ["https://github.com/acme/backend/pull/42"],
+    "AUTH-102": ["https://github.com/acme/frontend/pull/18"]
+  },
+  "landing_index": {
+    "AUTH-101": {
+      "recorded_at": "2026-05-28T15:10:00Z",
+      "base_ref": "dev",
+      "method": "pr",
+      "commit_sha": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+      "source_commit_sha": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+      "provenance_status": "explicit",
+      "evidence": ["https://github.com/acme/backend/pull/42"]
+    }
+  },
+  "review_findings": {},
+  "followup_exceptions": {},
+  "waiver_index": {}
+}
