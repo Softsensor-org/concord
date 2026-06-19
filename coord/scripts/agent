@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GOV="$SCRIPT_DIR/gov"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  coord/scripts/agent next [<pick args>]
+  coord/scripts/agent do <ticket-id>
+  coord/scripts/agent do prepare <ticket-id>
+  coord/scripts/agent do submit <ticket-id> [<submit args>]
+  coord/scripts/agent review <ticket-id>
+  coord/scripts/agent review prepare <ticket-id>
+  coord/scripts/agent resume <ticket-id>
+  coord/scripts/agent land <ticket-id> [<land args>]
+  coord/scripts/agent check [<ticket-id>]
+
+Advanced:
+  coord/scripts/agent status
+  coord/scripts/agent test
+  coord/scripts/agent recover <ticket-id>
+
+Notes:
+  - This is a thin neutral facade over coord/scripts/gov.
+  - It does not replace the governance core or agent-native UX layers.
+  - coord/scripts/gov remains the admin, CI, and break-glass surface.
+EOF
+}
+
+require_ticket() {
+  if [[ $# -lt 1 || -z "${1:-}" ]]; then
+    echo "ticket id required" >&2
+    usage >&2
+    exit 2
+  fi
+}
+
+ticket_status() {
+  local ticket="$1"
+  "$GOV" ticket "$ticket" | node -e '
+    const fs = require("fs");
+    const payload = JSON.parse(fs.readFileSync(0, "utf8"));
+    const status = payload?.ticket?.Status;
+    if (typeof status !== "string" || status.length === 0) {
+      console.error(`Could not resolve ticket status for ${process.argv[1] || "ticket"}.`);
+      process.exit(1);
+    }
+    process.stdout.write(status);
+  ' "$ticket"
+}
+
+do_prepare() {
+  local ticket="$1"
+  local status
+  status="$(ticket_status "$ticket")"
+
+  case "$status" in
+    todo|deferred)
+      "$GOV" start "$ticket"
+      ;;
+    doing|review)
+      "$GOV" resume "$ticket"
+      ;;
+    *)
+      ;;
+  esac
+
+  exec "$GOV" explain "$ticket"
+}
+
+review_prepare() {
+  local ticket="$1"
+  exec "$GOV" explain "$ticket"
+}
+
+land_command() {
+  local ticket="$1"
+  shift
+  local use_finalize="false"
+  local saw_no_pr="false"
+  for arg in "$@"; do
+    if [[ "$arg" == "--no-pr" ]]; then
+      saw_no_pr="true"
+    fi
+    if [[ "$arg" == "--no-pr" || "$arg" == "--already-landed" || "$arg" == "--landed" ]]; then
+      use_finalize="true"
+    fi
+  done
+
+  if [[ "$use_finalize" == "true" ]]; then
+    if [[ "$saw_no_pr" != "true" ]]; then
+      set -- --no-pr "$@"
+    fi
+    exec "$GOV" finalize "$ticket" "$@"
+  fi
+  exec "$GOV" land "$ticket" "$@"
+}
+
+main() {
+  local command="${1:-}"
+  if [[ -z "$command" ]]; then
+    usage
+    exit 2
+  fi
+  shift || true
+
+  case "$command" in
+    help|-h|--help)
+      usage
+      ;;
+    next)
+      if [[ $# -eq 0 ]]; then
+        exec "$GOV" pick --mode general --limit 1
+      fi
+      exec "$GOV" pick "$@"
+      ;;
+    do)
+      local subcommand="${1:-}"
+      if [[ -z "$subcommand" ]]; then
+        usage >&2
+        exit 2
+      fi
+      case "$subcommand" in
+        prepare)
+          shift
+          require_ticket "$@"
+          do_prepare "$1"
+          ;;
+        submit)
+          shift
+          require_ticket "$@"
+          local ticket="$1"
+          shift
+          exec "$GOV" submit "$ticket" "$@"
+          ;;
+        *)
+          require_ticket "$subcommand"
+          do_prepare "$subcommand"
+          ;;
+      esac
+      ;;
+    review)
+      local subcommand="${1:-}"
+      if [[ -z "$subcommand" ]]; then
+        usage >&2
+        exit 2
+      fi
+      case "$subcommand" in
+        prepare)
+          shift
+          require_ticket "$@"
+          review_prepare "$1"
+          ;;
+        record)
+          echo "agent review record is not implemented yet; use the governed plan/review helpers under coord/scripts/gov." >&2
+          exit 2
+          ;;
+        *)
+          require_ticket "$subcommand"
+          review_prepare "$subcommand"
+          ;;
+      esac
+      ;;
+    resume)
+      require_ticket "$@"
+      "$GOV" resume "$1"
+      exec "$GOV" explain "$1"
+      ;;
+    land)
+      require_ticket "$@"
+      local ticket="$1"
+      shift
+      land_command "$ticket" "$@"
+      ;;
+    check)
+      if [[ $# -eq 0 ]]; then
+        exec "$GOV" doctor
+      fi
+      if [[ "${1:-}" == -* ]]; then
+        exec "$GOV" doctor "$@"
+      fi
+      local ticket="$1"
+      shift
+      exec "$GOV" doctor --ticket "$ticket" "$@"
+      ;;
+    status)
+      exec "$GOV" counts
+      ;;
+    test)
+      exec node "$SCRIPT_DIR/../board/board.js" validate
+      ;;
+    recover)
+      require_ticket "$@"
+      exec "$GOV" recover "$1"
+      ;;
+    *)
+      echo "unknown agent command: $command" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"

@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coord/board/plan.schema.json",
+  "title": "Coordination Governance Plan Record",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "ticket_id",
+    "startup_checklist",
+    "traceability_gate",
+    "governance",
+    "baseline_reproduction",
+    "intended_files",
+    "change_summary",
+    "verification_commands",
+    "critical_invariants",
+    "requirement_closure",
+    "feature_proof",
+    "repo_gates",
+    "self_review_cycles",
+    "rollback_strategy"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "ticket_id": {
+      "type": "string",
+      "pattern": "^[A-Z]+-\\d+$"
+    },
+    "markdown_heading": {
+      "type": "string"
+    },
+    "startup_checklist": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "traceability_gate": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "governance": {
+      "type": "object",
+      "required": ["expected_closeout", "ticket_local_repairs"],
+      "properties": {
+        "expected_closeout": {
+          "type": "object",
+          "required": ["method", "base_ref"],
+          "properties": {
+            "method": {
+              "type": "string",
+              "enum": ["pr", "no_pr", "fulfilled_by"]
+            },
+            "base_ref": {
+              "type": "string"
+            },
+            "provenance_note": {
+              "type": ["string", "null"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "review_profile": {
+          "type": "string",
+          "enum": ["standard", "bounded_repair"]
+        },
+        "ticket_local_repairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "required_question_logged"],
+            "properties": {
+              "kind": { "type": "string" },
+              "required_question_logged": { "type": "boolean" },
+              "note": { "type": ["string", "null"] }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "review_round": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "baseline_reproduction": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "prior_findings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "scaffold_placeholders": {
+      "type": "object",
+      "properties": {
+        "intended_files": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "intended_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "change_summary": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "verification_commands": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "critical_invariants": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "requirement_closure": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "feature_proof": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "repo_gates": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "self_review_cycles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["cycle", "total", "raw"],
+        "properties": {
+          "cycle": { "type": "integer", "minimum": 1 },
+          "total": { "type": "integer", "minimum": 1 },
+          "lens": { "type": ["string", "null"] },
+          "diff": { "type": ["string", "null"] },
+          "risks": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "findings": { "type": ["string", "null"] },
+          "verification": { "type": ["string", "null"] },
+          "verdict": { "type": ["string", "null"] },
+          "raw": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "rollback_strategy": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "security_surface": {
+      "type": ["string", "null"]
+    },
+    "synced_from_markdown_at": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

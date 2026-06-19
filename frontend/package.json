@@ -1,0 +1,22 @@
+{
+  "name": "frontend",
+  "version": "0.1.2",
+  "private": true,
+  "description": "Frontend reference skeleton (FE-001). Zero-dependency Node; replace with your stack.",
+  "type": "commonjs",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "test": "node --test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "contract:gen": "node scripts/contract.js gen",
+    "contract:check": "node scripts/contract.js check",
+    "gate": "bash scripts/gate.sh"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0"
+  }
+}

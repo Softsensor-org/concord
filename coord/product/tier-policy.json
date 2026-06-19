@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "_about": "Data-driven tier policy for COORD-029 (TOKEN_ECONOMICS.md lever #4). Maps a ticket's resolved tier to (a) a suggested model class for dispatch routing and (b) tier-appropriate evidence-depth minimums enforced by gov doctor / move-review. SAFETY CONTRACT: a tier may only RELAX evidence depth BELOW the current flat minimum; it can never weaken the `critical` or `standard` tiers. `standard` and `critical` use the sentinel \"today\" so doctor keeps TODAY's behavior byte-identical for them; only lower tiers (e.g. `mechanical`) supply a smaller numeric minimum. The flat (pre-tier) minimum is review cycles = 4 on repo-backed product tickets / 3 on coordination (repo X) tickets, at least 1 feature-proof and at least 2 critical invariants on product tickets. Edit policy here; never hardcode it in governance.js.",
+  "default_tier": "standard",
+  "derivation": {
+    "_note": "When a ticket has no explicit board `Tier` column value, its tier is derived from its priority (Pri) using this map; an unmatched/absent priority falls back to default_tier. This mapping is documentation-grade and intentionally conservative: only the lowest priorities derive to `mechanical`.",
+    "by_pri": {
+      "P0": "critical",
+      "P1": "critical",
+      "P2": "standard",
+      "P3": "mechanical"
+    }
+  },
+  "tiers": {
+    "mechanical": {
+      "model_class": "small",
+      "min_review_cycles": 2,
+      "min_feature_proofs": 0,
+      "min_critical_invariants": 1,
+      "_note": "Mechanical/low-risk work: a smaller model and relaxed evidence depth. Relaxations only ever apply to this lower tier."
+    },
+    "standard": {
+      "model_class": "standard",
+      "min_review_cycles": "today",
+      "min_feature_proofs": "today",
+      "min_critical_invariants": "today",
+      "_note": "Safe default and the back-compat anchor: `today` means use the existing flat minimum unchanged, so existing/standard tickets keep byte-identical behavior."
+    },
+    "critical": {
+      "model_class": "frontier",
+      "min_review_cycles": "today",
+      "min_feature_proofs": "today",
+      "min_critical_invariants": "today",
+      "_note": "Safety-critical work: full rigor, never weakened. Uses the frontier model class and today's full evidence minimums."
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "coord-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev -p 3002",
+    "demo": "node scripts/run-demo.mjs",
+    "gen:screens": "node scripts/generate-screen-index.ts",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "start": "next start -p 3002",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.11.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  }
+}
