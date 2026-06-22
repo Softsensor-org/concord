@@ -1,0 +1,17 @@
+{
+  "recorded_at": "2026-06-12T11:05:00.000Z",
+  "digest": "demo0043",
+  "source": "demo",
+  "files": [
+    {
+      "path": "board/tasks.json",
+      "exists": true,
+      "digest": "demo-board"
+    },
+    {
+      "path": ".runtime/agents.json",
+      "exists": true,
+      "digest": "demo-agents"
+    }
+  ]
+}

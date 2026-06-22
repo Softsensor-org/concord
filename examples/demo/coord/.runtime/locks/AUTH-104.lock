@@ -1,0 +1,13 @@
+{
+  "agent_id": "a13",
+  "owner": "claudea13",
+  "ticket": "AUTH-104",
+  "status": "doing",
+  "repo": "backend",
+  "branch": "agent/claudea13-auth-104-account-lockout",
+  "head": "d4e5f60718293a4b5c6d7e8f9012345678abcdef",
+  "worktree": "backend/.worktrees/claudea13/AUTH-104",
+  "session_id": "a13-demo",
+  "started_at_utc": "2026-06-12T08:30:00.000Z",
+  "heartbeat_utc": "2026-06-12T11:05:00.000Z"
+}

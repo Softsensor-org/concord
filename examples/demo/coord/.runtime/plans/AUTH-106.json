@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "ticket_id": "AUTH-106",
+  "markdown_heading": "AUTH-106 — Session revocation endpoint",
+  "review_round": 1,
+  "traceability_gate": "verified",
+  "intended_files": [
+    "backend/src/services/sessionRevocation.ts",
+    "backend/tests/units/sessionRevocation.test.ts"
+  ],
+  "change_summary": [
+    "Endpoint to invalidate all active sessions for an account, including refresh tokens, with an audit entry."
+  ],
+  "verification_commands": [
+    "cd backend && npm run build",
+    "cd backend && npm test -- sessionRevocation"
+  ],
+  "critical_invariants": [
+    "Revocation invalidates both access and refresh tokens for the account.",
+    "A revoked session can never be resumed; subsequent requests re-authenticate."
+  ],
+  "requirement_closure": [
+    "Ticket ask: Invalidate all active sessions for an account (account-security).",
+    "Implemented: revocation service clears access + refresh tokens and writes an audit row; tests cover refresh-token invalidation after a reviewer finding.",
+    "Not implemented: per-device revocation UI tracked by AUTH-107",
+    "Deferred to: AUTH-107",
+    "Closeout verdict: in review"
+  ],
+  "feature_proof": [
+    "symbol:backend/src/services/sessionRevocation.ts#revokeAll",
+    "route:POST /sessions/revoke",
+    "test:refresh tokens invalidated on revoke"
+  ],
+  "repo_gates": [
+    "cd backend && npm run build [result=pass; attribution=clean] - tsc clean",
+    "cd backend && npm test -- sessionRevocation [result=pass; attribution=clean] - 8 passed"
+  ],
+  "prior_findings": [
+    "AUTH-106-R1-1 (high): revocation did not invalidate refresh tokens — resolved; refresh tokens now cleared and asserted by test."
+  ],
+  "self_review_cycles": [
+    { "cycle": 1, "total": 4, "lens": "contract/state invariants", "risks": ["stale refresh token", "partial revoke"], "findings": "all token types cleared atomically; partial-failure rolls back", "verification": "npm test -- sessionRevocation", "verdict": "pass" },
+    { "cycle": 2, "total": 4, "lens": "auth/security/failure modes", "risks": ["resume after revoke", "race on concurrent login"], "findings": "revoked sessions rejected; concurrent-login race covered by test", "verification": "npm test -- sessionRevocation", "verdict": "pass" },
+    { "cycle": 3, "total": 4, "lens": "tests/operability/performance", "risks": ["unaudited revoke", "fan-out cost"], "findings": "audit row on every revoke; bounded fan-out per account", "verification": "npm test -- sessionRevocation", "verdict": "pass" },
+    { "cycle": 4, "total": 4, "lens": "requirement closure", "risks": ["finding unresolved"], "findings": "R1 high finding resolved; awaiting final review sign-off", "verification": "review against account-security spec", "verdict": "pass" }
+  ],
+  "synced_from_markdown_at": "2026-06-12T07:31:00Z"
+}

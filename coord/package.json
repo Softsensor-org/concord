@@ -1,0 +1,18 @@
+{
+  "name": "concord",
+  "version": "0.1.5",
+  "description": "Softsensor Concord — governed multi-agent coordination engine (the coord/ scaffold, driven by the gov CLI). Zero runtime dependencies.",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Softsensor-org/concord"
+  },
+  "scripts": {
+    "test": "node --test scripts/*.test.js board/*.test.js"
+  }
+}

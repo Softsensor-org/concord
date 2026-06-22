@@ -1,0 +1,13 @@
+{
+  "agent_id": "c02",
+  "owner": "codexa02",
+  "ticket": "BILL-202",
+  "status": "doing",
+  "repo": "backend",
+  "branch": "agent/codexa02-bill-202-invoice-generation",
+  "head": "f60718293a4b5c6d7e8f9012345678abcdef0123",
+  "worktree": "backend/.worktrees/codexa02/BILL-202",
+  "session_id": "c02-demo",
+  "started_at_utc": "2026-06-12T07:50:00.000Z",
+  "heartbeat_utc": "2026-06-12T10:58:00.000Z"
+}
