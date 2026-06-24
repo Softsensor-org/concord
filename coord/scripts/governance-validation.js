@@ -1,6 +1,19 @@
 const { gitTry } = require("./git-ops.js");
 const { DEFAULT_INTEGRATION_BRANCH } = require("../paths.js");
 const { STATUS } = require("./governance-constants.js");
+const { classifyLensBuckets } = require("./review-lens-catalog.js");
+// COORD-153: live-MCP lifecycle enforcement. Pure and dependency-free (it only
+// inspects the declared plan object + the COORD-152 operation-class policy), so
+// it is required directly rather than dependency-injected, mirroring how
+// bootstrap-advisory.js is consumed by ticket-guidance.js.
+const { buildLiveMcpLifecycle } = require("./live-mcp-lifecycle.js");
+// COORD-164: server-bootstrap-via-live-mcp BRIDGE. Pure and dependency-free,
+// mirroring buildLiveMcpLifecycle. It governs ONLY tickets that declare BOTH a
+// `live_mcp` and a `bootstrap_risk` plan object (a server bootstrap job executed
+// as a live-MCP operation); for every other ticket it returns no issues. It adds
+// the bootstrap-coverage blocker only — cleanup/redaction enforcement stays with
+// the COORD-153 gate above, which runs on the same `live_mcp` object.
+const { buildBootstrapViaLiveMcpLifecycle } = require("./bootstrap-via-live-mcp.js");
 
 // COORD-104 (annotated residual): createGovernanceValidation is a
 // dependency-injection FACTORY closure that wires ~45 validation helpers over a
@@ -89,6 +102,10 @@ function deriveGovernanceReadiness(ticketId, row, board, lock, planState, questi
   const repoGates = planState?.repo_gates || [];
   const featureProof = (planState?.feature_proof || []).filter((value) => isMeaningfulText(value) && !/^todo\b/i.test(String(value || "").trim()));
   const reviewIssues = collectReviewPlanReadinessIssues(ticketId, row);
+  // COORD-166: surface the active plan-completeness lane (full vs light) in the
+  // explain readiness report. Advisory/read-only — the actual relaxation is
+  // applied inside the readiness collectors above.
+  const laneDecision = resolveTicketLightLane(ticketId, row, planState);
   const selfReviewBlockedCodes = new Set([
     "self_review_cycle_count",
     "self_review_cycle_incomplete",
@@ -114,6 +131,11 @@ function deriveGovernanceReadiness(ticketId, row, board, lock, planState, questi
     : governance.ticket_local_repairs;
 
   return {
+    active_lane: {
+      lane: laneDecision.eligible ? "light" : "full",
+      light_lane_eligible: laneDecision.eligible,
+      reason: laneDecision.reason,
+    },
     bootstrap: {
       startup_attested: startupChecklist.includes("completed"),
       traceability_status: traceabilityGate.find((value) => ["verified", "closing-gap", "exempt"].includes(value)) || "pending",
@@ -775,6 +797,90 @@ function requiresFeatureProofGovernance(metadata, ticketId, row) {
   return isTicketAtOrAfter(ticketId, threshold);
 }
 
+// COORD-166: the LIGHT LANE for reference/design-doc tickets.
+//
+// Reference/design-doc changes (README, CHANGELOG, architecture/spec docs under
+// coord/docs, and similar) should not have to pay the full code-grade
+// plan-completeness ceremony (feature-proof + the full 4-cycle/lens-coverage
+// self-review + the full requirement_closure verdict gate). They DO still pay
+// for integrity: attributed ownership (the COORD-128 bound-owner mutation guard
+// is enforced separately in governance-session.js and is NOT touched here), a
+// repo-gate equivalent (board validate / markdown sanity recorded under "- Repo
+// gates:"), and at least ONE structured self-review cycle.
+//
+// The lane is decided ONLY by ticket type + the changed paths, never by
+// relaxing any integrity/attribution check. The default is always the FULL
+// lane; the light lane is an explicit, conservative opt-in. If anything is
+// ambiguous (no type, no changed paths, or any procedural surface touched) the
+// decision fails toward the FULL lane.
+
+// Procedural-doc surfaces. Changes to these alter AGENT BEHAVIOR (procedural
+// memory), so a docs-typed ticket touching ANY of them is hard-carved-OUT of
+// the light lane and must use the full reviewed lane (see COORD-145).
+//   - AGENTS.md and coord/AGENTS.md (and any repo-local AGENTS.md)
+//   - CLAUDE.md
+//   - coord/GOVERNANCE.md
+//   - anything under .claude/ (skills / commands)
+const LIGHT_LANE_TICKET_TYPES = new Set(["docs", "chore"]);
+
+function isProceduralDocPath(value) {
+  const normalized = String(value || "").trim().replace(/^`|`$/g, "").replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!normalized) {
+    return false;
+  }
+  // .claude/ anywhere in the path (skills / commands change execution).
+  if (normalized === ".claude" || normalized.startsWith(".claude/") || normalized.includes("/.claude/")) {
+    return true;
+  }
+  const base = normalized.split("/").pop();
+  // Behavior-defining markdown surfaces, matched by basename so a repo-local
+  // AGENTS.md anywhere is covered, plus the exact governance/instruction files.
+  if (base === "AGENTS.md" || base === "CLAUDE.md") {
+    return true;
+  }
+  if (normalized === "coord/GOVERNANCE.md" || base === "GOVERNANCE.md") {
+    return true;
+  }
+  return false;
+}
+
+// Pure, testable lane decision. Returns { eligible, reason }.
+//   ticket       — board row (or { Type }); only the Type field is read.
+//   changedPaths — the changed/intended repo-relative paths for the ticket.
+function isLightLaneEligible(ticket, changedPaths) {
+  const type = String(ticket?.Type || ticket?.type || "").trim().toLowerCase();
+  if (!LIGHT_LANE_TICKET_TYPES.has(type)) {
+    return { eligible: false, reason: `ticket type "${type || "(none)"}" is not light-lane eligible (only docs/chore qualify)` };
+  }
+  const paths = (Array.isArray(changedPaths) ? changedPaths : [])
+    .map((value) => String(value || "").trim())
+    .filter((value) => isMeaningfulText(value));
+  if (paths.length === 0) {
+    // Fail toward the full lane when we cannot see what changed.
+    return { eligible: false, reason: "no changed/intended paths recorded — cannot prove a reference-doc-only change, defaulting to full lane" };
+  }
+  const proceduralHits = paths.filter((value) => isProceduralDocPath(value));
+  if (proceduralHits.length > 0) {
+    return {
+      eligible: false,
+      reason: `changed paths touch procedural-doc surface(s) that change agent behavior (${proceduralHits.join(", ")}); full reviewed lane required`,
+    };
+  }
+  return { eligible: true, reason: `docs/chore reference-doc change with no procedural-doc surfaces (${paths.join(", ")})` };
+}
+
+// Resolves the active lane for a ticket from its canonical plan state. The
+// changed paths are taken from the plan's intended_files (the same source the
+// coord-only landing exception uses), normalized to repo-relative form. This is
+// the single wiring point the readiness collectors and `explain` consume so the
+// pure decision above stays the source of truth.
+function resolveTicketLightLane(ticketId, row, planState) {
+  const intendedFiles = splitPlanPathValues(planState?.intended_files || [])
+    .map((value) => String(value || "").trim().replace(/^`|`$/g, "").replace(/\\/g, "/").replace(/^\.\//, ""))
+    .filter((value) => isMeaningfulText(value));
+  return isLightLaneEligible(row, intendedFiles);
+}
+
 function validateRequirementClosureEntry(value) {
   const normalized = String(value || "").trim();
   if (!normalized) {
@@ -1055,22 +1161,14 @@ function normalizeReviewVerdict(value) {
   return null;
 }
 
+// COORD-137: the canonical lens catalog (coord/scripts/review-lens-catalog.js)
+// is the single source of truth for lens classification. This stays a thin
+// delegating wrapper so the move-review lens-coverage signal and the catalog can
+// never drift apart. The catalog additionally classifies the advisory fifth
+// lens (adversarial misuse), which is NOT in REQUIRED_LENS_BUCKETS, so the hard
+// move-review blocker below is unchanged.
 function classifyReviewLensBuckets(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  const buckets = new Set();
-  if (/(contract|state|invariant)/.test(normalized)) {
-    buckets.add("contract/state invariants");
-  }
-  if (/(auth|security|failure|rbac|permission)/.test(normalized)) {
-    buckets.add("auth/security/failure modes");
-  }
-  if (/(test|operability|performance|coverage|runtime)/.test(normalized)) {
-    buckets.add("tests/operability/performance");
-  }
-  if (/(requirement|closure|scope|ask|implemented|deferred)/.test(normalized)) {
-    buckets.add("requirement closure");
-  }
-  return [...buckets];
+  return classifyLensBuckets(value);
 }
 
 function parseRequirementClosureEntries(values) {
@@ -1221,6 +1319,11 @@ function collectReviewPlanReadinessIssues(ticketId, row) {
   const repoGates = planState.repo_gates || [];
   const governance = normalizeGovernancePlanShape(planState.governance, row.Repo);
   const productRepo = isRepoBackedCode(row.Repo);
+  // COORD-166: light-lane decision (docs/chore reference-doc tickets). Relaxes
+  // PLAN COMPLETENESS only (feature-proof, full requirement_closure verdict, the
+  // full self-review cycle ceremony); never weakens attribution, the bound-owner
+  // guard, repo-gates, or the minimum-one structured self-review cycle.
+  const lightLane = resolveTicketLightLane(ticketId, row, planState).eligible;
   const boundedRepairRequested = productRepo && governance.review_profile === "bounded_repair";
   const boundedRepairEligibilityIssues = boundedRepairRequested
     ? collectBoundedRepairEligibilityIssues(planState, requirementClosure)
@@ -1240,6 +1343,7 @@ function collectReviewPlanReadinessIssues(ticketId, row) {
       productRepo,
       requirementClosure,
       repoGates,
+      lightLane,
     })
   );
 
@@ -1249,8 +1353,24 @@ function collectReviewPlanReadinessIssues(ticketId, row) {
       productRepo,
       boundedRepairRequested,
       boundedRepairEligibilityIssues,
+      lightLane,
     })
   );
+  // COORD-153: live-MCP lifecycle enforcement. Scoped STRICTLY to tickets that
+  // DECLARE a live-mcp operation (planState.live_mcp present); for every other
+  // ticket buildLiveMcpLifecycle returns no issues, so normal/existing tickets
+  // are completely unaffected. When declared, missing required evidence
+  // (operation class, adapter, environment, scope, approval/redaction/cleanup
+  // per the operation-class policy, a recorded receipt, and promotion for
+  // product-impacting findings) BLOCKS move-review/closeout.
+  issues.push(...buildLiveMcpLifecycle({ planState }).issues);
+  // COORD-164: bootstrap-via-live-mcp coverage blocker. Fires ONLY when the plan
+  // declares BOTH live_mcp AND bootstrap_risk (the explicit "this bootstrap job
+  // ran as a live-MCP operation" signal). It does NOT re-check cleanup/redaction
+  // — those stay with buildLiveMcpLifecycle above on the same live_mcp object;
+  // this adds only the bootstrap-coverage requirement. Normal tickets,
+  // bootstrap-only tickets, and live-mcp-only tickets all get zero issues here.
+  issues.push(...buildBootstrapViaLiveMcpLifecycle({ planState }).issues);
   return issues;
 }
 
@@ -1259,7 +1379,7 @@ function collectReviewPlanReadinessIssues(ticketId, row) {
 // blockers. Behavior is byte-identical: same codes, messages, next_steps, and
 // short-circuit ordering as the original inline block.
 function collectClosureReadinessIssues(ticketId, row, planState, board, ctx) {
-  const { productRepo, requirementClosure, repoGates } = ctx;
+  const { productRepo, requirementClosure, repoGates, lightLane = false } = ctx;
   const issues = [];
   if (productRepo) {
     // COORD-029: tier-appropriate minimums. For `standard`/absent and `critical`
@@ -1268,7 +1388,10 @@ function collectClosureReadinessIssues(ticketId, row, planState, board, ctx) {
     const criticalInvariants = (planState.critical_invariants || []).filter((value) => isMeaningfulText(value));
     const featureProof = (planState.feature_proof || []).filter((value) => isMeaningfulText(value) && !/^todo\b/i.test(String(value || "").trim()));
     const productTier = resolveTicketTier(row).tier;
-    const minCriticalInvariants = effectiveTierMinimum(productTier, "min_critical_invariants", 2, row);
+    // COORD-166: the light lane drops the heavy plan-completeness minimums
+    // (critical invariants + feature proofs) for reference/design-doc tickets.
+    // The repo-gate equivalent below is NOT relaxed.
+    const minCriticalInvariants = lightLane ? 0 : effectiveTierMinimum(productTier, "min_critical_invariants", 2, row);
     const minFeatureProofs = effectiveTierMinimum(productTier, "min_feature_proofs", 1, row);
     if (criticalInvariants.length < minCriticalInvariants) {
       issues.push({
@@ -1288,8 +1411,9 @@ function collectClosureReadinessIssues(ticketId, row, planState, board, ctx) {
         ],
       });
     }
-    issues.push(...collectRequirementClosureIssues(ticketId, row, requirementClosure));
+    issues.push(...collectRequirementClosureIssues(ticketId, row, requirementClosure, { lightLane }));
     if (
+      !lightLane &&
       requiresFeatureProofGovernance(board.metadata, ticketId, row) &&
       !isTestingInfrastructureTicket(row, planState) &&
       featureProof.length < minFeatureProofs
@@ -1317,7 +1441,23 @@ function collectClosureReadinessIssues(ticketId, row, planState, board, ctx) {
 // COORD-104: extracted requirement-closure field/verdict blocker. The
 // missing-fields branch and the verdict branch remain mutually exclusive
 // (if/else-if) exactly as in the original.
-function collectRequirementClosureIssues(ticketId, row, requirementClosure) {
+function collectRequirementClosureIssues(ticketId, row, requirementClosure, ctx = {}) {
+  // COORD-166: light lane (docs/chore reference-doc tickets) only needs a
+  // minimal one-line rationale — a non-empty Ticket ask OR Implemented note —
+  // instead of the full 5-field closure + complete-verdict gate. It does NOT
+  // remove the requirement of *some* attributed rationale.
+  if (ctx.lightLane) {
+    if (!isMeaningfulText(requirementClosure.ticket_ask) && !isMeaningfulText(requirementClosure.implemented)) {
+      return [{
+        code: "requirement_closure",
+        message: `Plan state for ${ticketId} (light lane) must record a one-line rationale under "- Requirement closure:" (Ticket ask or Implemented) before move-review.`,
+        next_steps: [
+          `coord/scripts/gov update-plan ${ticketId} --closure "Ticket ask: <one-line rationale>" --closure "Implemented: <what changed>"`,
+        ],
+      }];
+    }
+    return [];
+  }
   const missingRequirementFields = [
     ["ticket_ask", "Ticket ask"],
     ["implemented", "Implemented"],
@@ -1383,14 +1523,20 @@ function buildReviewCycleSnapshots(planState, canonicalPlanRecord, block) {
 // depth/lens coverage/final verdict). Issue codes, messages, next_steps, and
 // evaluation order are byte-identical to the original inline block.
 function collectSelfReviewCycleIssues(ticketId, row, cycles, ctx) {
-  const { productRepo, boundedRepairRequested, boundedRepairEligibilityIssues } = ctx;
+  const { productRepo, boundedRepairRequested, boundedRepairEligibilityIssues, lightLane = false } = ctx;
   const issues = [];
   const reviewCycleCommand = `coord/scripts/gov update-plan ${ticketId} --review-cycle "lens=<lens>; diff=<what changed>; risks=<risk 1>, <risk 2>; findings=<none|finding>; verification=<command>; verdict=<pass|fail>"`;
   // COORD-029: flat (pre-tier) minimum, computed exactly as before. The tier
   // policy may only RELAX this below the flat value for a lower tier; `standard`
   // (and absent) and `critical` resolve back to flatMinimumCycles unchanged, so
   // their enforcement is byte-identical to pre-COORD-029 behavior.
-  const flatMinimumCycles = productRepo
+  // COORD-166: the light lane requires at least ONE structured, non-shallow,
+  // passing self-review cycle (a minimal self-review) instead of the full
+  // 3-/4-cycle ceremony. The structure/shallow/final-verdict checks below still
+  // apply, so the single cycle must still be real.
+  const flatMinimumCycles = lightLane
+    ? 1
+    : productRepo
     ? (boundedRepairRequested && boundedRepairEligibilityIssues.length === 0 ? 3 : 4)
     : 3;
   const ticketTier = resolveTicketTier(row).tier;
@@ -1418,7 +1564,7 @@ function collectSelfReviewCycleIssues(ticketId, row, cycles, ctx) {
       next_steps: [reviewCycleCommand],
     });
   }
-  if (productRepo && cycles.length >= minimumCycles) {
+  if (productRepo && !lightLane && cycles.length >= minimumCycles) {
     const lensCoverage = new Set(cycles.flatMap((cycle) => cycle.lensBuckets));
     const requiredCoverage = boundedRepairRequested && boundedRepairEligibilityIssues.length === 0
       ? [
@@ -1495,6 +1641,9 @@ function submitRequiresReviewPlanCheck(board, row, ticketId, options = {}) {
     assertLandingIntegrity,
     classifyLandingRecord,
     deriveTestingInfrastructureAudit,
+    isLightLaneEligible,
+    isProceduralDocPath,
+    resolveTicketLightLane,
     readTextFileFromRef,
     gitRefContainsLiteral,
     parseFeatureProofEntry,

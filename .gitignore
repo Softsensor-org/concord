@@ -32,3 +32,8 @@ coord/evidence/**/*.json
 !examples/demo/*/artifacts/
 !examples/demo/*/artifacts/gates/
 !examples/demo/*/artifacts/gates/*.json
+# COORD-140: coord/memory/ derived artifacts (decisions.ndjson etc.) are
+# gitignored as DERIVED + REBUILDABLE (MEMORY_ARCHITECTURE.md §6.1). The precise
+# rules live in coord/.gitignore (consulted for paths under coord/); this anchor
+# documents the policy at the repo root.
+coord/memory/decisions.ndjson

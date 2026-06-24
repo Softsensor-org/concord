@@ -1,0 +1,30 @@
+{
+  "sections": [
+    {
+      "kind": "table",
+      "heading": "Checkout Subsystem",
+      "rows": [
+        {
+          "ID": "CLS-100",
+          "Repo": "B",
+          "Type": "feature",
+          "Pri": "P2",
+          "Status": "done",
+          "Owner": "claudea50",
+          "Description": "Add idempotent refund reconciliation to the checkout subsystem.",
+          "Depends On": ""
+        },
+        {
+          "ID": "CLS-200",
+          "Repo": "B",
+          "Type": "feature",
+          "Pri": "P3",
+          "Status": "done",
+          "Owner": "claudea50",
+          "Description": "Wire transactional email receipts via the SMTP gateway.",
+          "Depends On": ""
+        }
+      ]
+    }
+  ]
+}

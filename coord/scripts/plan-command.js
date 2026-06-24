@@ -57,6 +57,7 @@ module.exports = function createPlanCommand(deps = {}) {
       "files",
       "dropFile",
       "security",
+      "liveMcp",
       "startup",
       "traceability",
       "baseline",

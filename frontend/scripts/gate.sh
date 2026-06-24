@@ -99,6 +99,16 @@ LINT_SUMMARY_JSON="null"
 LINT_SKIP_REASON="not run on this lane (default)"
 CONTRACT_SUMMARY_JSON="null"
 CONTRACT_SKIP_REASON="not run on this lane (default)"
+MUTATION_SUMMARY_JSON="null"
+MUTATION_SKIP_REASON="not enabled (opt-in: set GATE_MUTATION_ENABLED=1)"
+SAST_SUMMARY_JSON="null"
+SAST_SKIP_REASON="not enabled (opt-in: set GATE_SAST_ENABLED=1)"
+SUPPLY_CHAIN_SUMMARY_JSON="null"
+SUPPLY_CHAIN_SKIP_REASON="not enabled (opt-in: set GATE_SUPPLY_CHAIN_ENABLED=1)"
+A11Y_SUMMARY_JSON="null"
+A11Y_SKIP_REASON="not enabled (opt-in: set GATE_A11Y_ENABLED=1)"
+PERF_SUMMARY_JSON="null"
+PERF_SKIP_REASON="not enabled (opt-in: set GATE_PERF_ENABLED=1)"
 GATE_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 
 fail=0
@@ -293,6 +303,181 @@ if [ "$LANE" = "full" ] || [ "$LANE" = "ci" ]; then
       fail=1
     fi
   fi
+
+  # COORD-131 (Quality dimension #1: Correctness — mutation + property-based
+  # testing). OPT-IN, heavy, external-tool ADAPTER. Double-gated: runs only when
+  # GATE_MUTATION_ENABLED=1 AND the adapter detects a Stryker config + binary.
+  # Absent config/binary => the adapter SKIPS GRACEFULLY (never fails the gate).
+  # Policy + verdict + COORD-129 bounded process-group-kill live in
+  # coord/scripts/mutation-policy.js. Mode=GATE_MUTATION_MODE (default threshold);
+  # min=GATE_MUTATION_MIN (default 60).
+  if [ "${GATE_MUTATION_ENABLED:-0}" = "1" ]; then
+    step "correctness (mutation testing — stryker, opt-in, mode=${GATE_MUTATION_MODE:-threshold})"
+    MUTATION_POLICY="$REPO_DIR/../coord/scripts/mutation-policy.js"
+    if [ ! -f "$MUTATION_POLICY" ]; then
+      MUTATION_SKIP_REASON="mutation policy ($MUTATION_POLICY) not found"
+      echo "  SKIP: $MUTATION_SKIP_REASON — mutation signal unavailable"
+    else
+      MUT_RC=0
+      MUTATION_SUMMARY="$(node "$MUTATION_POLICY" classify \
+        --root "$REPO_DIR" \
+        --mode "${GATE_MUTATION_MODE:-threshold}" \
+        --min "${GATE_MUTATION_MIN:-60}" \
+        ${GATE_MUTATION_TIMEOUT_MS:+--timeout-ms "$GATE_MUTATION_TIMEOUT_MS"})" || MUT_RC=$?
+      echo "  $MUTATION_SUMMARY"
+      MUTATION_SUMMARY_JSON="\"$(json_escape "$MUTATION_SUMMARY")\""
+      MUTATION_SKIP_REASON=""
+      if [ "$MUT_RC" -ne 0 ]; then
+        echo "  MUTATION FAILED: mutation score below min / new survived mutant(s)" >&2
+        fail=1
+      fi
+    fi
+  fi
+
+  # COORD-132 (Quality dimension #2: SAST — security-focused static analysis).
+  # OPT-IN, heavy, external-tool ADAPTER (Semgrep). Double-gated: runs only when
+  # GATE_SAST_ENABLED=1 AND the adapter detects a resolvable semgrep binary.
+  # Absent binary => the adapter SKIPS GRACEFULLY (never fails the gate). The SAST
+  # parse + RATCHET-DEFAULT verdict + COORD-129 bounded process-group-kill live in
+  # coord/scripts/sast-policy.js. Mode=GATE_SAST_MODE (ratchet|threshold, default
+  # ratchet so legacy security debt is frictionless); config=GATE_SAST_CONFIG
+  # (default Semgrep "auto").
+  if [ "${GATE_SAST_ENABLED:-0}" = "1" ]; then
+    step "SAST (security static analysis — semgrep, opt-in, mode=${GATE_SAST_MODE:-ratchet})"
+    SAST_POLICY="$REPO_DIR/../coord/scripts/sast-policy.js"
+    if [ ! -f "$SAST_POLICY" ]; then
+      SAST_SKIP_REASON="sast policy ($SAST_POLICY) not found"
+      echo "  SKIP: $SAST_SKIP_REASON — SAST signal unavailable"
+    else
+      SAST_RC=0
+      SAST_SUMMARY="$(node "$SAST_POLICY" classify \
+        --root "$REPO_DIR" \
+        --mode "${GATE_SAST_MODE:-ratchet}" \
+        ${GATE_SAST_CONFIG:+--config "$GATE_SAST_CONFIG"} \
+        ${GATE_SAST_TIMEOUT_MS:+--timeout-ms "$GATE_SAST_TIMEOUT_MS"})" || SAST_RC=$?
+      echo "  $SAST_SUMMARY"
+      SAST_SUMMARY_JSON="\"$(json_escape "$SAST_SUMMARY")\""
+      SAST_SKIP_REASON=""
+      if [ "$SAST_RC" -ne 0 ]; then
+        echo "  SAST FAILED: new security finding(s) vs base / at-or-above severity floor" >&2
+        fail=1
+      fi
+    fi
+  fi
+
+  # COORD-133 (Quality dimension #3: Supply chain — CycloneDX SBOM + transitive
+  # CVE scan). OPT-IN, heavy, external-tool ADAPTER (Trivy/Grype). The engine has
+  # ZERO runtime deps and adopters MAY NOT have a CVE scanner installed, so this
+  # step is DOUBLE-gated: it only runs when GATE_SUPPLY_CHAIN_ENABLED=1 AND the
+  # adapter detects a resolvable trivy/grype binary. Absent scanner => the CVE
+  # verdict SKIPS GRACEFULLY (never fails the gate); the dependency-free CycloneDX
+  # SBOM emitter still works since it needs no tool. The SBOM emission + CVE parse +
+  # THRESHOLD/RATCHET-default verdict + COORD-129 bounded process-group-kill all
+  # live in coord/scripts/supply-chain-policy.js (single-sourced, not re-typed in
+  # bash). Mode is GATE_SUPPLY_CHAIN_MODE (ratchet|threshold, default ratchet so
+  # legacy CVE debt is frictionless); threshold floor is GATE_SUPPLY_CHAIN_THRESHOLD
+  # (default high ⇒ HIGH+CRITICAL fail). The generated SBOM is NEVER committed.
+  if [ "${GATE_SUPPLY_CHAIN_ENABLED:-0}" = "1" ]; then
+    step "supply-chain (SBOM + CVE scan — trivy/grype, opt-in, mode=${GATE_SUPPLY_CHAIN_MODE:-ratchet})"
+    SUPPLY_CHAIN_POLICY="$REPO_DIR/../coord/scripts/supply-chain-policy.js"
+    if [ ! -f "$SUPPLY_CHAIN_POLICY" ]; then
+      SUPPLY_CHAIN_SKIP_REASON="supply-chain policy ($SUPPLY_CHAIN_POLICY) not found"
+      echo "  SKIP: $SUPPLY_CHAIN_SKIP_REASON — supply-chain signal unavailable"
+    else
+      SUPPLY_CHAIN_RC=0
+      SUPPLY_CHAIN_SUMMARY="$(node "$SUPPLY_CHAIN_POLICY" classify \
+        --root "$REPO_DIR" \
+        --mode "${GATE_SUPPLY_CHAIN_MODE:-ratchet}" \
+        ${GATE_SUPPLY_CHAIN_THRESHOLD:+--threshold "$GATE_SUPPLY_CHAIN_THRESHOLD"} \
+        ${GATE_SUPPLY_CHAIN_TIMEOUT_MS:+--timeout-ms "$GATE_SUPPLY_CHAIN_TIMEOUT_MS"})" || SUPPLY_CHAIN_RC=$?
+      echo "  $SUPPLY_CHAIN_SUMMARY"
+      SUPPLY_CHAIN_SUMMARY_JSON="\"$(json_escape "$SUPPLY_CHAIN_SUMMARY")\""
+      SUPPLY_CHAIN_SKIP_REASON=""
+      if [ "$SUPPLY_CHAIN_RC" -ne 0 ]; then
+        echo "  SUPPLY-CHAIN FAILED: new CVE advisory(ies) vs base / at-or-above severity floor" >&2
+        fail=1
+      fi
+    fi
+  fi
+
+  # COORD-134 (Quality dimension #4: Accessibility — a11y scan + visual
+  # regression). FRONTEND-only, OPT-IN, heavy, external-tool ADAPTER (pa11y/axe-
+  # core + a snapshot-diff report). The engine has ZERO runtime deps and adopters
+  # MAY NOT have an a11y runner installed, so this step is DOUBLE-gated: it only
+  # runs when GATE_A11Y_ENABLED=1 AND the adapter detects a resolvable pa11y/axe
+  # binary (or, for visual regression alone, a supplied snapshot-diff report).
+  # Absent runner => the adapter SKIPS GRACEFULLY (never fails the gate); a
+  # frontend with no a11y tooling configured passes unchanged. The a11y/axe parse
+  # + visual-regression ingest + RATCHET-DEFAULT verdict (the ticket says ratchet;
+  # fail only on NEW violations vs base) + COORD-129 bounded process-group-kill all
+  # live in coord/scripts/a11y-policy.js (single-sourced, not re-typed in bash).
+  # Mode is GATE_A11Y_MODE (ratchet|threshold, default ratchet so legacy a11y debt
+  # is frictionless); target is GATE_A11Y_TARGET (url/dir); the visual-regression
+  # snapshot-diff report is GATE_A11Y_VISUAL_REPORT (tool-gated; absent ⇒ the a11y
+  # scan stands alone — NO pixel-diff library is bundled). Stable key is
+  # rule-id:selector-or-route.
+  if [ "${GATE_A11Y_ENABLED:-0}" = "1" ]; then
+    step "accessibility (a11y scan + visual regression — pa11y/axe, opt-in, mode=${GATE_A11Y_MODE:-ratchet})"
+    A11Y_POLICY="$REPO_DIR/../coord/scripts/a11y-policy.js"
+    if [ ! -f "$A11Y_POLICY" ]; then
+      A11Y_SKIP_REASON="a11y policy ($A11Y_POLICY) not found"
+      echo "  SKIP: $A11Y_SKIP_REASON — accessibility signal unavailable"
+    else
+      A11Y_RC=0
+      A11Y_SUMMARY="$(node "$A11Y_POLICY" classify \
+        --root "$REPO_DIR" \
+        --mode "${GATE_A11Y_MODE:-ratchet}" \
+        ${GATE_A11Y_TARGET:+--target "$GATE_A11Y_TARGET"} \
+        ${GATE_A11Y_THRESHOLD:+--threshold "$GATE_A11Y_THRESHOLD"} \
+        ${GATE_A11Y_VISUAL_REPORT:+--visual-report "$GATE_A11Y_VISUAL_REPORT"} \
+        ${GATE_A11Y_TIMEOUT_MS:+--timeout-ms "$GATE_A11Y_TIMEOUT_MS"})" || A11Y_RC=$?
+      echo "  $A11Y_SUMMARY"
+      A11Y_SUMMARY_JSON="\"$(json_escape "$A11Y_SUMMARY")\""
+      A11Y_SKIP_REASON=""
+      if [ "$A11Y_RC" -ne 0 ]; then
+        echo "  A11Y FAILED: new accessibility / visual-regression violation(s) vs base / at-or-above severity floor" >&2
+        fail=1
+      fi
+    fi
+  fi
+
+  # COORD-135 (Quality dimension #5: Performance budgets — size-limit + Lighthouse
+  # CI + k6). OPT-IN, heavy, external-tool ADAPTER. The engine has ZERO runtime
+  # deps and adopters MAY NOT have size-limit/lhci/k6 installed, so this step is
+  # DOUBLE-gated: it only runs when GATE_PERF_ENABLED=1 AND the adapter detects a
+  # resolvable size-limit/lhci/k6 binary. Absent tool => the adapter SKIPS
+  # GRACEFULLY (never fails the gate); a frontend with no perf tooling configured
+  # passes unchanged. The size-limit/Lighthouse/k6 parse + THRESHOLD-default verdict
+  # (budget max; ratchet for regression-vs-base is opt-in) + COORD-129 bounded
+  # process-group-kill all live in coord/scripts/perf-budget-policy.js (single-
+  # sourced, not re-typed in bash). Mode is GATE_PERF_MODE (threshold|ratchet,
+  # default threshold — budgets are naturally an absolute bar); GATE_PERF_TOOL
+  # forces a sub-tool; GATE_PERF_TARGET is a url/script; GATE_PERF_BUDGETS is a flat
+  # budget-name:target -> max JSON map. Stable key is budget-name:target.
+  if [ "${GATE_PERF_ENABLED:-0}" = "1" ]; then
+    step "performance budgets (size-limit/Lighthouse/k6, opt-in, mode=${GATE_PERF_MODE:-threshold})"
+    PERF_POLICY="$REPO_DIR/../coord/scripts/perf-budget-policy.js"
+    if [ ! -f "$PERF_POLICY" ]; then
+      PERF_SKIP_REASON="perf policy ($PERF_POLICY) not found"
+      echo "  SKIP: $PERF_SKIP_REASON — performance-budget signal unavailable"
+    else
+      PERF_RC=0
+      PERF_SUMMARY="$(node "$PERF_POLICY" classify \
+        --root "$REPO_DIR" \
+        --mode "${GATE_PERF_MODE:-threshold}" \
+        ${GATE_PERF_TOOL:+--tool "$GATE_PERF_TOOL"} \
+        ${GATE_PERF_TARGET:+--target "$GATE_PERF_TARGET"} \
+        ${GATE_PERF_BUDGETS:+--budgets "$GATE_PERF_BUDGETS"} \
+        ${GATE_PERF_TIMEOUT_MS:+--timeout-ms "$GATE_PERF_TIMEOUT_MS"})" || PERF_RC=$?
+      echo "  $PERF_SUMMARY"
+      PERF_SUMMARY_JSON="\"$(json_escape "$PERF_SUMMARY")\""
+      PERF_SKIP_REASON=""
+      if [ "$PERF_RC" -ne 0 ]; then
+        echo "  PERF FAILED: a budget exceeded its max (threshold) / newly over-budget vs base (ratchet)" >&2
+        fail=1
+      fi
+    fi
+  fi
 fi
 
 # COORD-080: emit the complete gate artifact (JSON) the clean-checkout runner reads + validates.
@@ -330,6 +515,26 @@ fi
 if [ "$CONTRACT_SUMMARY_JSON" = "null" ]; then
   CONTRACT_REASON_LINE="  \"contract_skip_reason\": \"$(json_escape "$CONTRACT_SKIP_REASON")\","
 fi
+MUTATION_REASON_LINE=""
+if [ "$MUTATION_SUMMARY_JSON" = "null" ]; then
+  MUTATION_REASON_LINE="  \"mutation_skip_reason\": \"$(json_escape "$MUTATION_SKIP_REASON")\","
+fi
+SAST_REASON_LINE=""
+if [ "$SAST_SUMMARY_JSON" = "null" ]; then
+  SAST_REASON_LINE="  \"sast_skip_reason\": \"$(json_escape "$SAST_SKIP_REASON")\","
+fi
+SUPPLY_CHAIN_REASON_LINE=""
+if [ "$SUPPLY_CHAIN_SUMMARY_JSON" = "null" ]; then
+  SUPPLY_CHAIN_REASON_LINE="  \"supply_chain_skip_reason\": \"$(json_escape "$SUPPLY_CHAIN_SKIP_REASON")\","
+fi
+A11Y_REASON_LINE=""
+if [ "$A11Y_SUMMARY_JSON" = "null" ]; then
+  A11Y_REASON_LINE="  \"a11y_skip_reason\": \"$(json_escape "$A11Y_SKIP_REASON")\","
+fi
+PERF_REASON_LINE=""
+if [ "$PERF_SUMMARY_JSON" = "null" ]; then
+  PERF_REASON_LINE="  \"perf_skip_reason\": \"$(json_escape "$PERF_SKIP_REASON")\","
+fi
 ARTIFACT_REL="artifacts/gates/$LANE.latest.json"
 {
   echo "{"
@@ -350,6 +555,16 @@ ARTIFACT_REL="artifacts/gates/$LANE.latest.json"
   [ -n "$LINT_REASON_LINE" ] && echo "$LINT_REASON_LINE"
   echo "  \"contract\": $CONTRACT_SUMMARY_JSON,"
   [ -n "$CONTRACT_REASON_LINE" ] && echo "$CONTRACT_REASON_LINE"
+  echo "  \"mutation\": $MUTATION_SUMMARY_JSON,"
+  [ -n "$MUTATION_REASON_LINE" ] && echo "$MUTATION_REASON_LINE"
+  echo "  \"sast\": $SAST_SUMMARY_JSON,"
+  [ -n "$SAST_REASON_LINE" ] && echo "$SAST_REASON_LINE"
+  echo "  \"supply_chain\": $SUPPLY_CHAIN_SUMMARY_JSON,"
+  [ -n "$SUPPLY_CHAIN_REASON_LINE" ] && echo "$SUPPLY_CHAIN_REASON_LINE"
+  echo "  \"a11y\": $A11Y_SUMMARY_JSON,"
+  [ -n "$A11Y_REASON_LINE" ] && echo "$A11Y_REASON_LINE"
+  echo "  \"perf\": $PERF_SUMMARY_JSON,"
+  [ -n "$PERF_REASON_LINE" ] && echo "$PERF_REASON_LINE"
   echo "  \"artifact_paths\": [\"$ARTIFACT_REL\"],"
   echo "  \"gate_runner\": \"scripts/gate.sh\""
   echo "}"

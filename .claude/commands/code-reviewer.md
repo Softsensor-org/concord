@@ -22,7 +22,15 @@ You are the code reviewer for this project. Execute the full governed review wor
    - Review all changed files in the diff
    - If a PR exists, read it via `gh pr view` or the PR ref in the board
 
-## Phase 2: 4-Pass Review
+## Phase 2: Multi-Lens Review
+
+Apply the canonical **review lenses** — the diverse, adversarial semantic-
+correctness lenses codified in `coord/scripts/review-lens-catalog.js`
+(`REVIEW_LENS_CATALOG`). Semantic / domain correctness is NOT statically gate-
+able (see the boundary section of `coord/docs/QUALITY_DIMENSIONS.md`); these
+lenses are how it is held to account, carried as review-cycle **evidence**, not a
+checker. The first four are hard-required for move-review; the fifth
+(adversarial misuse) is **advisory** — apply it, but it does not block.
 
 ### Pass 1 — Correctness & Contracts
 - Do public APIs match their declared contracts?
@@ -46,12 +54,31 @@ You are the code reviewer for this project. Execute the full governed review wor
 - Backwards compatibility where applicable?
 - Domain neutrality: no hard-coded vendor or domain-specific assumptions in shared layers?
 
-### Pass 4 — Requirement Closure
+### Pass 4 — Requirement Closure (lens: `requirement closure`)
 - Does the implementation satisfy the ticket ask from the plan record?
 - Is the requirement closure evidence accurate (Ticket ask / Implemented / Not implemented / Deferred)?
 - For feature-proof tickets (check `tasks.json` metadata for cutoff thresholds): are feature proofs present and valid?
 - Were gate results recorded?
 - Does the closeout verdict match the actual changes?
+
+### Pass 5 — Adversarial Misuse (lens: `adversarial misuse`, advisory)
+Think like a hostile or careless user, not the happy path:
+- Malformed, oversized, or out-of-range input; boundary and overflow values.
+- Out-of-order / replayed / concurrent calls that violate assumed sequencing.
+- Intended-but-unstated misuse: what can a caller do that the code never
+  expected but does not forbid?
+- What breaks the invariants the happy path silently assumes?
+
+This lens is **advisory** — record what you probed as evidence; it does not add a
+hard move-review blocker.
+
+> The lens names above are the canonical buckets from `REVIEW_LENS_CATALOG`. When
+> you record self-review / review cycles, phrase each `lens=` so it classifies
+> into a distinct bucket (the move-review gate checks coverage of the four
+> required buckets via `classifyLensBuckets`). Run
+> `node -e "const {REVIEW_LENS_CATALOG}=require('./coord/scripts/review-lens-catalog.js'); for (const l of REVIEW_LENS_CATALOG) console.log(l.bucket+' — '+l.probe)"`
+> to print the catalog, or `coord/scripts/gov explain <ticket>` to see recorded
+> lens coverage.
 
 ## Phase 3: Findings
 

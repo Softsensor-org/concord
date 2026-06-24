@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "ticket_id": "FIX-002",
+  "requirement_closure": [
+    "TODO: Ticket ask: <what the ticket said to deliver>",
+    "TODO: Implemented: <what is actually delivered in this change>",
+    "TODO: Not implemented: <residual gap or none>",
+    "TODO: Deferred to: <ticket-id or none>",
+    "TODO: Closeout verdict: complete | incomplete"
+  ],
+  "critical_invariants": [
+    "TODO: list 2-5 truths this change must preserve under normal, edge, and failure paths"
+  ],
+  "self_review_cycles": [
+    {
+      "cycle": 1,
+      "total": 1,
+      "lens": "TODO",
+      "diff": "TODO",
+      "risks": [],
+      "findings": "TODO",
+      "verification": "TODO",
+      "verdict": "TODO",
+      "raw": "lens=TODO; diff=TODO; risks=TODO; findings=TODO; verification=TODO; verdict=TODO"
+    }
+  ]
+}

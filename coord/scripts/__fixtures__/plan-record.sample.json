@@ -104,6 +104,24 @@
   "rollback_strategy": [
     "Revert the operator-model design docs to the previous scaffold language if the template decides not to standardize the facade, dispatch, and capability-registry contract at the governance level."
   ],
+  "bootstrap_risk": {
+    "startup_work_class": "server_bootstrap_job",
+    "runs_at_boot": false,
+    "shares_app_process": false,
+    "resource_envelope": {
+      "memory_mb": 1024,
+      "timeout_s": 900,
+      "expected_rows": 100000,
+      "batch_size": 500,
+      "db_pool_impact": "one read cursor, one writer"
+    },
+    "idempotency_strategy": "lease + checkpoint + completion marker",
+    "checkpoint_strategy": "row-id watermark persisted every batch",
+    "verification_signal": "job receipt + marker row + metric",
+    "rollback_or_disable": "feature flag off by default; job can be rerun from checkpoint",
+    "observability_requirements": ["logs", "task status", "metrics", "failure reason"],
+    "data_access_shape": "paginated"
+  },
   "security_surface": "no",
   "synced_from_markdown_at": "2026-04-11T21:46:20.412Z"
 }

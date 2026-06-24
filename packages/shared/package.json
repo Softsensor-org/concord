@@ -1,0 +1,18 @@
+{
+  "name": "@coord/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Canonical home for cross-repo shared utilities/components. The convergence target for the Component-library-convergence quality dimension (COORD-136): logic currently duplicated across frontend/, the coord-ui app, and backend/ converges ONTO this zero-dependency package, and the extraction-tuned arch-checks duplication gate (lower minLines + cross-repo corpus, ratchet mode) keeps new divergence from growing.",
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "src",
+    "README.md"
+  ],
+  "dependencies": {},
+  "scripts": {
+    "test": "node --test"
+  }
+}

@@ -938,6 +938,26 @@ test("GCV-3 slice 2: happy path invokes syncFn with the deterministic message + 
   assert.equal(result.result.committed, true);
 });
 
+test("COORD-196: autoSyncAfterLifecycle (every terminal boundary) passes includeBoardJson:true so the board row transition is committed atomically", () => {
+  let captured = null;
+  const result = __testing.autoSyncAfterLifecycle({
+    verb: "finalize",
+    ticketId: "COORD-196",
+    options: {},
+    syncFn: (opts) => {
+      captured = opts;
+      return { committed: true, message: opts.commit, delta: ["board/tasks.json", "rendered/TASKS.md"] };
+    },
+  });
+  assert.equal(result.skipped, false);
+  assert.equal(
+    captured.includeBoardJson,
+    true,
+    "terminal-boundary auto-sync must opt the canonical board json into the scope-limited sync commit"
+  );
+  assert.equal(captured.quiet, true);
+});
+
 test("ENT-001: push-on-finalize is OPT-IN — default does NOT push", () => {
   let pushed = false;
   const result = __testing.autoSyncAfterLifecycle({

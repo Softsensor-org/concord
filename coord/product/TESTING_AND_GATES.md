@@ -80,6 +80,12 @@ Use the smallest set of dimensions that closes the real risk:
   loss, dependency failure, or partial-service mode
 - choose **Performance** when the ticket changes complexity, query shape,
   rendering volume, background cadence, or a hot path
+  - for backfill, generated-data, or derived-data jobs, output-correctness tests
+    are **not enough**: the query shape and the data volume must also be proven.
+    Apply the [Backfill Query and Volume Safety Checklist](./SERVER_BOOTSTRAP_JOB_CONTRACT.md#backfill-query-and-volume-safety-checklist)
+    (row-count estimate, batch size, streaming/pagination, blob-column access,
+    DB pool impact, timeout/memory envelope, checkpoint interval, production-scale
+    query-shape proof).
 
 Do not add a dimension because it sounds thorough. Add it because the ticket
 can fail there.
@@ -266,6 +272,12 @@ Every derived project should preserve these gate properties:
 When a project tailors the scaffold, it should update repo-local gate runners
 and automation docs without changing the policy vocabulary here unless the
 governance model itself changed.
+
+Heavy lanes are kept proportionate by lane choice and contained by
+process-orphan reaping, rather than by a cross-agent scheduler. The deliberate
+decision *not* to build a resource-aware dispatch + shared test-evidence broker
+(and what was adopted instead) is recorded in
+[`coord/docs/decisions/0001-resource-aware-multi-agent-test-architecture.md`](../docs/decisions/0001-resource-aware-multi-agent-test-architecture.md).
 
 ## Dependency / Security Audit Signal (QGATE-002)
 
@@ -609,12 +621,9 @@ This is NOT a separate CI system. It is the same `scripts/gate.sh full`/`ci`
 contract the PR pipeline already runs, reused at deploy time so the deploy gate
 can never drift below the PR gate.
 
-> Note on this repo's own CI: `.github/workflows/governance-suite.yml` is the
-> coord **engine's** self-test (it runs `node --test` over the governance
-> suite under a config matrix), not a product deploy/PR gate. It legitimately
-> does not call `scripts/gate.sh`, because the thing under test IS the engine,
-> not a derived product repo. The deploy-gate contract above applies to the
-> product repos a generated project ships.
+> Note on this repo's own verification: coord-template uses local gates as the
+> release authority. The engine self-test can be run locally with `node --test`
+> under the default and non-default registries; it is not shipped as GitHub CI.
 
 ## Governance Doc/Engine Parity Check
 
@@ -683,15 +692,15 @@ of that test). The board validator (`coord/board/board.js`) deliberately
 `createCoordPaths({ forceProjectConfig: true })` so it always validates the
 real coord board against this checkout's real registry, never a fixture.
 
-### CI enforcement
+### Local enforcement
 
-`.github/workflows/governance-suite.yml` runs both matrix legs on every
-change under `coord/scripts/`, `coord/board/board.js`, `coord/paths.js`, or
-`coord/project.config.js`. A config-sensitive assumption (hardcoded `dev`, a
-two-repo assumption) fails the non-default leg in CI rather than late in a
-downstream proving ground. When adding engine code, derive integration
-branches and repo sets from the registry (`REPO_INTEGRATION_BRANCHES`,
-`REPO_ROOTS`) — never hardcode `dev` or `B`/`F`.
+Run both matrix legs before publishing changes under `coord/scripts/`,
+`coord/board/board.js`, `coord/paths.js`, or `coord/project.config.js`. A
+config-sensitive assumption (hardcoded `dev`, a two-repo assumption) should fail
+the non-default leg locally rather than late in a downstream proving ground.
+When adding engine code, derive integration branches and repo sets from the
+registry (`REPO_INTEGRATION_BRANCHES`, `REPO_ROOTS`) — never hardcode `dev` or
+`B`/`F`.
 
 ## Governance Integration
 

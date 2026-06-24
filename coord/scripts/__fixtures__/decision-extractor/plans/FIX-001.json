@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "ticket_id": "FIX-001",
+  "requirement_closure": [
+    "Ticket ask: add a sample decision-bearing plan record for the extractor fixture",
+    "Implemented: a fixture plan record carrying real requirement_closure, self_review_cycles, and critical_invariants",
+    "Not implemented: none",
+    "Deferred to: FIX-002 (follow-up scenario)",
+    "Closeout verdict: complete"
+  ],
+  "critical_invariants": [
+    "The extractor must transform fields the validator already requires, never infer new content.",
+    "Every decision record must cite a hash-linked source."
+  ],
+  "self_review_cycles": [
+    {
+      "cycle": 1,
+      "total": 2,
+      "lens": "Contract and state invariants",
+      "diff": "added fixture record",
+      "risks": ["fixture could drift from real shape", "scaffold filtering could over-drop"],
+      "findings": "none",
+      "verification": "node --test coord/scripts/decision-extractor.test.js",
+      "verdict": "pass",
+      "raw": "lens=Contract and state invariants; diff=added fixture record; risks=fixture could drift from real shape, scaffold filtering could over-drop; findings=none; verification=node --test coord/scripts/decision-extractor.test.js; verdict=pass"
+    }
+  ]
+}

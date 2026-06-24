@@ -1,0 +1,150 @@
+# =============================================================================
+# pipeline.yml — CONTROL + CONTRACTS registry  (TEMPLATE / stub)
+# =============================================================================
+# This is the single source of truth for every data product the pipeline builds.
+# The `data-contract` gate-proc (coord/scripts/data-contract-gate.js) reads this
+# file, runs each entry's tests, and stamps a per-output contract on pass.
+#
+# HOW TO USE THIS TEMPLATE
+#   1. Set `meta` for your engagement (period, FX/currency rule, global caveats).
+#   2. Replace the two EXAMPLE entries under `analytics:` with your real products
+#      — one entry per output family.
+#   3. Declare gates only where they apply (see the tests list per entry).
+#   4. After any change, run the gate / certify step: it must end
+#      "N certified, 0 refused".
+#
+# PAIRS WITH lifecycle.yml — retirement ledger. A certified entry may only
+# consume certified, NON-superseded inputs (certified-only-feeds-certified).
+# =============================================================================
+
+meta:
+  repo: REPLACE_ME                      # your data project name
+  default_period: REPLACE_ME            # e.g. Q1_2026 — the canonical reporting period
+  # --- currency rule: declared once, enforced by the currency_suffix gate ------
+  fx_rate: null                         # e.g. 3.75 (local per USD); null if single-currency
+  currency_rule: >
+    Declare the currency of every monetary output. Monetary columns must end in a
+    currency suffix (e.g. _usd / _<local>) or be listed in currency_exempt with a
+    basis. Never present a local-currency figure as USD (or vice-versa).
+  # --- global analytics caveats: inherited by every deliverable ----------------
+  analytics_caveats:
+    - "TODO: state any cross-cutting caveat (e.g. gross-not-margin, pilot
+       representativeness, currency basis unconfirmed) that every output inherits."
+
+# Ordered list of pipeline stages the orchestrator runs.
+stages:
+  - example_stage
+
+# =============================================================================
+# analytics:  <stage> -> [ <product entry>, ... ]
+# =============================================================================
+analytics:
+  example_stage:
+
+    # ---- EXAMPLE 1: a CERTIFIED monetary product with reconciliation -----------
+    - id: example_customer_summary           # unique product id
+      script: build_example_customer_summary.py   # the builder under 04_analytics/
+      owner: analytics                        # responsible role/operator
+      grain: customer_month                   # one row per ...
+      period: REPLACE_ME                       # e.g. Q1_2026 (period-identity gate)
+      currency: USD                            # declared currency of monetary cols
+      certified: true                          # feeds other certified products?
+      key: site_id                             # primary key (str or list)
+      columns:                                 # required columns (required_columns gate)
+        - site_id
+        - example_gross_usd
+        - example_active_flag
+      purpose: >
+        one-line statement of what decision this product supports.
+      allowed_use: >
+        the decisions/diagnoses this output IS valid for.
+      not_allowed_use: >
+        the misuses this output must NOT be put to (e.g. individual scoring,
+        margin claims, fleet-wide extrapolation).
+      currency_exempt:                         # bare-money cols inherited from upstream
+        - example_share_pct                    #   (ratios/percentages are not _usd)
+      inputs:                                  # upstream files this builder reads
+        - 06_outputs/example_source.csv        #   MUST be certified+non-superseded
+      outputs:                                 # files this builder writes
+        - example_customer_summary.csv
+      cert_output: example_customer_summary.csv  # the file the contract is stamped for
+      caveats:
+        - "example_gross_usd is USD; state the basis (gross / net)."
+      tests:                                   # gates to run (see below)
+        - row_count_positive                   # ALWAYS-ON
+        - required_columns                     # ALWAYS-ON
+        - no_duplicate_key                     # ALWAYS-ON
+        - currency_suffix                      # monetary cols end in a currency suffix
+        - reconciles_to                        # a column sum ties to a source ±tolerance
+      # ---- gate parameters -----------------------------------------------------
+      reconciles_to:
+        to: 06_outputs/example_source.csv      # sibling certified file (source of truth)
+        source_column: example_gross_usd
+        target_column: example_gross_usd
+        tolerance: 0.02                         # ±2% — catches denominator-binding errors
+        basis: >
+          summary Q1 gross must tie to the upstream source slice within ±2%.
+
+    # ---- EXAMPLE 2: a CERTIFIED model card with a baseline band + key coverage --
+    - id: example_model_card
+      script: build_example_model.py
+      owner: analytics
+      grain: model_card
+      period: REPLACE_ME
+      currency: n/a                            # non-monetary product
+      certified: true
+      key: model                               # one row per model
+      columns:
+        - model
+        - auc
+        - n_train_rows
+        - n_test_rows
+      purpose: classifier performance card — tracked across pipeline runs.
+      allowed_use: model-quality tracking; ranking aid above the AUC threshold.
+      not_allowed_use: individual / HR scoring; presenting as a forecast.
+      inputs:
+        - 06_outputs/example_customer_summary.csv
+        - 06_outputs/example_feature_panel.csv
+      outputs:
+        - example_model_card.csv
+      cert_output: example_model_card.csv
+      caveats:
+        - "baseline_metric gate: AUC must land in band — catches silent regressions."
+      tests:
+        - row_count_positive
+        - required_columns
+        - no_duplicate_key
+        - baseline_metric                      # a metric must stay inside a band
+        - key_coverage_with                    # cross-file join-key overlap ratio
+      # ---- gate parameters -----------------------------------------------------
+      baseline_metric:
+        metric: auc                            # column to band-check
+        source_file: example_model_card.csv
+        min: 0.70                              # below = data leak / label noise
+        max: 0.80                              # above = unrealistic; suspect leakage
+        basis: chronological 80/20 split AUC band.
+      key_coverage_with:
+        other: 06_outputs/example_feature_panel.csv
+        key: site_id
+        ratio: 0.95                            # expected join-key overlap fraction
+        tolerance: 0.05                        # severe deviation = keyspace/ID-bridge drift
+        severity: warn                         # warn | fail
+        basis: feature-panel ↔ summary key overlap (tracked for keyspace drift).
+
+# =============================================================================
+# GATE REFERENCE (enforced by the data-contract gate-proc)
+# -----------------------------------------------------------------------------
+#  ALWAYS-ON
+#   row_count_positive    output has >0 rows
+#   required_columns      every column in `columns:` is present
+#   no_duplicate_key      `key` is unique
+#  DECLARED (opt-in per entry)
+#   currency_suffix       monetary cols end _usd/_<local> or are in currency_exempt
+#   reconciles_to {to, source_column, target_column, tolerance}  sum ties ±tol
+#   baseline_metric {metric, min, max}                           metric inside band
+#   key_coverage_with {other, key, ratio, tolerance, severity}   join overlap ratio
+#   period identity       output period matches declared `period` (no period bleed)
+#  CROSS-CUTTING
+#   certified-only-feeds-certified   certified entries may only read certified,
+#                                    non-superseded inputs (checked vs lifecycle.yml)
+# =============================================================================

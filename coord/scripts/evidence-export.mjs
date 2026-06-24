@@ -27,8 +27,10 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 
 /**
  * Control maps are shipped framework data. Resolve a project override under
@@ -224,6 +226,17 @@ function renderMarkdown(pkg) {
     for (const c of fw.controls) L.push(`| ${c.control} | ${c.title} | ${c.status === "gap" ? "⚠️ gap" : "✅ covered"} |`);
     L.push("");
   }
+  if (pkg.live_mcp && pkg.live_mcp.total > 0) {
+    L.push(`## Live-MCP\n`);
+    L.push(`- Live-MCP tickets: **${pkg.live_mcp.total}** · with unresolved cleanup/promote blockers: **${pkg.live_mcp.with_unresolved_blockers}**\n`);
+    for (const t of pkg.live_mcp.tickets) {
+      const head = `### ${t.id} — ${t.operation_class || "?"} @ ${t.environment || "?"} (${t.status})`;
+      L.push(t.unresolved_blockers.length ? `${head}  ⚠️ ${t.unresolved_blockers.length} unresolved blocker(s)` : head);
+      L.push(`- Adapter: ${t.adapter || "—"} · receipt: ${t.receipt_present ? (t.receipt && t.receipt.path ? t.receipt.path : "recorded") : "⚠️ none"}`);
+      for (const b of t.unresolved_blockers) L.push(`- ⚠️ ${b.code}: ${b.message}`);
+      L.push("");
+    }
+  }
   L.push(`## Tickets\n`);
   for (const t of pkg.tickets) {
     L.push(`### ${t.id} — ${t.status}${t.complete ? "" : "  ⚠️ GAPS: " + t.evidence_gaps.join(", ")}`);
@@ -235,11 +248,96 @@ function renderMarkdown(pkg) {
   return L.join("\n");
 }
 
-function main() {
-  const args = parseArgs(process.argv.slice(2));
+/**
+ * COORD-156 — live-MCP evidence section.
+ *
+ * The export must HONESTLY show production-MCP state: the recorded live-MCP
+ * receipts AND any UNRESOLVED cleanup/promote (or other) closeout blockers, so a
+ * dossier reader sees what is still pending rather than an implicitly-complete
+ * picture. We REUSE the COORD-153 lifecycle gate (buildLiveMcpLifecycle /
+ * readLiveMcpDeclaration) to detect live-MCP tickets and derive their blockers —
+ * detection is explicit (a declared `live_mcp` plan object), never keyword fuzzy.
+ *
+ * Pure read: loads the lifecycle module from this script's own dir (it is a pure
+ * function; it never calls a tool/network), reads plan records + recorded
+ * receipts from the SCOPED coord dir, and degrades to an empty section when the
+ * module or receipts are unavailable. It never mutates governed state.
+ */
+function loadLiveMcpModule() {
+  try {
+    return require(path.join(SCRIPT_DIR, "live-mcp-lifecycle.js"));
+  } catch {
+    return null;
+  }
+}
+
+function findLatestLiveMcpReceipt(coordDir, ticketId) {
+  const base = path.join(coordDir, "evidence", "live-mcp");
+  let files;
+  try {
+    files = fs.readdirSync(base);
+  } catch {
+    return null;
+  }
+  const slug = String(ticketId).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const matches = files
+    .filter((name) => name.endsWith(".json") && name.includes(`-${slug}-`))
+    .sort();
+  return matches.length ? path.join(base, matches[matches.length - 1]) : null;
+}
+
+function buildLiveMcpEvidence(coordDir, plans, rows) {
+  const mod = loadLiveMcpModule();
+  if (!mod || typeof mod.buildLiveMcpLifecycle !== "function") {
+    return { tickets: [], total: 0, with_unresolved_blockers: 0, available: false };
+  }
+  const tickets = [];
+  for (const [id, plan] of Object.entries(plans)) {
+    const declaration = mod.readLiveMcpDeclaration(plan);
+    if (!declaration) continue; // not a live-MCP ticket — explicit detection only
+    const result = mod.buildLiveMcpLifecycle({ planState: plan });
+    const blockers = Array.isArray(result.issues) ? result.issues : [];
+    const receiptFile = findLatestLiveMcpReceipt(coordDir, id);
+    let receipt = null;
+    if (receiptFile) {
+      const parsed = readJson(receiptFile, null);
+      if (parsed) {
+        receipt = {
+          path: path.relative(path.dirname(coordDir), receiptFile).split(path.sep).join("/"),
+          result: parsed.result || null,
+          operation_class: parsed.operation_class || null,
+        };
+      }
+    } else if (declaration.receipt && typeof declaration.receipt === "object") {
+      receipt = { path: null, result: declaration.receipt.result || null, embedded: true };
+    } else if (typeof declaration.receipt_path === "string" && declaration.receipt_path.trim()) {
+      receipt = { path: declaration.receipt_path.trim(), result: null };
+    }
+    tickets.push({
+      id,
+      status: (rows[id] || {}).Status || "unknown",
+      adapter: typeof declaration.adapter === "string" ? declaration.adapter : null,
+      operation_class:
+        typeof declaration.operation_class === "string" ? declaration.operation_class : null,
+      environment: typeof declaration.environment === "string" ? declaration.environment : null,
+      receipt,
+      receipt_present: Boolean(receipt),
+      unresolved_blockers: blockers,
+    });
+  }
+  tickets.sort((a, b) => a.id.localeCompare(b.id));
+  return {
+    available: true,
+    total: tickets.length,
+    with_unresolved_blockers: tickets.filter((t) => t.unresolved_blockers.length > 0).length,
+    tickets,
+  };
+}
+
+export function buildEvidenceExport(args) {
   const coordDir = args.coordDir;
   const board = readJson(path.join(coordDir, "board", "tasks.json"), null);
-  if (!board) { console.error(`Cannot read board at ${coordDir}/board/tasks.json`); process.exit(2); }
+  if (!board) throw new Error(`Cannot read board at ${coordDir}/board/tasks.json`);
   const rows = readBoardRows(board);
   const journalByTicket = readJournalByTicket(coordDir);
   const plansDir = path.join(coordDir, ".runtime", "plans");
@@ -260,24 +358,58 @@ function main() {
     if (fw) frameworks.push(controlMatrix(fw, tickets));
   }
 
+  // Live-MCP evidence is surveyed across ALL plan records (not just in-scope
+  // done tickets): an unresolved cleanup/promote blocker most often lives on a
+  // not-yet-done live-MCP ticket, and the export must show it honestly.
+  const liveMcp = buildLiveMcpEvidence(coordDir, plans, rows);
+
   const pkg = {
     schema_version: 1,
     scope: args.tickets.length ? "ticket" : (args.scope || "all-done"),
     tickets,
+    live_mcp: liveMcp,
     frameworks,
     summary: {
       ticket_count: tickets.length,
       tickets_with_gaps: tickets.filter((t) => !t.complete).length,
       controls_with_gaps: frameworks.reduce((n, f) => n + f.controls.filter((c) => c.status === "gap").length, 0),
+      live_mcp_tickets: liveMcp.total,
+      live_mcp_with_unresolved_blockers: liveMcp.with_unresolved_blockers,
     },
     integrity: { journal_sha256: journalSha, journal_event_count: rawLines.length },
   };
 
-  const body = args.format === "md" ? renderMarkdown(pkg) : stableStringify(pkg);
-  if (args.out) { fs.writeFileSync(args.out, body + "\n", "utf8"); console.error(`Wrote ${args.out}`); }
-  else { process.stdout.write(body + "\n"); }
-  // Non-zero exit if any gap, so CI can fail closed.
-  if (pkg.summary.tickets_with_gaps > 0) process.exitCode = 3;
+  return {
+    pkg,
+    body: args.format === "md" ? renderMarkdown(pkg) : stableStringify(pkg),
+    exitCode: pkg.summary.tickets_with_gaps > 0 ? 3 : 0,
+  };
 }
 
-main();
+export function runCli(argv = process.argv.slice(2), io = {}) {
+  const out = io.stdout || process.stdout;
+  const err = io.stderr || process.stderr;
+  let args;
+  try {
+    args = parseArgs(argv);
+    const result = buildEvidenceExport(args);
+    if (args.out) {
+      fs.writeFileSync(args.out, result.body + "\n", "utf8");
+      err.write(`Wrote ${args.out}\n`);
+    } else {
+      out.write(result.body + "\n");
+    }
+    return result.exitCode;
+  } catch (e) {
+    err.write((e && e.message ? e.message : String(e)) + "\n");
+    return 2;
+  }
+}
+
+function main() {
+  process.exitCode = runCli(process.argv.slice(2));
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}

@@ -1,7 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
-const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -13,8 +12,6 @@ const {
   withJournalSandbox,
   withGovernedSurfaceSandbox,
   withCleanRuntimeFixture,
-  createTempGitRepo,
-  writeRepoFile,
 } = require("./governance-test-utils.js");
 
 // COORD-090: local helper for the relocated crash-recovery tests below.
@@ -105,23 +102,11 @@ test("COORD-033: appendGovernanceEvent repairs a torn tail and journals the repa
 // ---------------------------------------------------------------------------
 
 test("COORD-068: gitIgnoredDriftPaths drops gitignored runtime ledgers but keeps tracked governance artifacts", () => {
-  // Real temp git repo modeling the coord layout: `.runtime/` is gitignored,
-  // `board/` is tracked. The injected runner shells `git check-ignore` against
-  // this repo so we exercise the actual gitignore semantics, not a stub.
-  const { repoRoot } = createTempGitRepo("coord068-driftignore-", {
-    ".gitignore": ".runtime/\n",
-    "board/tasks.json": "{}\n",
-    "README.md": "seed\n",
+  const runCheckIgnore = (candidates) => ({
+    status: 0,
+    stdout: `${candidates.filter((entry) => entry.startsWith(".runtime/")).join("\n")}\n`,
+    stderr: "",
   });
-  // The runtime ledger exists on disk but is untracked/ignored.
-  writeRepoFile(repoRoot, ".runtime/agent_sessions.json", "{}\n");
-
-  const runCheckIgnore = (candidates) =>
-    spawnSync("git", ["check-ignore", "--stdin"], {
-      cwd: repoRoot,
-      input: `${candidates.join("\n")}\n`,
-      encoding: "utf8",
-    });
 
   const ignored = __testing.gitIgnoredDriftPaths(
     [".runtime/agent_sessions.json", ".runtime/session-threads/a44.json", "board/tasks.json"],

@@ -81,4 +81,25 @@ module.exports = {
   requirements: {
     path: "product/REQUIREMENTS.md",
   },
+  // COORD-181: multi-track governance profile (see
+  // coord/product/MULTI_TRACK_GOVERNANCE_PROFILE.md). A TRACK is the work-type
+  // axis — it selects a gate-proc, a default gate LANE (the existing
+  // default/full/ci intensity axis, unchanged), a skill set, a review policy,
+  // and an operator persona. Tracks are resolved from a ticket-id prefix by
+  // coord/scripts/track-registry.js, which reads THIS block directly (the engine
+  // config normalizer does not carry `tracks`, by design — config seam, not
+  // engine fork). Any ticket whose prefix matches no track falls back to
+  // `development` + the `test` gate, so omitting/removing this block restores the
+  // engine's pre-track behavior exactly.
+  //
+  // Engine ships built-in defaults for these five tracks (track-registry.js
+  // BUILTIN_TRACKS); the block below is the explicit, project-tunable shape.
+  // Override a field per track (e.g. prefixes, reviewPolicy.approvers) as needed.
+  tracks: {
+    marketing: { gateProc: "content", defaultLane: "default", prefixes: ["WEB", "DOC"], operator: "marketing", reviewPolicy: { approvers: 1 } },
+    development: { gateProc: "test", defaultLane: "default", prefixes: ["DEV", "FE", "MSRV", "BE"], operator: "developer", reviewPolicy: { approvers: 1 } },
+    devops: { gateProc: "infra", defaultLane: "full", prefixes: ["OPS"], operator: "devops", reviewPolicy: { approvers: 2 } },
+    "product-engineering": { gateProc: "evidence", defaultLane: "default", prefixes: ["PE", "LIVE-MCP"], operator: "product-engineer", reviewPolicy: { approvers: 1 } },
+    "data-analytics": { gateProc: "data-contract", defaultLane: "default", prefixes: ["DATA", "ANALYTICS"], operator: "data-engineer", reviewPolicy: { approvers: 1 } },
+  },
 };

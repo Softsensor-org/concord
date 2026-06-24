@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { execFileSync } = require("node:child_process");
+const { pathToFileURL } = require("node:url");
 
 const SCRIPT = path.join(__dirname, "evidence-export.mjs");
 
@@ -59,18 +59,20 @@ function fixture() {
   return { root, coord };
 }
 
-function run(coord, extra = []) {
-  try {
-    const out = execFileSync("node", [SCRIPT, "--coord-dir", coord, "--framework", "eu-ai-act", ...extra], { encoding: "utf8" });
-    return { out, code: 0 };
-  } catch (e) {
-    return { out: e.stdout || "", code: e.status };
-  }
+async function run(coord, extra = []) {
+  const mod = await import(pathToFileURL(SCRIPT).href);
+  const stdout = [];
+  const stderr = [];
+  const code = mod.runCli(["--coord-dir", coord, "--framework", "eu-ai-act", ...extra], {
+    stdout: { write: (s) => stdout.push(s) },
+    stderr: { write: (s) => stderr.push(s) },
+  });
+  return { out: stdout.join(""), err: stderr.join(""), code };
 }
 
-test("evidence-export: complete ticket has all evidence and covered controls", () => {
+test("evidence-export: complete ticket has all evidence and covered controls", async () => {
   const { coord } = fixture();
-  const { out, code } = run(coord, ["--ticket", "OK-001"]);
+  const { out, code } = await run(coord, ["--ticket", "OK-001"]);
   const pkg = JSON.parse(out);
   const t = pkg.tickets[0];
   assert.equal(t.id, "OK-001");
@@ -81,9 +83,9 @@ test("evidence-export: complete ticket has all evidence and covered controls", (
   assert.equal(code, 0, "exit 0 when no gaps");
 });
 
-test("evidence-export: fails closed on a ticket missing required evidence", () => {
+test("evidence-export: fails closed on a ticket missing required evidence", async () => {
   const { coord } = fixture();
-  const { out, code } = run(coord, ["--ticket", "GAP-001"]);
+  const { out, code } = await run(coord, ["--ticket", "GAP-001"]);
   const pkg = JSON.parse(out);
   const t = pkg.tickets[0];
   assert.equal(t.complete, false);
@@ -95,19 +97,95 @@ test("evidence-export: fails closed on a ticket missing required evidence", () =
   assert.equal(code, 3, "non-zero exit when gaps (CI fail-closed)");
 });
 
-test("evidence-export: output is deterministic / hash-stable for the same input", () => {
+test("evidence-export: output is deterministic / hash-stable for the same input", async () => {
   const { coord } = fixture();
-  const a = run(coord, ["--ticket", "OK-001"]).out;
-  const b = run(coord, ["--ticket", "OK-001"]).out;
+  const a = (await run(coord, ["--ticket", "OK-001"])).out;
+  const b = (await run(coord, ["--ticket", "OK-001"])).out;
   assert.equal(a, b, "same input must produce byte-identical output (no wall-clock in payload)");
   const pkg = JSON.parse(a);
   assert.match(pkg.integrity.journal_sha256, /^[0-9a-f]{64}$/);
 });
 
-test("evidence-export: never invents data — read-only over governed state", () => {
+test("evidence-export: never invents data — read-only over governed state", async () => {
   const { coord } = fixture();
   const before = fs.readFileSync(path.join(coord, "board", "tasks.json"), "utf8");
-  run(coord, ["--ticket", "OK-001"]);
+  await run(coord, ["--ticket", "OK-001"]);
   const after = fs.readFileSync(path.join(coord, "board", "tasks.json"), "utf8");
   assert.equal(before, after, "export must not mutate board state");
+});
+
+// COORD-156: live-MCP evidence section --------------------------------------
+
+/** Adds a live-MCP ticket (declared `live_mcp` plan object) to a fixture coord. */
+function addLiveMcp(coord, { id, declaration, receipt }) {
+  // Register the ticket on the board so its status is surfaced.
+  const boardPath = path.join(coord, "board", "tasks.json");
+  const board = JSON.parse(fs.readFileSync(boardPath, "utf8"));
+  board.sections[0].rows.push({
+    ID: id, Repo: "X", Type: "feature", Pri: "P2", Status: "doing", Owner: "a", Description: "", "Depends On": "",
+  });
+  fs.writeFileSync(boardPath, JSON.stringify(board, null, 2));
+  // Declare the live_mcp plan object.
+  writeJson(path.join(coord, ".runtime", "plans", `${id}.json`), { live_mcp: declaration });
+  // Record a receipt under the ticket slug (matches runtime-evidence naming).
+  if (receipt) {
+    const slug = id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    writeJson(path.join(coord, "evidence", "live-mcp", `20260601T0000-${slug}-op.json`), receipt);
+  }
+}
+
+test("evidence-export: surfaces live-MCP tickets with adapter/class/environment + receipt", async () => {
+  const { coord } = fixture();
+  addLiveMcp(coord, {
+    id: "LIVE-001",
+    declaration: {
+      adapter: "aws-cli", operation: "describe", operation_class: "read_safe",
+      environment: "prod", scope: "account 123",
+      receipt_path: "coord/evidence/live-mcp/20260601T0000-live-001-op.json",
+    },
+    receipt: { kind: "live-mcp", ticket: "LIVE-001", operation_class: "read_safe", result: "observed" },
+  });
+  const { out } = await run(coord);
+  const pkg = JSON.parse(out);
+  assert.ok(pkg.live_mcp, "package must carry a live_mcp section");
+  const t = pkg.live_mcp.tickets.find((x) => x.id === "LIVE-001");
+  assert.ok(t, "declared live-MCP ticket must be listed");
+  assert.equal(t.adapter, "aws-cli");
+  assert.equal(t.operation_class, "read_safe");
+  assert.equal(t.environment, "prod");
+  assert.equal(t.receipt_present, true, "recorded receipt must be included");
+  assert.equal(t.receipt.result, "observed");
+  assert.equal(pkg.summary.live_mcp_tickets, 1);
+});
+
+test("evidence-export: live-MCP section honestly shows UNRESOLVED cleanup/promote blockers", async () => {
+  const { coord } = fixture();
+  // write_prod requires approval + redaction + cleanup + a receipt; omit them so
+  // the lifecycle gate yields unresolved blockers the export must surface.
+  addLiveMcp(coord, {
+    id: "LIVE-002",
+    declaration: {
+      adapter: "ecs", operation: "run-task", operation_class: "write_prod",
+      environment: "prod", scope: "cluster x", product_impact: true,
+    },
+    receipt: null,
+  });
+  const { out } = await run(coord);
+  const pkg = JSON.parse(out);
+  const t = pkg.live_mcp.tickets.find((x) => x.id === "LIVE-002");
+  assert.ok(t, "declared live-MCP ticket must be listed even when not done");
+  assert.equal(t.receipt_present, false, "missing receipt is surfaced as absent, not omitted");
+  const codes = t.unresolved_blockers.map((b) => b.code);
+  assert.ok(codes.includes("live_mcp_cleanup"), "unresolved cleanup blocker must be shown");
+  assert.ok(codes.includes("live_mcp_promotion"), "unresolved promotion blocker must be shown");
+  assert.ok(pkg.summary.live_mcp_with_unresolved_blockers >= 1);
+});
+
+test("evidence-export: no live-MCP tickets → empty live_mcp section, no spurious gaps", async () => {
+  const { coord } = fixture();
+  const { out } = await run(coord, ["--ticket", "OK-001"]);
+  const pkg = JSON.parse(out);
+  assert.ok(pkg.live_mcp, "live_mcp section is always present");
+  assert.equal(pkg.live_mcp.total, 0, "no declared live-MCP tickets in the base fixture");
+  assert.deepEqual(pkg.live_mcp.tickets, []);
 });

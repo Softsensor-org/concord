@@ -416,6 +416,25 @@ Before running `gov land`:
 
 Warning and acknowledged-writer drift is still recorded in the governance event journal (under `details.preexisting_drift_warnings` and `details.preexisting_drift_acknowledged_writer`) so observability is preserved. To rotate `coord/QUESTIONS.md` before applying this classification to historical rows, follow `coord/docs/QUESTIONS_ROTATION_PROTOCOL.md`.
 
+## 10.9) Live-MCP Lifecycle Enforcement
+
+A ticket that performs a live/production MCP operation declares it EXPLICITLY by recording a structured `live_mcp` object on its plan record:
+
+```bash
+coord/scripts/gov update-plan <ticket> --live-mcp '{"adapter":"<adapter>","operation":"<op>","operation_class":"read_sensitive","environment":"prod","scope":"<explicit scope>","redaction":"masked","approval":"human-admin","receipt_path":"coord/evidence/live-mcp/<receipt>.json"}'
+```
+
+The presence of `live_mcp` (and ONLY its presence — never a description keyword match) turns on the live-MCP lifecycle enforcement gate in `coord/scripts/live-mcp-lifecycle.js`. For a declared live-mcp ticket, move-review / closeout readiness BLOCKS until the required evidence is present:
+
+- operation class, adapter, operation, environment, and explicit scope;
+- redaction evidence when the operation class requires it (`read_sensitive`, `write_prod`, `destructive`);
+- approval evidence when the operation class requires it (any class above `read_safe`);
+- cleanup completion when the class policy requires it, or when `cleanup_required=true` is declared;
+- a recorded receipt — either embedded (`live_mcp.receipt`, validated with the COORD-152 receipt verifier) or referenced by path (`live_mcp.receipt_path`);
+- fixture/test/spec promotion evidence (`live_mcp.promotion`) when `product_impact=true`.
+
+The operation-class policy (which classes require approval/redaction/cleanup) is sourced from `OPERATION_CLASSES` in `coord/scripts/runtime-evidence.js`; this module does not re-derive it. Governance core governs intent and evidence only — it never calls a production tool. The gate is DEFAULT-OFF: a ticket with no `live_mcp` declaration carries no new requirements and is completely unaffected. `gov explain` surfaces the same missing-evidence list under `live_mcp_lifecycle`.
+
 ## 11) Orchestrator Contract
 
 The orchestrator is a governed operator role, not an implied convention.

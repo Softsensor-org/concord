@@ -1237,6 +1237,153 @@ test("collectReviewPlanReadinessIssues reports the full missing review-plan stac
   }
 });
 
+// COORD-153: live-MCP lifecycle enforcement is wired into the move-review /
+// closeout readiness gate (collectReviewPlanReadinessIssues). It must (a) add
+// live_mcp blockers ONLY when the plan declares a live_mcp operation, and (b)
+// leave a normal ticket's readiness byte-identical (no new requirements).
+test("collectReviewPlanReadinessIssues enforces live-MCP evidence only for declared live-mcp tickets", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-live-mcp-readiness-"));
+  const boardPath = path.join(tempDir, "tasks.json");
+  const planPath = path.join(tempDir, "PLAN.md");
+  const recordsDir = path.join(tempDir, "plans");
+  fs.mkdirSync(recordsDir, { recursive: true });
+  fs.writeFileSync(planPath, "", "utf8");
+  fs.writeFileSync(boardPath, JSON.stringify({
+    version: 1,
+    metadata: {},
+    sections: [],
+    review_findings: {},
+    pr_index: {},
+    landing_index: {},
+  }, null, 2), "utf8");
+
+  // A complete coord/X (non-product-repo) plan record that otherwise passes the
+  // readiness gate, so any extra issue must come from the live-MCP enforcement.
+  const baseRecord = {
+    schema_version: 1,
+    markdown_heading: "## LMCP-1 — 2026-06-24T00:00:00.000Z",
+    startup_checklist: ["completed"],
+    traceability_gate: ["exempt"],
+    governance: {
+      expected_closeout: { method: "no_pr", base_ref: "main", provenance_note: null },
+      review_profile: "standard",
+      ticket_local_repairs: [],
+    },
+    review_round: 1,
+    baseline_reproduction: [],
+    prior_findings: [],
+    intended_files: ["coord/scripts/example.js"],
+    change_summary: ["Example coord change."],
+    verification_commands: ["node --test coord/scripts/example.test.js"],
+    critical_invariants: [],
+    requirement_closure: ["Ticket ask: example", "Implemented: example"],
+    feature_proof: [],
+    repo_gates: ["node --test coord/scripts/example.test.js"],
+    self_review_cycles: [
+      {
+        cycle: 1,
+        total: 3,
+        lens: "contract/state invariants",
+        diff: "example",
+        risks: ["r1", "r2"],
+        findings: "none",
+        verification: "node --test",
+        verdict: "pass",
+        raw: "lens=contract/state invariants; diff=example; risks=r1, r2; findings=none; verification=node --test; verdict=pass",
+      },
+      {
+        cycle: 2,
+        total: 3,
+        lens: "auth/security/failure modes",
+        diff: "example",
+        risks: ["r1", "r2"],
+        findings: "none",
+        verification: "node --test",
+        verdict: "pass",
+        raw: "lens=auth/security/failure modes; diff=example; risks=r1, r2; findings=none; verification=node --test; verdict=pass",
+      },
+      {
+        cycle: 3,
+        total: 3,
+        lens: "tests/operability/performance",
+        diff: "example",
+        risks: ["r1", "r2"],
+        findings: "none",
+        verification: "node --test",
+        verdict: "pass",
+        raw: "lens=tests/operability/performance; diff=example; risks=r1, r2; findings=none; verification=node --test; verdict=pass",
+      },
+    ],
+    rollback_strategy: ["revert"],
+    security_surface: "coord-only",
+    synced_from_markdown_at: "2026-06-24T00:00:00.000Z",
+  };
+
+  const originalBoardPath = __testing.paths.BOARD_PATH;
+  const originalPlanPath = __testing.paths.PLAN_PATH;
+  const originalRecordsDir = __testing.paths.PLAN_RECORDS_DIR;
+  __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.PLAN_PATH = planPath;
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  try {
+    // (a) NORMAL ticket (no live_mcp): readiness has zero issues, and crucially
+    // no live_mcp_* code is ever introduced.
+    fs.writeFileSync(
+      path.join(recordsDir, "LMCP-1.json"),
+      JSON.stringify({ ...baseRecord, ticket_id: "LMCP-1" }, null, 2),
+      "utf8"
+    );
+    const normalIssues = __testing.collectReviewPlanReadinessIssues("LMCP-1", { ID: "LMCP-1", Repo: "X", Type: "feature" });
+    assert.deepEqual(normalIssues, []);
+    assert.equal(normalIssues.filter((issue) => issue.code.startsWith("live_mcp")).length, 0);
+
+    // (b) DECLARED live-mcp ticket missing required evidence: the same gate now
+    // lists the missing live-MCP items as blockers.
+    fs.writeFileSync(
+      path.join(recordsDir, "LMCP-2.json"),
+      JSON.stringify({
+        ...baseRecord,
+        ticket_id: "LMCP-2",
+        markdown_heading: "## LMCP-2 — 2026-06-24T00:00:00.000Z",
+        live_mcp: { operation_class: "read_sensitive", adapter: "db", operation: "q", environment: "prod", scope: "client=X" },
+      }, null, 2),
+      "utf8"
+    );
+    const liveIssues = __testing.collectReviewPlanReadinessIssues("LMCP-2", { ID: "LMCP-2", Repo: "X", Type: "feature" });
+    const liveCodes = liveIssues.map((issue) => issue.code);
+    // read_sensitive with no redaction and no receipt -> both required.
+    assert.ok(liveCodes.includes("live_mcp_redaction"));
+    assert.ok(liveCodes.includes("live_mcp_receipt"));
+
+    // (c) DECLARED live-mcp ticket with full evidence -> ready (no live_mcp codes).
+    fs.writeFileSync(
+      path.join(recordsDir, "LMCP-3.json"),
+      JSON.stringify({
+        ...baseRecord,
+        ticket_id: "LMCP-3",
+        markdown_heading: "## LMCP-3 — 2026-06-24T00:00:00.000Z",
+        live_mcp: {
+          operation_class: "read_sensitive",
+          adapter: "db",
+          operation: "q",
+          environment: "prod",
+          scope: "client=X",
+          redaction: "masked",
+          approval: "human-admin",
+          receipt_path: "coord/evidence/live-mcp/q.json",
+        },
+      }, null, 2),
+      "utf8"
+    );
+    const readyIssues = __testing.collectReviewPlanReadinessIssues("LMCP-3", { ID: "LMCP-3", Repo: "X", Type: "feature" });
+    assert.deepEqual(readyIssues, []);
+  } finally {
+    __testing.paths.BOARD_PATH = originalBoardPath;
+    __testing.paths.PLAN_PATH = originalPlanPath;
+    __testing.paths.PLAN_RECORDS_DIR = originalRecordsDir;
+  }
+});
+
 test("collectReviewPlanReadinessIssues allows bounded repair tickets to pass with three focused review cycles", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-review-plan-bounded-pass-"));
   const boardPath = path.join(tempDir, "tasks.json");
@@ -1398,4 +1545,228 @@ test("collectReviewPlanReadinessIssues rejects bounded repair profile when the r
     __testing.paths.PLAN_PATH = originalPlanPath;
     __testing.paths.PLAN_RECORDS_DIR = originalRecordsDir;
   }
+});
+
+// ===========================================================================
+// COORD-166: type:docs / chore LIGHT LANE — reduced plan-completeness for
+// reference/design docs, with a HARD carve-out for procedural-doc surfaces.
+// ===========================================================================
+
+function withGovernanceFixturePaths(fixture, fn) {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `ebmr-${fixture.prefix}-`));
+  const boardPath = path.join(tempDir, "tasks.json");
+  const planPath = path.join(tempDir, "PLAN.md");
+  const recordsDir = path.join(tempDir, "plans");
+  fs.mkdirSync(recordsDir, { recursive: true });
+  fs.writeFileSync(planPath, "", "utf8");
+  fs.writeFileSync(boardPath, JSON.stringify({
+    version: 1,
+    metadata: {},
+    sections: [],
+    review_findings: {},
+    pr_index: {},
+    landing_index: {},
+  }, null, 2), "utf8");
+  fs.writeFileSync(path.join(recordsDir, `${fixture.ticketId}.json`), JSON.stringify(fixture.record, null, 2), "utf8");
+
+  const original = {
+    BOARD_PATH: __testing.paths.BOARD_PATH,
+    PLAN_PATH: __testing.paths.PLAN_PATH,
+    PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+  };
+  __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.PLAN_PATH = planPath;
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  try {
+    return fn();
+  } finally {
+    __testing.paths.BOARD_PATH = original.BOARD_PATH;
+    __testing.paths.PLAN_PATH = original.PLAN_PATH;
+    __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;
+  }
+}
+
+// A minimal but VALID single self-review cycle (structured, non-shallow,
+// passing) — the floor the light lane still requires.
+const LIGHT_LANE_VALID_CYCLE = {
+  cycle: 1,
+  total: 1,
+  lens: "requirement closure",
+  diff: "git diff -- coord/docs/SOME_DESIGN.md",
+  risks: ["stale reference", "broken internal link"],
+  findings: "none",
+  verification: "node coord/board/board.js validate",
+  verdict: "pass",
+  raw: "lens=requirement closure; diff=git diff -- coord/docs/SOME_DESIGN.md; risks=stale reference, broken internal link; findings=none; verification=node coord/board/board.js validate; verdict=pass",
+};
+
+function lightLaneDocsRecord(ticketId, intendedFiles, overrides = {}) {
+  return {
+    schema_version: 1,
+    ticket_id: ticketId,
+    markdown_heading: `## ${ticketId} — 2026-06-24T00:00:00.000Z`,
+    startup_checklist: ["completed"],
+    traceability_gate: ["closing-gap"],
+    review_round: 1,
+    baseline_reproduction: ["Command: not-required", "Outcome: docs change"],
+    prior_findings: [],
+    intended_files: intendedFiles,
+    change_summary: ["Update reference/design documentation."],
+    verification_commands: ["node coord/board/board.js validate"],
+    critical_invariants: [],
+    requirement_closure: ["Ticket ask: refresh the design doc"],
+    feature_proof: [],
+    repo_gates: ["node coord/board/board.js validate"],
+    self_review_cycles: [LIGHT_LANE_VALID_CYCLE],
+    rollback_strategy: ["revert"],
+    security_surface: "no",
+    synced_from_markdown_at: "2026-06-24T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+test("COORD-166 isLightLaneEligible: docs ticket touching reference/design docs is light-lane eligible", () => {
+  const decision = __testing.isLightLaneEligible(
+    { Type: "docs" },
+    ["README.md", "CHANGELOG.md", "coord/docs/MEMORY_ARCHITECTURE.md"]
+  );
+  assert.equal(decision.eligible, true);
+  assert.match(decision.reason, /reference-doc/i);
+});
+
+test("COORD-166 isLightLaneEligible: chore touching only a reference doc is eligible", () => {
+  assert.equal(__testing.isLightLaneEligible({ Type: "chore" }, ["coord/docs/QUALITY_DIMENSIONS.md"]).eligible, true);
+});
+
+test("COORD-166 isLightLaneEligible: HARD carve-out — procedural-doc surfaces are NOT eligible", () => {
+  for (const procedural of [
+    "AGENTS.md",
+    "coord/AGENTS.md",
+    "CLAUDE.md",
+    "coord/GOVERNANCE.md",
+    ".claude/commands/code-writer.md",
+    "frontend/AGENTS.md",
+  ]) {
+    const decision = __testing.isLightLaneEligible({ Type: "docs" }, ["README.md", procedural]);
+    assert.equal(decision.eligible, false, `${procedural} must force the full lane`);
+    assert.match(decision.reason, /procedural/i);
+  }
+});
+
+test("COORD-166 isLightLaneEligible: non-docs/chore ticket is never light-lane eligible", () => {
+  for (const type of ["feature", "bug", "task", "spike", "refactor", "test"]) {
+    assert.equal(__testing.isLightLaneEligible({ Type: type }, ["README.md"]).eligible, false);
+  }
+});
+
+test("COORD-166 isLightLaneEligible: fails toward FULL lane when no changed paths are recorded", () => {
+  const decision = __testing.isLightLaneEligible({ Type: "docs" }, []);
+  assert.equal(decision.eligible, false);
+  assert.match(decision.reason, /no changed/i);
+});
+
+test("COORD-166 isProceduralDocPath matches behavior-defining surfaces and not plain reference docs", () => {
+  assert.equal(__testing.isProceduralDocPath("AGENTS.md"), true);
+  assert.equal(__testing.isProceduralDocPath("coord/AGENTS.md"), true);
+  assert.equal(__testing.isProceduralDocPath("CLAUDE.md"), true);
+  assert.equal(__testing.isProceduralDocPath("coord/GOVERNANCE.md"), true);
+  assert.equal(__testing.isProceduralDocPath(".claude/commands/planner.md"), true);
+  assert.equal(__testing.isProceduralDocPath("nested/.claude/x.md"), true);
+  assert.equal(__testing.isProceduralDocPath("README.md"), false);
+  assert.equal(__testing.isProceduralDocPath("CHANGELOG.md"), false);
+  assert.equal(__testing.isProceduralDocPath("coord/docs/MEMORY_ARCHITECTURE.md"), false);
+});
+
+test("COORD-166 (a) docs reference-doc ticket passes review readiness under the reduced light lane", () => {
+  const issues = withGovernanceFixturePaths({
+    prefix: "coord166-light-pass",
+    ticketId: "DOC-900",
+    record: lightLaneDocsRecord("DOC-900", ["README.md", "coord/docs/MEMORY_ARCHITECTURE.md", "CHANGELOG.md"]),
+  }, () => __testing.collectReviewPlanReadinessIssues("DOC-900", { ID: "DOC-900", Repo: "X", Type: "docs" }));
+  assert.deepEqual(issues, [], `light-lane docs ticket should have no blockers, got: ${JSON.stringify(issues)}`);
+});
+
+test("COORD-166 (b) docs ticket touching a procedural-doc surface is NOT eligible and requires the FULL lane", () => {
+  // Same reduced evidence as the passing light-lane case, but the intended
+  // files include GOVERNANCE.md / AGENTS.md / .claude — this MUST fall back to
+  // the full lane and therefore block on the missing full self-review ceremony.
+  for (const procedural of ["coord/GOVERNANCE.md", "coord/AGENTS.md", ".claude/commands/code-writer.md", "CLAUDE.md"]) {
+    const issues = withGovernanceFixturePaths({
+      prefix: "coord166-procedural-full",
+      ticketId: "DOC-901",
+      record: lightLaneDocsRecord("DOC-901", ["README.md", procedural]),
+    }, () => __testing.collectReviewPlanReadinessIssues("DOC-901", { ID: "DOC-901", Repo: "X", Type: "docs" }));
+    const codes = issues.map((i) => i.code);
+    assert.ok(
+      codes.includes("self_review_cycle_count"),
+      `procedural surface ${procedural} must require the full self-review ceremony; got codes ${JSON.stringify(codes)}`
+    );
+  }
+});
+
+test("COORD-166 (c) feature/code ticket is unaffected — full lane enforced exactly as before", () => {
+  const issues = withGovernanceFixturePaths({
+    prefix: "coord166-feature-unaffected",
+    ticketId: "IMP-902",
+    record: {
+      schema_version: 1,
+      ticket_id: "IMP-902",
+      markdown_heading: "## IMP-902 — 2026-06-24T00:00:00.000Z",
+      startup_checklist: ["completed"],
+      traceability_gate: ["verified"],
+      review_round: 1,
+      baseline_reproduction: ["Command: pytest -q", "Outcome: reproduced"],
+      prior_findings: [],
+      intended_files: ["services/widget.py"],
+      change_summary: ["Add widget."],
+      verification_commands: ["pytest -q"],
+      critical_invariants: [],
+      requirement_closure: [],
+      repo_gates: [],
+      self_review_cycles: [],
+      rollback_strategy: ["revert"],
+      security_surface: "yes",
+      synced_from_markdown_at: "2026-06-24T00:00:00.000Z",
+    },
+  }, () => __testing.collectReviewPlanReadinessIssues("IMP-902", { ID: "IMP-902", Repo: "B", Type: "feature" }));
+  // Byte-identical to the pre-existing full-lane "missing stack" expectation.
+  assert.deepEqual(
+    issues.map((issue) => issue.code),
+    ["critical_invariants", "repo_gates", "requirement_closure", "self_review_cycle_count"]
+  );
+});
+
+test("COORD-166 (d) the light lane never removes attribution/repo-gate — a docs ticket with NO repo gate still blocks", () => {
+  const issues = withGovernanceFixturePaths({
+    prefix: "coord166-light-keeps-gate",
+    ticketId: "DOC-903",
+    record: lightLaneDocsRecord("DOC-903", ["README.md", "coord/docs/SOME_DESIGN.md"], { repo_gates: [] }),
+  }, () => __testing.collectReviewPlanReadinessIssues("DOC-903", { ID: "DOC-903", Repo: "X", Type: "docs" }));
+  assert.ok(
+    issues.some((i) => i.code === "repo_gates"),
+    `light lane must still require a repo-gate equivalent; got ${JSON.stringify(issues.map((i) => i.code))}`
+  );
+});
+
+test("COORD-166 deriveGovernanceReadiness surfaces the active_lane decision in explain output", () => {
+  const lightRow = { ID: "DOC-904", Repo: "X", Type: "docs", Description: "doc" };
+  const lightReadiness = __testing.deriveGovernanceReadiness(
+    "DOC-904",
+    lightRow,
+    { metadata: {}, sections: [] },
+    null,
+    { startup_checklist: ["completed"], intended_files: ["README.md", "coord/docs/X.md"], repo_gates: ["node coord/board/board.js validate"], self_review_cycles: [LIGHT_LANE_VALID_CYCLE], governance: {} }
+  );
+  assert.equal(lightReadiness.active_lane.lane, "light");
+  assert.equal(lightReadiness.active_lane.light_lane_eligible, true);
+
+  const proceduralReadiness = __testing.deriveGovernanceReadiness(
+    "DOC-905",
+    { ID: "DOC-905", Repo: "X", Type: "docs", Description: "doc" },
+    { metadata: {}, sections: [] },
+    null,
+    { startup_checklist: ["completed"], intended_files: ["coord/GOVERNANCE.md"], governance: {} }
+  );
+  assert.equal(proceduralReadiness.active_lane.lane, "full");
+  assert.match(proceduralReadiness.active_lane.reason, /procedural/i);
 });

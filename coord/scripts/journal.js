@@ -453,6 +453,7 @@ module.exports = function createJournal(deps = {}) {
       cwd: coordDir,
       input: `${candidates.join("\n")}\n`,
       encoding: "utf8",
+      timeout: 5000,
     });
   }
 

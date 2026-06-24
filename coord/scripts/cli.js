@@ -61,6 +61,12 @@ const {
   printHelp,
   printInitiate,
   printNextId,
+  recallCommand,
+  signJournalCommand,
+  insightsCommand,
+  preworkCommand,
+  closeoutSummaryCommand,
+  learnedRuleCommand,
   rebindAgent,
   rebuildBoardFromJournal,
   recentEvents,
@@ -352,6 +358,86 @@ function dispatchCommand(command, args = []) {
       return precheck(args[0], parseFlags(args.slice(1)));
     case "context-pack":
       return contextPack(args[0], parseFlags(args.slice(1)));
+    case "recall": {
+      // COORD-141: `gov recall "<query>" [--role <role>] [--json]`. The query is
+      // every non-flag positional joined with spaces (so an unquoted multi-word
+      // query still works); --role / --json are parsed off the remaining flags.
+      const positional = [];
+      const flagArgs = [];
+      for (let i = 0; i < args.length; i += 1) {
+        const a = args[i];
+        if (a === "--json") {
+          flagArgs.push(a);
+        } else if (a === "--role") {
+          flagArgs.push(a, args[i + 1]);
+          i += 1;
+        } else if (String(a).startsWith("--")) {
+          flagArgs.push(a);
+        } else {
+          positional.push(a);
+        }
+      }
+      return recallCommand(positional.join(" "), parseFlags(flagArgs));
+    }
+    case "sign-journal": {
+      // COORD-146: `gov sign-journal sign|verify` — [Memory] cross-cutting batch
+      // signing for per-event NON-REPUDIATION (folded into the KMS roadmap). The
+      // leading positional is the subcommand. Flags are parsed inline (a self-
+      // contained surface, like `recall`): `sign [--out <file>] [--json]`,
+      // `verify <batch-file> [--event <hash>] [--json]`. Backward compatible /
+      // OPTIONAL: extends the hash-chain + chain-head attestation, never replaces.
+      const sub = args[0];
+      const rest = args.slice(1);
+      const opts = {};
+      const positional = [];
+      for (let i = 0; i < rest.length; i += 1) {
+        const a = rest[i];
+        if (a === "--json") {
+          opts.json = true;
+        } else if (a === "--out") {
+          requireValue(a, rest[i + 1]);
+          opts.out = rest[++i];
+        } else if (a === "--event") {
+          requireValue(a, rest[i + 1]);
+          opts.event = rest[++i];
+        } else if (a === "--file") {
+          requireValue(a, rest[i + 1]);
+          opts.file = rest[++i];
+        } else if (String(a).startsWith("--")) {
+          fail(`Unknown flag "${a}".`);
+        } else {
+          positional.push(a);
+        }
+      }
+      // For verify, the bundle/batch file may be supplied positionally.
+      if (!opts.file && positional.length > 0) {
+        opts.file = positional[0];
+      }
+      return signJournalCommand(sub, opts);
+    }
+    case "insights":
+      // COORD-147: `gov insights [--json]` — Strategic execution-insight reports
+      // (RECOMMENDS only; source-cited; mutates/gates nothing).
+      return insightsCommand(parseFlags(args));
+    case "prework":
+      // COORD-148: `gov prework <ticket> [--scope "<text>"] [--role <role>]
+      // [--json]` — [Memory] Solving pre-work context pack (RECOMMENDS only;
+      // source-cited; mutates/gates/auto-starts nothing). The optional leading
+      // positional is the ticket id; --scope adds free text.
+      return preworkCommand(optionalLeadingId(args), flagsAfterOptionalId(args));
+    case "closeout-summary":
+      // COORD-149: `gov closeout-summary <ticket> [--json]` — [Memory] Solving
+      // auto evidence-backed closeout summary (REPORTS only; source-cited;
+      // closes/gates/finalizes/mutates nothing — closeout stays governed by the
+      // normal finalize lane). The leading positional is the ticket id.
+      return closeoutSummaryCommand(args[0], parseFlags(args.slice(1)));
+    case "learned-rule":
+      // COORD-145: `gov learned-rule capture|list|promote` — governed procedural-
+      // memory promotion. ROUTES learned behavioral rules to the FULL reviewed
+      // lane (never edits a procedural file directly). The leading positional is
+      // the subcommand; remaining args flow through verbatim to the engine CLI
+      // (which parses --rule / --target / --citation / --rationale / --json).
+      return learnedRuleCommand(args[0], args.slice(1));
     case "tier":
       return tierCommand(args[0]);
     case "plan-waves":
@@ -506,7 +592,7 @@ const VALUE_FLAGS = Object.freeze({
   "--proof-path": "proofPath", "--proof-symbol": "proofSymbol",
   "--proof-text": "proofText", "--proof-route": "proofRoute",
   "--command": "commandText", "--audit": "audit", "--coverage": "coverage",
-  "--answer": "answer", "--security": "security", "--startup": "startup",
+  "--answer": "answer", "--security": "security", "--live-mcp": "liveMcp", "--startup": "startup",
   "--traceability": "traceability", "--closeout-method": "closeoutMethod",
   "--closeout-base-ref": "closeoutBaseRef", "--provenance-note": "provenanceNote",
   "--review-profile": "reviewProfile", "--source-commit": "sourceCommit",
@@ -520,6 +606,8 @@ const VALUE_FLAGS = Object.freeze({
   "--class": "operationClass", "--operation-class": "operationClass",
   "--operation": "operation", "--adapter": "adapter", "--scope": "scope",
   "--redaction": "redaction", "--approval": "approval", "--cleanup": "cleanup",
+  // COORD-141: `gov recall --role <role>` opts into ENT-012 RBAC redaction.
+  "--role": "role",
   "--environment": "environment", "--env": "environment",
   "--artifact": "artifact", "--running-artifact": "runningArtifact",
   "--build-source": "buildSource", "--deploy-id": "deployId",

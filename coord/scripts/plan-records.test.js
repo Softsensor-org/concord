@@ -136,6 +136,54 @@ test("renderPlanRecordBlock rebuilds a compatible PLAN.md block from canonical s
   assert.equal(reparsed.self_review_cycles.length, 1);
 });
 
+// COORD-153: the optional live_mcp declaration round-trips through the markdown
+// compatibility block as a single JSON-encoded line (mirroring bootstrap_risk),
+// and is omitted entirely when absent so non-live-mcp records are unchanged.
+test("renderPlanRecordBlock round-trips the optional live_mcp declaration and omits it when absent", () => {
+  const baseRecord = {
+    schema_version: 1,
+    ticket_id: "LMCP-RT",
+    markdown_heading: "## LMCP-RT — 2026-06-24T00:00:00.000Z",
+    startup_checklist: ["completed"],
+    traceability_gate: ["exempt"],
+    review_round: 1,
+    baseline_reproduction: [],
+    prior_findings: [],
+    intended_files: ["coord/scripts/example.js"],
+    change_summary: ["example"],
+    verification_commands: ["node --test"],
+    critical_invariants: ["x"],
+    requirement_closure: ["Ticket ask: x", "Implemented: x", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    repo_gates: ["not-required"],
+    self_review_cycles: [],
+    rollback_strategy: ["revert"],
+    security_surface: "no",
+  };
+
+  // Absent -> no "- Live-MCP:" section, reparses without the field.
+  const plainBlock = __testing.renderPlanRecordBlock(baseRecord);
+  assert.equal(/- Live-MCP:/.test(plainBlock), false);
+  assert.equal(__testing.parsePlanBlockToRecord("LMCP-RT", plainBlock).live_mcp, undefined);
+
+  // Present -> serialized + reparsed identically.
+  const liveMcp = {
+    adapter: "db",
+    operation: "q",
+    operation_class: "read_sensitive",
+    environment: "prod",
+    scope: "client=X",
+    redaction: "masked",
+    approval: "human-admin",
+    receipt_path: "coord/evidence/live-mcp/q.json",
+    cleanup_required: false,
+    product_impact: true,
+  };
+  const block = __testing.renderPlanRecordBlock({ ...baseRecord, live_mcp: liveMcp });
+  assert.ok(/- Live-MCP:/.test(block));
+  const reparsed = __testing.parsePlanBlockToRecord("LMCP-RT", block);
+  assert.deepEqual(reparsed.live_mcp, liveMcp);
+});
+
 
 // ---------------------------------------------------------------------------
 // COORD-090: relocated from governance.test.js (plan-records module behavior:
@@ -1744,4 +1792,159 @@ test("COORD-014: a freshly-started ticket with start-RESOLVED startup/traceabili
     false,
     "a non-resolved, non-placeholder startup_checklist value is authored content",
   );
+});
+
+// ---------------------------------------------------------------------------
+// COORD-159: optional server-bootstrap / startup / backfill / derived-data risk
+// fields on plan records. Advisory metadata only — existing plan records without
+// these fields must remain valid and round-trip byte-identically, and populated
+// fields must survive render -> parse without data loss.
+// ---------------------------------------------------------------------------
+
+// assertValidPlanRecord is not exported on __testing; applyPlanUpdateOptionsToRecord
+// normalizes and runs the same assertValidPlanRecord validation at the end, so it
+// is the available seam to exercise plan-record validation (including bootstrap_risk)
+// from tests.
+function coord159AssertValid(record) {
+  return __testing.applyPlanUpdateOptionsToRecord(record, {});
+}
+
+function coord159BaseRecord(ticketId = "COORD-159") {
+  return {
+    schema_version: 1,
+    ticket_id: ticketId,
+    markdown_heading: `## ${ticketId} — 2026-06-24T00:00:00.000Z`,
+    startup_checklist: ["completed"],
+    traceability_gate: ["closing-gap"],
+    governance: {
+      expected_closeout: { method: "no_pr", base_ref: "main", provenance_note: null },
+      review_profile: "standard",
+      ticket_local_repairs: [],
+    },
+    review_round: 1,
+    baseline_reproduction: ["Command: not-required", "Outcome: not-required"],
+    prior_findings: [],
+    intended_files: ["coord/scripts/plan-records.js"],
+    change_summary: ["Add bootstrap risk fields."],
+    verification_commands: ["node --test coord/scripts/plan-records.test.js"],
+    critical_invariants: ["Existing plan records must remain valid."],
+    requirement_closure: [
+      "Ticket ask: bootstrap risk fields",
+      "Implemented: bootstrap risk fields",
+      "Not implemented: none",
+      "Deferred to: none",
+      "Closeout verdict: complete",
+    ],
+    feature_proof: ["path:coord/scripts/plan-records.js"],
+    repo_gates: ["not-required"],
+    self_review_cycles: [],
+    rollback_strategy: ["revert"],
+    security_surface: "no",
+    synced_from_markdown_at: "2026-06-24T00:00:00.000Z",
+  };
+}
+
+const COORD159_FULL_BOOTSTRAP_RISK = {
+  startup_work_class: "server_bootstrap_job",
+  runs_at_boot: false,
+  shares_app_process: false,
+  resource_envelope: {
+    memory_mb: 1024,
+    timeout_s: 900,
+    expected_rows: 100000,
+    batch_size: 500,
+    db_pool_impact: "one read cursor, one writer",
+  },
+  idempotency_strategy: "lease + checkpoint + completion marker",
+  checkpoint_strategy: "row-id watermark every batch",
+  verification_signal: "job receipt + marker row + metric",
+  rollback_or_disable: "feature flag off by default; rerun from checkpoint",
+  observability_requirements: ["logs", "task status", "metrics", "failure reason"],
+  data_access_shape: "paginated",
+};
+
+test("COORD-159: a plan record with all bootstrap risk fields round-trips through render/parse", () => {
+  const record = coord159BaseRecord();
+  record.bootstrap_risk = JSON.parse(JSON.stringify(COORD159_FULL_BOOTSTRAP_RISK));
+
+  // Schema/validation accepts the populated optional object.
+  assert.doesNotThrow(() => coord159AssertValid(record));
+
+  const block = __testing.renderPlanRecordBlock(record, record.ticket_id);
+  assert.match(block, /- Bootstrap risk:/);
+  const reparsed = __testing.parsePlanBlockToRecord(record.ticket_id, block);
+  assert.deepEqual(reparsed.bootstrap_risk, COORD159_FULL_BOOTSTRAP_RISK);
+  assert.doesNotThrow(() => coord159AssertValid(reparsed));
+});
+
+test("COORD-159: a legacy plan record with no bootstrap risk stays valid and round-trips byte-identically", () => {
+  const record = coord159BaseRecord("COORD-700");
+  assert.equal("bootstrap_risk" in record, false);
+  assert.doesNotThrow(() => coord159AssertValid(record));
+
+  const block = __testing.renderPlanRecordBlock(record, record.ticket_id);
+  // The optional section must be entirely absent for legacy records.
+  assert.doesNotMatch(block, /Bootstrap risk/);
+
+  const reparsed = __testing.parsePlanBlockToRecord(record.ticket_id, block);
+  assert.equal("bootstrap_risk" in reparsed, false, "absent field must not be materialized on reparse");
+
+  // Render is stable across a second pass (markdown round-trip is byte-identical).
+  const reparsedForRender = { ...reparsed, markdown_heading: record.markdown_heading };
+  const block2 = __testing.renderPlanRecordBlock(reparsedForRender, record.ticket_id);
+  assert.equal(block2, block, "legacy plan record markdown must round-trip byte-identically");
+});
+
+test("COORD-159: a partial subset of bootstrap risk fields validates and round-trips", () => {
+  const record = coord159BaseRecord("COORD-701");
+  record.bootstrap_risk = {
+    startup_work_class: "startup_work",
+    runs_at_boot: true,
+    data_access_shape: "single-row lookup",
+  };
+  assert.doesNotThrow(() => coord159AssertValid(record));
+
+  const block = __testing.renderPlanRecordBlock(record, record.ticket_id);
+  const reparsed = __testing.parsePlanBlockToRecord(record.ticket_id, block);
+  assert.deepEqual(reparsed.bootstrap_risk, record.bootstrap_risk);
+
+  // An empty resource_envelope subset is also accepted.
+  const record2 = coord159BaseRecord("COORD-702");
+  record2.bootstrap_risk = { resource_envelope: { memory_mb: 256 } };
+  assert.doesNotThrow(() => coord159AssertValid(record2));
+});
+
+test("COORD-159: malformed bootstrap risk field types are rejected", () => {
+  const badWorkClass = coord159BaseRecord("COORD-703");
+  badWorkClass.bootstrap_risk = { startup_work_class: "not_a_class" };
+  assert.throws(() => coord159AssertValid(badWorkClass), GovernanceError);
+
+  const badBoolean = coord159BaseRecord("COORD-704");
+  badBoolean.bootstrap_risk = { runs_at_boot: "yes" };
+  assert.throws(() => coord159AssertValid(badBoolean), GovernanceError);
+
+  const badEnvelope = coord159BaseRecord("COORD-705");
+  badEnvelope.bootstrap_risk = { resource_envelope: { memory_mb: "lots" } };
+  assert.throws(() => coord159AssertValid(badEnvelope), GovernanceError);
+
+  const badObservability = coord159BaseRecord("COORD-706");
+  badObservability.bootstrap_risk = { observability_requirements: "logs" };
+  assert.throws(() => coord159AssertValid(badObservability), GovernanceError);
+
+  const unknownField = coord159BaseRecord("COORD-707");
+  unknownField.bootstrap_risk = { not_a_field: true };
+  assert.throws(() => coord159AssertValid(unknownField), GovernanceError);
+
+  const notAnObject = coord159BaseRecord("COORD-708");
+  notAnObject.bootstrap_risk = ["server_bootstrap_job"];
+  assert.throws(() => coord159AssertValid(notAnObject), GovernanceError);
+});
+
+test("COORD-159: the sample plan fixture carries a valid populated bootstrap risk example", () => {
+  const fixture = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "__fixtures__", "plan-record.sample.json"), "utf8")
+  );
+  assert.ok(fixture.bootstrap_risk, "sample fixture must include a populated bootstrap_risk example");
+  assert.equal(fixture.bootstrap_risk.startup_work_class, "server_bootstrap_job");
+  assert.doesNotThrow(() => coord159AssertValid(fixture));
 });

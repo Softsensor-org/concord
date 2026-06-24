@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "ticket_id": "PRW-200",
+  "requirement_closure": [
+    "Ticket ask: build email digest notification delivery",
+    "Implemented: email digest smtp delivery",
+    "Not implemented: none",
+    "Deferred to: none",
+    "Closeout verdict: complete"
+  ],
+  "critical_invariants": [],
+  "self_review_cycles": [
+    {
+      "cycle": 1,
+      "total": 1,
+      "lens": "Tests and operability",
+      "diff": "added idempotency keys to the smtp retry loop",
+      "risks": ["smtp retry double-sends digest emails"],
+      "findings": "the email digest smtp retry loop double-sent notifications on transient failures; added idempotency keys before submit",
+      "verification": "node --test",
+      "verdict": "fail",
+      "raw": "lens=Tests and operability; risks=smtp retry double-sends digest emails; findings=email digest double-sent; verdict=fail"
+    }
+  ]
+}

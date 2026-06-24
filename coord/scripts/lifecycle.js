@@ -290,6 +290,11 @@ Token-economics (TOKEN_ECONOMICS.md):
       (deterministic, hash-stable per-ticket context pack: STABLE shared-preamble pointers (place in a prompt-cache prefix)
        + TICKET-SPECIFIC files/acceptance-criteria/spec-sections and prior feature-proofs+invariants intersecting the ticket files.
        Degrades gracefully when there are no prior proofs.)
+  coord/scripts/gov insights [--json]
+      (COORD-147 strategic execution-insight report mined from REAL history (journal + board + plan records):
+       repeated-failure-themes, architectural-debt-by-subsystem, churn-instead-of-value, gate/review/recovery health BY REPO.
+       RECOMMENDS ONLY — mutates/gates nothing; every claim is source-cited (ticket ids + event_hash + chain_head); thin signal flagged.
+       Deterministic (identical history -> identical report). --json emits the structured report; default emits the readable text report.)
   coord/scripts/gov tier <ticket-id>
       (resolves the ticket tier (explicit board Tier column, else derived from Pri, else standard), the suggested model class,
        and the tier-appropriate required evidence depth. Tier policy is data-driven in coord/product/tier-policy.json.
@@ -1770,6 +1775,9 @@ const {
   gitRefContainsLiteral,
   hasOnlyScaffoldSelfReviewCycles,
   inferRequiredReviewRound,
+  isLightLaneEligible,
+  isProceduralDocPath,
+  resolveTicketLightLane,
   isMeaningfulText,
   normalizeFeatureProofEntryForTicket,
   normalizeSelfReviewCycleLine,
@@ -4384,7 +4392,27 @@ function runSyncCommand(options = {}) {
   // Step 2: detect which canonical paths (and only those) now differ from
   // git HEAD. The path set is small and explicit — no ambient sweep.
   const repoRoot = COORD_DIR;
+  // COORD-196: the standalone `gov sync` surface deliberately EXCLUDES the
+  // canonical board json (board/tasks.json) — see canonicalSyncablePaths():
+  // on a non-terminal mutation the row is mid-flight (todo/doing/review) and
+  // committing it would freeze an in-progress transition. But terminal
+  // lifecycle boundaries (finalize/land/mark-done/finish) flip the row to its
+  // FINAL `done` state (status + Owner + landing_index) BEFORE this sync runs,
+  // so on those boundaries the board json MUST join the same scope-limited sync
+  // commit — otherwise the canonical source of truth reads not-done until a
+  // manual corrective commit. `includeBoardJson` is the opt-in seam those
+  // terminal callers (autoSyncAfterLifecycle) set; standalone `gov sync` never
+  // sets it and keeps its frozen surface.
   const paths = canonicalSyncablePaths();
+  if (options.includeBoardJson === true) {
+    const boardRel = path
+      .relative(COORD_DIR, DEFAULT_PATHS.boardPath)
+      .split(path.sep)
+      .join("/");
+    if (!paths.includes(boardRel)) {
+      paths.push(boardRel);
+    }
+  }
   const delta = computeSyncDelta(repoRoot, paths);
   const quiet = options.quiet === true;
   const emit = (payload) => {
@@ -4505,7 +4533,14 @@ function autoSyncAfterLifecycle({ verb, ticketId, options = {}, syncFn, pushFn }
   const sync = typeof syncFn === "function" ? syncFn : runSyncCommand;
   const message = buildAutoSyncMessage(verb, ticketId);
   try {
-    const result = sync({ commit: message, quiet: true });
+    // COORD-196: every caller of this helper is a TERMINAL lifecycle boundary
+    // (finalize/land/close/finish/mark-done/finish-ticket) — by the time we run,
+    // the board row has already been flipped to its final `done` state on disk.
+    // Include the canonical board json (board/tasks.json) in the same
+    // scope-limited sync commit so the row transition lands ATOMICALLY with the
+    // derived-artifact sync; without this the source of truth reads not-done
+    // until a manual corrective commit (observed across the X-lane finalizes).
+    const result = sync({ commit: message, quiet: true, includeBoardJson: true });
     // ENT-001: opt-in push only when something was actually committed, so a
     // no-op sync doesn't push an unrelated already-tracked tip.
     let push = { pushed: false, reason: "not-requested" };
@@ -4909,7 +4944,321 @@ function fail(message) {
   throw new GovernanceError(message);
 }
 
+// COORD-141: `gov recall "<query>"` — Phase 1 deterministic memory recall.
+// Thin CLI wrapper over the standalone recall engine (coord/scripts/recall.js):
+// id/path -> BM25 -> provenance weighting, source-cited, permission-aware via
+// ENT-012 (best-effort; community-cut safe). The query is the leading
+// positional arg(s); --role <role> opts into RBAC redaction; --json emits the
+// raw §7 contract. The engine is required lazily so the rest of lifecycle.js
+// stays independent of the memory layer.
+function recallCommand(query, options = {}) {
+  const recallEngine = require("./recall.js");
+  const text = query == null ? "" : String(query);
+  if (!text.trim()) {
+    fail('recall requires a query: coord/scripts/gov recall "<query>" [--role <role>] [--json]');
+  }
+  const result = recallEngine.recall(text, { role: options.role || null });
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return result;
+  }
+  console.log(`Q: ${result.query}`);
+  console.log("");
+  console.log(result.answer);
+  console.log("");
+  console.log(`confidence=${result.confidence} staleness=${result.staleness}`);
+  console.log("");
+  console.log("Sources:");
+  for (const s of result.sources) {
+    console.log(
+      `  - [${s.type}] ${s.id || ""} ${s.path || ""} ` +
+        `verified=${s.verified} event_hash=${(s.event_hash || "").slice(0, 12)} ` +
+        `chain_head=${(s.chain_head || "").slice(0, 12)}`
+    );
+  }
+  return result;
+}
+
+// COORD-147: `gov insights` — Strategic execution-insight reports. Thin CLI
+// wrapper over the standalone generator (coord/scripts/insight-reports.js). It
+// RECOMMENDS only: a pure read over the journal + board + plan records that
+// mutates/gates nothing and emits only source-cited claims. --json emits the
+// structured report; default emits the readable text report. The engine is
+// required lazily so the rest of lifecycle.js stays independent of the memory
+// layer.
+function insightsCommand(options = {}) {
+  const engine = require("./insight-reports.js");
+  const report = engine.generateReport({ now: new Date().toISOString() });
+  if (options.json) {
+    console.log(JSON.stringify(report, null, 2));
+    return report;
+  }
+  console.log(engine.renderText(report));
+  return report;
+}
+
+// COORD-148: `gov prework <ticket> [--scope "<text>"] [--role <role>] [--json]`
+// — the [Memory] Solving pre-work CONTEXT PACK. Thin CLI wrapper over the
+// standalone generator (coord/scripts/prework-pack.js). It RECOMMENDS only: a
+// pure read over governed memory (journal + board + plan records + decision
+// records + indexed files) that surfaces, BEFORE an agent starts, the relevant
+// prior work + already-failed approaches in the touched area + a recommended
+// safe decomposition / test selection — every item source-cited, mutating and
+// gating nothing. Complements `gov explain` start-readiness (advisory input the
+// agent reads at work-start). Composes recall.js / decision-extractor.js /
+// insight-reports.js; required lazily so lifecycle.js stays independent of the
+// memory layer. The leading positional is the ticket id (optional when --scope
+// supplies a free-text area); --scope adds free text; --role opts into ENT-012
+// redaction; --json emits the structured pack.
+function preworkCommand(ticketId, options = {}) {
+  const engine = require("./prework-pack.js");
+  const scope = options.scope || null;
+  if ((ticketId == null || String(ticketId).trim() === "") && !scope) {
+    fail(
+      'prework requires a ticket id or --scope: coord/scripts/gov prework <ticket-id> [--scope "<text>"] [--json]'
+    );
+  }
+  const pack = engine.buildPack({
+    ticketId: ticketId && String(ticketId).trim() ? String(ticketId).trim() : null,
+    scope,
+    role: options.role || null,
+    now: new Date().toISOString(),
+  });
+  if (options.json) {
+    console.log(JSON.stringify(pack, null, 2));
+    return pack;
+  }
+  console.log(engine.renderText(pack));
+  return pack;
+}
+
+// COORD-149: `gov closeout-summary <ticket> [--json]` — the [Memory] Solving
+// auto evidence-backed CLOSEOUT SUMMARY. Thin CLI wrapper over the standalone
+// generator (coord/scripts/closeout-summary.js). It REPORTS only: a pure read
+// over the closing/landed ticket's REAL artifacts (its plan record, journal
+// events, board row, and any anchoring conformance attestation) that produces a
+// source-cited summary — what was asked + delivered, the evidence trail
+// (repo-gate results, review cycles, source commit(s)/landing record,
+// attestation), and key decisions + deferrals — every claim pinning event_hash +
+// chain_head. It does NOT close, gate, finalize, or mutate the ticket: closeout
+// stays governed by the normal finalize lane; this is an evidence artifact, not an
+// authority. Composes decision-extractor.js + insight-reports.js; required lazily
+// so lifecycle.js stays independent of the memory layer. --json emits the
+// structured summary; default emits the readable text summary.
+function closeoutSummaryCommand(ticketId, options = {}) {
+  const engine = require("./closeout-summary.js");
+  if (ticketId == null || String(ticketId).trim() === "") {
+    fail(
+      "closeout-summary requires a ticket id: coord/scripts/gov closeout-summary <ticket-id> [--json]"
+    );
+  }
+  const summary = engine.buildSummary({
+    ticketId: String(ticketId).trim(),
+    now: new Date().toISOString(),
+  });
+  if (options.json) {
+    console.log(JSON.stringify(summary, null, 2));
+    return summary;
+  }
+  console.log(engine.renderText(summary));
+  return summary;
+}
+
+// COORD-145: `gov learned-rule capture|list|promote` — governed procedural-
+// memory promotion. Thin CLI wrapper over the standalone engine
+// (coord/scripts/learned-rule-promotion.js). It RECOMMENDS / ROUTES only: a
+// learned behavioral rule is CAPTURED as a candidate (the only write is an
+// append to the derived, gitignored candidates queue), then PROMOTED into a
+// governed-change SPEC routed to the FULL reviewed lane (asserted via the
+// COORD-166 isProceduralDocPath). It NEVER edits a procedural file — the
+// procedural surface (.claude/, AGENTS.md, CLAUDE.md, GOVERNANCE.md) changes
+// ONLY through the reviewed/landed lifecycle. Every candidate carries §7
+// citations (no uncited rule). The engine is required lazily so the rest of
+// lifecycle.js stays independent of the memory layer.
+function learnedRuleCommand(sub, args = []) {
+  const engine = require("./learned-rule-promotion.js");
+  if (!sub || !["capture", "list", "promote"].includes(sub)) {
+    fail(
+      'learned-rule requires a subcommand: capture | list | promote. ' +
+        'e.g. coord/scripts/gov learned-rule promote <PRC-id> [--json]'
+    );
+  }
+  return engine.runCli([sub, ...args]);
+}
+
+// COORD-146: `gov sign-journal sign|verify` — [Memory] cross-cutting per-event /
+// batch signing for memory NON-REPUDIATION (folded into the KMS / key-custody
+// roadmap). Thin CLI wrapper over the standalone engine
+// (coord/scripts/journal-signing.js). It EXTENDS — never replaces — the existing
+// hash-chain + single chain-head attestation: it ed25519-signs ONE Merkle batch
+// over the per-event leaf hashes (the same canonical event_hash the journal +
+// decision-extractor already cite), binding the merkle_root to the journal
+// chain_head, so any individual event's non-repudiation is provable via a compact
+// Merkle inclusion proof WITHOUT a signature per line. Backward compatible:
+// read-only over the journal, writes only its own signed-batch artifact under the
+// gitignored coord/.runtime/ tree, never mutates events, never weakens
+// verifyGovernanceChain. The signing key SOURCE is pluggable (a key provider) so
+// an adopter backs it with a KMS/HSM; coord ships only the local-key default
+// (private key gitignored) and does NOT reimplement a KMS (explicit non-goal).
+//
+//   sign   [--out <file>]              — sign the current journal as one batch,
+//                                        write the signed-batch artifact (default
+//                                        under coord/.runtime/journal-signatures/).
+//   verify <batch-file> [--event <hash>] — verify the batch (signature + merkle_root
+//                                        rebuild + chain-head bind to the live
+//                                        journal); with --event, ALSO prove that
+//                                        event's per-event non-repudiation
+//                                        (signature valid + Merkle inclusion).
+// The engine is required lazily so the rest of lifecycle.js stays independent of
+// the memory layer.
+function signJournalCommand(sub, options = {}) {
+  const engine = require("./journal-signing.js");
+  if (!sub || !["sign", "verify"].includes(sub)) {
+    fail(
+      "sign-journal requires a subcommand: sign | verify. " +
+        'e.g. coord/scripts/gov sign-journal sign [--out <file>] | ' +
+        "coord/scripts/gov sign-journal verify <batch-file> [--event <hash>]"
+    );
+  }
+
+  const journalPath = state.GOVERNANCE_EVENT_LOG_PATH;
+  const events = engine.readJournalEvents(journalPath);
+  const liveChainHead = engine.chainHeadOf(events);
+  const liveEventHashes = events.map((e) => engine.eventHashFromLine(e.line));
+
+  if (sub === "sign") {
+    const { batch, tree } = engine.buildSignedBatch({
+      events,
+      coordDir: COORD_DIR,
+    });
+    const dir = path.join(state.RUNTIME_DIR, "journal-signatures");
+    fs.mkdirSync(dir, { recursive: true });
+    const tag = (batch.subject.chain_head || "no-chain-head").slice(0, 16);
+    const outPath =
+      options.out || path.join(dir, `${tag}.${batch.subject_digest.slice(0, 12)}.json`);
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    fs.writeFileSync(outPath, JSON.stringify(batch, null, 2) + "\n");
+    const result = {
+      status: "signed",
+      path: outPath,
+      event_count: batch.subject.event_count,
+      merkle_root: batch.subject.merkle_root,
+      chain_head: batch.subject.chain_head,
+      subject_digest: batch.subject_digest,
+      // The root must round-trip from any leaf's inclusion proof.
+      merkle_levels: tree.levels.length,
+    };
+    if (options.json === true) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log("Journal batch signed:");
+      console.log(`  path:        ${result.path}`);
+      console.log(`  events:      ${result.event_count}`);
+      console.log(`  merkle_root: ${result.merkle_root}`);
+      console.log(`  chain_head:  ${result.chain_head || "(empty journal)"}`);
+      console.log(`  digest:      ${result.subject_digest}`);
+    }
+    return result;
+  }
+
+  // verify
+  const batchFile = options.file;
+  if (!batchFile) {
+    fail(
+      "sign-journal verify requires a batch file: " +
+        "coord/scripts/gov sign-journal verify <batch-file> [--event <hash>]"
+    );
+  }
+  if (!fs.existsSync(batchFile)) {
+    fail(`Signed-batch file not found: ${batchFile}`);
+  }
+  let batch = null;
+  try {
+    batch = JSON.parse(fs.readFileSync(batchFile, "utf8"));
+  } catch (error) {
+    fail(`Signed-batch file is not valid JSON: ${batchFile} (${error.message})`);
+  }
+
+  const report = engine.verifySignedBatch(batch, {
+    liveChainHead,
+    liveEventHashes,
+  });
+
+  // Optional per-event non-repudiation proof.
+  let eventReport = null;
+  if (options.event) {
+    const targetHash = String(options.event);
+    const index = (Array.isArray(batch.event_hashes) ? batch.event_hashes : []).indexOf(
+      targetHash
+    );
+    if (index < 0) {
+      eventReport = {
+        ok: false,
+        event_hash: targetHash,
+        included: false,
+        problems: [
+          { code: "event_not_in_batch", detail: "event hash is not among the batch event_hashes" },
+        ],
+      };
+    } else {
+      const tree = engine.buildMerkleTree(batch.event_hashes);
+      const proof = engine.buildInclusionProof(tree, index);
+      eventReport = engine.verifyEventInclusion(batch, targetHash, proof);
+    }
+  }
+
+  const result = {
+    status: report.ok ? "valid" : report.verdict,
+    verdict: report.verdict,
+    batch_ok: report.ok,
+    signature_valid: report.signature_valid,
+    merkle_root_matches: report.merkle_root_matches,
+    chain_head_matches: report.chain_head_matches,
+    event_count: report.event_count,
+    problems: report.problems,
+    event_inclusion: eventReport,
+  };
+  if (options.json === true) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    console.log(`Journal batch verification: ${report.ok ? "VALID" : report.verdict.toUpperCase()}`);
+    console.log(`  signature valid:    ${report.signature_valid}`);
+    console.log(`  merkle_root match:  ${report.merkle_root_matches}`);
+    console.log(`  chain_head bind:    ${report.chain_head_matches}`);
+    console.log(`  events:             ${report.event_count}`);
+    if (report.problems.length > 0) {
+      console.log(`  problems (${report.problems.length}):`);
+      for (const p of report.problems) {
+        console.log(`    - ${p.code}: ${p.detail}`);
+      }
+    }
+    if (eventReport) {
+      console.log(`  event ${String(options.event).slice(0, 12)} non-repudiation: ${eventReport.ok ? "PROVEN" : "FAILED"}`);
+      console.log(`    included under signed root: ${eventReport.included}`);
+      if (eventReport.problems && eventReport.problems.length > 0) {
+        for (const p of eventReport.problems) {
+          console.log(`    - ${p.code}: ${p.detail}`);
+        }
+      }
+    }
+  }
+  if (!report.ok || (eventReport && !eventReport.ok)) {
+    fail(
+      `Journal batch verification FAILED: verdict=${report.verdict}` +
+        (eventReport && !eventReport.ok ? ", event non-repudiation could not be proven" : "") +
+        ". The signed batch was tampered with, is stale, or the event is not provably included."
+    );
+  }
+  return result;
+}
+
 const commands = {
+  recallCommand,
+  signJournalCommand,
+  insightsCommand,
+  preworkCommand,
+  closeoutSummaryCommand,
+  learnedRuleCommand,
   addFeatureProofCommand,
   addFinding,
   addRepoGateCommand,
@@ -5050,6 +5399,9 @@ module.exports = {
     buildDoctorResolutionGuidance,
     buildExplainQuestionsGuidance,
     deriveGovernanceReadiness,
+    isLightLaneEligible,
+    isProceduralDocPath,
+    resolveTicketLightLane,
     classifyQuestionOperationalType,
     classifyQuestionSeverity,
     classifyQuestionAgingBucket,

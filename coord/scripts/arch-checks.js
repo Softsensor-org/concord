@@ -119,7 +119,25 @@ const DEFAULT_CONFIG = Object.freeze({
     }),
     // Duplicate code: a run of >= minLines normalized identical lines appearing
     // in >= 2 places is flagged. minLines kept high enough to avoid trivia.
-    duplication: Object.freeze({ minLines: 12, severity: "warn" }),
+    //
+    // COORD-136 (Component-library convergence). The DEFAULT gate above is the
+    // intra-repo signal and is INTENTIONALLY UNCHANGED (minLines 12, warn,
+    // single corpus). The `extractionTuned` block is a SEPARATE, opt-in profile
+    // — it does NOT alter the default thresholds. It is consumed only when a
+    // caller explicitly selects the extraction-tuned mode (via
+    // extractionTunedConfig() / runCrossRepoDuplication()), so existing
+    // consumers of the default gate are unaffected. It is tuned to apply
+    // EXTRACTION PRESSURE toward the shared package (packages/shared): a LOWER
+    // minLines (more sensitive, catches smaller drifting copies) and it runs
+    // over a CROSS-REPO corpus, flagging only duplication that crosses repo/dir
+    // boundaries (e.g. frontend/ vs coord-ui vs backend/). Run in ratchet mode
+    // (COORD-126) it is frictionless on pre-existing divergence and fails only
+    // on NEW cross-repo duplication.
+    duplication: Object.freeze({
+      minLines: 12,
+      severity: "warn",
+      extractionTuned: Object.freeze({ minLines: 6, severity: "warn", crossRepoOnly: true }),
+    }),
     // No-new-monolith: the hard "monolith" budget (above the size warn budget).
     // Absolute-budget form; growth-over-baseline is layered on top when a
     // baseline map is supplied to runChecks (optional).
@@ -610,6 +628,86 @@ function checkDuplication({ files, minLines, severity }) {
   return findings;
 }
 
+// --- extraction-tuned cross-repo duplication (COORD-136) -------------------
+// The Component-library-convergence dimension. This is NOT a change to the
+// default duplication gate — it is a SEPARATE, opt-in mode that pressures
+// extraction toward the shared package (packages/shared). Two knobs differ from
+// the default:
+//   1. a LOWER minLines (more sensitive — catches smaller drifting copies that
+//      the default minLines:12 misses); and
+//   2. a CROSS-REPO corpus: files carry a `repo` tag and a duplicate is only
+//      flagged when the duplicated block ALSO appears in a DIFFERENT repo (when
+//      `crossRepoOnly` is set). Intra-repo duplication is the default gate's
+//      job; this mode targets divergence ACROSS repo/dir boundaries
+//      (frontend/ vs coord-ui vs backend/) — the signal that logic should live
+//      in the shared package instead of being copied per repo.
+//
+// `files`: [{ file, source, repo }]. `repo` defaults to the leading path
+// segment when omitted, so a corpus of repo-prefixed paths (e.g. "frontend/…",
+// "backend/…") is grouped automatically. Reuses checkDuplication's region
+// detection verbatim (so overlap-merge + per-hash canonical attribution are
+// identical), then — in crossRepoOnly mode — keeps only findings whose region
+// and its canonical copy live in DIFFERENT repos. The message is augmented with
+// a "[cross-repo: A->B]" tag so the finding is self-explaining; the stable key
+// (the region hash) is unchanged, so ratchet classification works as-is.
+function repoOf(entry) {
+  if (entry && typeof entry.repo === "string" && entry.repo.length > 0) return entry.repo;
+  const norm = normalizeFindingFilePath(entry && entry.file);
+  const seg = norm.split("/")[0];
+  return seg || norm;
+}
+
+function checkCrossRepoDuplication({ files, minLines, severity, crossRepoOnly = true }) {
+  const fileList = Array.isArray(files) ? files : [];
+  // Map normalized file path -> repo so we can resolve the repo of both the
+  // flagged region and its canonical copy (parsed from the finding message).
+  const repoByFile = new Map();
+  for (const entry of fileList) {
+    repoByFile.set(normalizeFindingFilePath(entry.file), repoOf(entry));
+  }
+  const raw = checkDuplication({
+    files: fileList.map((e) => ({ file: e.file, source: e.source })),
+    minLines,
+    severity,
+  });
+  const findings = [];
+  for (const f of raw) {
+    const dupRepo = repoByFile.get(normalizeFindingFilePath(f.file));
+    // Parse the canonical "<file>:<line>" out of the message to find its repo.
+    const m = /duplicates\s+(.+?):(\d+)\s+\(hash/.exec(String(f.message || ""));
+    const canonicalFile = m ? normalizeFindingFilePath(m[1]) : null;
+    const canonicalRepo = canonicalFile != null ? repoByFile.get(canonicalFile) : undefined;
+    const crosses = dupRepo != null && canonicalRepo != null && dupRepo !== canonicalRepo;
+    if (crossRepoOnly && !crosses) continue;
+    findings.push(Object.assign({}, f, {
+      message: crosses
+        ? `${f.message} [cross-repo: ${canonicalRepo}->${dupRepo}] — extract to packages/shared`
+        : f.message,
+    }));
+  }
+  return findings;
+}
+
+// Build a config whose duplication gate is the EXTRACTION-TUNED profile (lower
+// minLines + cross-repo mode) instead of the default. Everything else inherits
+// from DEFAULT_CONFIG / the supplied override. This is how a caller opts into
+// the tuned mode WITHOUT mutating the default duplication thresholds. The tuned
+// numbers come from DEFAULT_CONFIG.checks.duplication.extractionTuned (override-
+// able). Pair with archGate:"ratchet" (COORD-126) for the frictionless on-ramp.
+function extractionTunedConfig(override = {}) {
+  const base = mergeConfig(override);
+  const tuned = (DEFAULT_CONFIG.checks.duplication.extractionTuned) || {};
+  const o = override && typeof override === "object" ? override : {};
+  const oTuned = (o.checks && o.checks.duplication && o.checks.duplication.extractionTuned) || {};
+  const effective = Object.assign({}, tuned, oTuned);
+  base.checks.duplication = Object.assign({}, base.checks.duplication, {
+    minLines: effective.minLines,
+    severity: effective.severity,
+    extractionTuned: Object.assign({}, tuned, oTuned),
+  });
+  return base;
+}
+
 // --- hardcoding check (config-seam leaks) ----------------------------------
 // Conservative, WARNING-FIRST detector for magic literals that should be
 // config/constants. THREE sub-signals (each independently gateable):
@@ -1078,6 +1176,34 @@ function runChecks({ files = [], config, baseline, referenceFiles, baselineFindi
   return { findings, summary };
 }
 
+// ---------------------------------------------------------------------------
+// runCrossRepoDuplication (COORD-136): the top-level entry point for the
+// extraction-tuned, cross-repo duplication mode. PURE (no fs). Takes a corpus
+// of repo-tagged files spanning MULTIPLE repos (each { file, source, repo }),
+// runs ONLY the duplication dimension under the extraction-tuned profile (lower
+// minLines + crossRepoOnly), and returns { findings, summary }. The verdict is
+// ratchet-aware exactly like runChecks: pass `baselineFindings` (the same
+// finding set computed on the base ref's corpus) and `archGate:"ratchet"` to
+// fail only on NEW cross-repo duplication (COORD-126). This is the function a
+// gate.sh step / quality-scan would call to enforce convergence pressure; it
+// does NOT touch the default arch gate.
+function runCrossRepoDuplication({ files = [], config, baselineFindings } = {}) {
+  const cfg = extractionTunedConfig(config);
+  const dup = cfg.checks.duplication;
+  const fileList = Array.isArray(files) ? files : [];
+  const findings = dup.severity === "off" ? [] : checkCrossRepoDuplication({
+    files: fileList,
+    minLines: dup.minLines,
+    severity: dup.severity,
+    crossRepoOnly: dup.extractionTuned ? dup.extractionTuned.crossRepoOnly !== false : true,
+  });
+  const ratchet = cfg.archGate === "ratchet" && Array.isArray(baselineFindings);
+  const summary = ratchet
+    ? summarizeRatchet(findings, cfg, fileList.length, baselineFindings)
+    : summarizeFindings(findings, cfg, fileList.length);
+  return { findings, summary };
+}
+
 // Classify findings into an overall gate result. WARNING-FIRST: the overall
 // result is "fail" ONLY if at least one finding has severity "fail"; otherwise
 // "warn" if there are any findings; otherwise "pass". Per-check counts are also
@@ -1330,6 +1456,11 @@ module.exports = {
   extractImports,
   checkImportBoundaries,
   checkDuplication,
+  // extraction-tuned cross-repo duplication (COORD-136 — component-library convergence):
+  repoOf,
+  checkCrossRepoDuplication,
+  extractionTunedConfig,
+  runCrossRepoDuplication,
   extractLiterals,
   checkHardcodedLiterals,
   checkRepeatedStrings,

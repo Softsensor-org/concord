@@ -21,9 +21,12 @@ sync by `coord/scripts/coord-ui-nav-readme-sync.test.js`.
 - `/runtime` — runtime snapshot, locks, and live-session state
 - `/pipeline` — landing and PR pipeline
 - `/urs` — configured requirements document
+- `/configuration` — read-only config-as-code view (current config + the governed command to change each setting)
 - `/screens` — screen/requirement index and unlinked-requirement worklist
 - `/traceability` — closure and feature-proof traceability
 - `/evidence` — exported evidence bundles and conformance artifacts
+- `/live-mcp` — read-only live-MCP cockpit (per-ticket adapter, environment, operation class, approval/redaction/receipt/cleanup/promotion status + unresolved closeout blockers; viewer sees redacted summaries, operator/admin see operational detail)
+- `/bootstrap-risk` — read-only server-bootstrap / backfill risk surface (per ticket: declared work class, runs-at-boot/app-process flags, resource envelope, idempotency/checkpoint strategy, verification signal, rollback/disable, observability, data-access shape from the COORD-159 plan field; the COORD-161 job-completion receipt; and unresolved COORD-160/162 warnings. Server readiness and job completion are shown as separate states — a ready server is not a finished job. Viewer sees redacted summaries; operator/admin see operational detail. Never runs a job.)
 - `/cost` — token-economics / cost view
 - `/issues` — review findings
 - `/waivers` — waiver and follow-up exception index

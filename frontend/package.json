@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "description": "Frontend reference skeleton (FE-001). Zero-dependency Node; replace with your stack.",
   "type": "commonjs",

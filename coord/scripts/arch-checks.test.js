@@ -7,7 +7,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const { spawnSync } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -28,6 +28,9 @@ const {
   extractImports,
   checkImportBoundaries,
   checkDuplication,
+  checkCrossRepoDuplication,
+  extractionTunedConfig,
+  runCrossRepoDuplication,
   extractLiterals,
   checkHardcodedLiterals,
   checkRepeatedStrings,
@@ -42,6 +45,34 @@ const {
 } = arch;
 
 const CLI = path.join(__dirname, "arch-checks.js");
+
+function runProc(command, args, options = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env || process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    const timeoutMs = options.timeoutMs || 15000;
+    child.stdout.on("data", (d) => { stdout += d; });
+    child.stderr.on("data", (d) => { stderr += d; });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { child.kill("SIGKILL"); } catch { /* already gone */ }
+    }, timeoutMs);
+    child.on("close", (status, signal) => {
+      clearTimeout(timer);
+      resolve({ status, signal, stdout, stderr, timedOut });
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      resolve({ status: null, signal: null, stdout, stderr: `${stderr}\n${error.message}`, timedOut });
+    });
+  });
+}
 
 function mkLines(n, makeLine = (i) => `const v${i} = fn(${i});`) {
   return Array.from({ length: n }, (_, i) => makeLine(i)).join("\n");
@@ -445,6 +476,98 @@ test("duplication check passes distinct files", () => {
   assert.deepEqual(findings, []);
 });
 
+// --- extraction-tuned cross-repo duplication (COORD-136) -------------------
+
+test("extraction-tuned mode flags a small cross-repo copy that the DEFAULT gate (minLines 12) misses", () => {
+  // An 8-line block duplicated across two repos. Below the default minLines:12
+  // (so the default gate sees nothing) but above the tuned minLines:6.
+  const block = mkLines(8, (i) => `const dup${i} = compute(${i});`);
+  const files = [
+    { file: "frontend/util.js", source: block, repo: "frontend" },
+    { file: "backend/util.js", source: block, repo: "backend" },
+  ];
+  // DEFAULT gate: minLines 12 → does not see the 8-line block.
+  const defaultFindings = checkDuplication({ files, minLines: 12, severity: "warn" });
+  assert.equal(defaultFindings.length, 0, "default gate (minLines 12) must miss the small cross-repo copy");
+  // Extraction-tuned: lower minLines → catches it AND tags it cross-repo.
+  const tuned = checkCrossRepoDuplication({ files, minLines: 6, severity: "warn" });
+  assert.equal(tuned.length, 1, "tuned gate (minLines 6) flags the small cross-repo copy");
+  assert.equal(tuned[0].check, "duplication");
+  assert.match(tuned[0].message, /\[cross-repo: backend->frontend\]|\[cross-repo: frontend->backend\]/);
+  assert.match(tuned[0].message, /packages\/shared/);
+});
+
+test("crossRepoOnly mode ignores INTRA-repo duplication (that is the default gate's job)", () => {
+  const block = mkLines(8, (i) => `const local${i} = thing(${i});`);
+  // Both copies in the SAME repo → cross-repo mode must not flag it.
+  const files = [
+    { file: "frontend/a.js", source: block, repo: "frontend" },
+    { file: "frontend/b.js", source: block, repo: "frontend" },
+  ];
+  const tuned = checkCrossRepoDuplication({ files, minLines: 6, severity: "warn", crossRepoOnly: true });
+  assert.deepEqual(tuned, [], "intra-repo duplication is out of scope for the cross-repo extraction gate");
+});
+
+test("repo is inferred from the leading path segment when no repo tag is given", () => {
+  const block = mkLines(8, (i) => `const seg${i} = pick(${i});`);
+  const files = [
+    { file: "frontend/x.js", source: block },
+    { file: "coord-ui/x.js", source: block },
+  ];
+  const tuned = checkCrossRepoDuplication({ files, minLines: 6, severity: "warn" });
+  assert.equal(tuned.length, 1, "leading-segment repo inference detects the cross-repo copy");
+  assert.match(tuned[0].message, /cross-repo: (frontend->coord-ui|coord-ui->frontend)/);
+});
+
+test("extractionTunedConfig swaps in the tuned duplication profile WITHOUT touching the default", () => {
+  const tunedCfg = extractionTunedConfig();
+  assert.equal(tunedCfg.checks.duplication.minLines, 6, "tuned config uses the lower minLines");
+  // The shipped DEFAULT_CONFIG is untouched.
+  assert.equal(DEFAULT_CONFIG.checks.duplication.minLines, 12, "default duplication minLines is unchanged");
+  assert.equal(DEFAULT_CONFIG.checks.duplication.extractionTuned.minLines, 6);
+  // mergeConfig (the default path) still yields the default thresholds.
+  assert.equal(mergeConfig().checks.duplication.minLines, 12, "default merge path is unperturbed");
+});
+
+test("runCrossRepoDuplication ratchet: pre-existing cross-repo dup passes, NEW cross-repo dup fails", () => {
+  const blockOld = mkLines(8, (i) => `const old${i} = legacy(${i});`);
+  const blockNew = mkLines(8, (i) => `const fresh${i} = added(${i});`);
+  // The base (pre-existing) corpus already has the OLD block duplicated across repos.
+  const baseFiles = [
+    { file: "frontend/legacy.js", source: blockOld, repo: "frontend" },
+    { file: "backend/legacy.js", source: blockOld, repo: "backend" },
+  ];
+  // Compute the baseline findings under the SAME tuned mode.
+  const baseRun = runCrossRepoDuplication({ files: baseFiles });
+  assert.equal(baseRun.findings.length, 1, "baseline has one pre-existing cross-repo dup");
+
+  // Current corpus: the SAME pre-existing dup is still there → must NOT fail.
+  const ratchetCfg = { archGate: "ratchet" };
+  const preExistingOnly = runCrossRepoDuplication({
+    files: baseFiles,
+    config: ratchetCfg,
+    baselineFindings: baseRun.findings,
+  });
+  assert.equal(preExistingOnly.summary.mode, "ratchet");
+  assert.equal(preExistingOnly.summary.result, "pass", "pre-existing cross-repo divergence is frictionless");
+  assert.equal(preExistingOnly.summary.new, 0);
+  assert.equal(preExistingOnly.summary.preExisting, 1);
+
+  // Now a NEW cross-repo dup is added (escalated to fail severity) → must fail.
+  const currentFiles = baseFiles.concat([
+    { file: "frontend/fresh.js", source: blockNew, repo: "frontend" },
+    { file: "coord-ui/fresh.js", source: blockNew, repo: "coord-ui" },
+  ]);
+  const withNew = runCrossRepoDuplication({
+    files: currentFiles,
+    config: { archGate: "ratchet", checks: { duplication: { severity: "fail", extractionTuned: { minLines: 6, severity: "fail", crossRepoOnly: true } } } },
+    baselineFindings: baseRun.findings,
+  });
+  assert.equal(withNew.summary.result, "fail", "NEW cross-repo divergence is pressured (fails the ratchet)");
+  assert.equal(withNew.summary.new, 1, "exactly the newly-added cross-repo dup is new");
+  assert.ok(withNew.summary.preExisting >= 1, "the old dup is still reported as pre-existing");
+});
+
 // --- runChecks / summarize / warning-first ---------------------------------
 
 test("runChecks returns the COORD-083 finding shape", () => {
@@ -530,13 +653,23 @@ test("scanRepo ignores .test.js files by default", () => {
 
 // --- CLI: warning-first non-blocking + escalation ---------------------------
 
+function runArchCli(argv) {
+  const stdout = [];
+  const stderr = [];
+  const status = runCli(argv, {
+    stdout: { write: (s) => stdout.push(s) },
+    stderr: { write: (s) => stderr.push(s) },
+  });
+  return { status, stdout: stdout.join(""), stderr: stderr.join("") };
+}
+
 test("CLI classify is WARNING-FIRST: exits 0 even with warn findings", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arch-cli-warn-"));
   try {
     fs.writeFileSync(path.join(dir, "big.js"), mkLines(60));
     const cfg = path.join(dir, "cfg.json");
     fs.writeFileSync(cfg, JSON.stringify({ checks: { size: { maxLoc: 10 } } }));
-    const r = spawnSync("node", [CLI, "classify", "--root", dir, "--config", cfg], { encoding: "utf8" });
+    const r = runArchCli(["classify", "--root", dir, "--config", cfg]);
     assert.equal(r.status, 0, "warn must not block");
     assert.match(r.stdout, /^arch: warn /);
   } finally {
@@ -550,7 +683,7 @@ test("CLI classify exits 1 when a check is escalated to fail", () => {
     fs.writeFileSync(path.join(dir, "big.js"), mkLines(60));
     const cfg = path.join(dir, "cfg.json");
     fs.writeFileSync(cfg, JSON.stringify({ checks: { size: { maxLoc: 10, severity: "fail" } } }));
-    const r = spawnSync("node", [CLI, "classify", "--root", dir, "--config", cfg], { encoding: "utf8" });
+    const r = runArchCli(["classify", "--root", dir, "--config", cfg]);
     assert.equal(r.status, 1, "escalated fail must block");
     assert.match(r.stdout, /^arch: fail /);
   } finally {
@@ -562,7 +695,7 @@ test("CLI classify on a clean dir exits 0 with pass", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arch-cli-clean-"));
   try {
     fs.writeFileSync(path.join(dir, "ok.js"), "const x = 1;\nmodule.exports = { x };\n");
-    const r = spawnSync("node", [CLI, "classify", "--root", dir], { encoding: "utf8" });
+    const r = runArchCli(["classify", "--root", dir]);
     assert.equal(r.status, 0);
     assert.match(r.stdout, /^arch: pass /);
   } finally {
@@ -571,23 +704,25 @@ test("CLI classify on a clean dir exits 0 with pass", () => {
 });
 
 test("CLI rejects an unknown subcommand with usage (exit 2)", () => {
-  const r = spawnSync("node", [CLI, "bogus"], { encoding: "utf8" });
+  const r = runArchCli(["bogus"]);
   assert.equal(r.status, 2);
   assert.match(r.stderr, /usage:/);
 });
 
 // --- template gate.sh integration ------------------------------------------
 
-test("backend/frontend gate.sh run the arch step on full but NOT on default", () => {
+test("backend/frontend gate.sh run the arch step on full but NOT on default", async () => {
   for (const repo of ["backend", "frontend"]) {
     const gate = path.join(__dirname, "..", "..", repo, "scripts", "gate.sh");
     if (!fs.existsSync(gate)) continue;
-    const full = spawnSync("bash", [gate, "full"], { encoding: "utf8" });
+    const full = await runProc("bash", [gate, "full"], { timeoutMs: 120000 });
+    assert.equal(full.timedOut, false, full.stderr);
     assert.equal(full.status, 0, `${repo} full lane should pass (warning-first): ${full.stderr}`);
     assert.match(full.stdout, /architecture\/complexity guardrails \(arch-checks\)/);
     assert.match(full.stdout, /arch: (pass|warn) /, `${repo} full should emit an arch summary, non-failing by default`);
 
-    const def = spawnSync("bash", [gate, "default"], { encoding: "utf8" });
+    const def = await runProc("bash", [gate, "default"], { timeoutMs: 120000 });
+    assert.equal(def.timedOut, false, def.stderr);
     assert.equal(def.status, 0, `${repo} default lane should pass`);
     assert.ok(!/arch-checks/.test(def.stdout), `${repo} default lane must NOT run the arch scan`);
   }

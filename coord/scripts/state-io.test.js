@@ -98,6 +98,94 @@ test("ENT-001/COORD-105/COORD-108: canonicalSyncablePaths is the rendered+PLAN s
   }
 });
 
+test("COORD-196: a terminal-boundary sync commit (board json in the path set) ATOMICALLY commits the row transition — no residual uncommitted board change; a sync WITHOUT it leaves the row dirty (the pre-fix defect)", () => {
+  const { execFileSync } = require("node:child_process");
+
+  // Helper: stand up a temp git repo with a committed board json, then mutate
+  // the board row (simulating markDone flipping Status -> done before the
+  // terminal-boundary sync runs) and exercise commitCanonicalDelta over the
+  // delta computed for a given pathspec set.
+  const withRepo = (fn) => {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "coord196-finalize-"));
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: repoRoot });
+      execFileSync("git", ["config", "user.email", "t@t"], { cwd: repoRoot });
+      execFileSync("git", ["config", "user.name", "t"], { cwd: repoRoot });
+      // A committed board json + a committed rendered artifact (the derived
+      // surface the sync always covers).
+      fs.mkdirSync(path.join(repoRoot, "board"), { recursive: true });
+      fs.mkdirSync(path.join(repoRoot, "rendered"), { recursive: true });
+      const boardRel = "board/tasks.json";
+      const renderedRel = "rendered/TASKS.md";
+      fs.writeFileSync(
+        path.join(repoRoot, boardRel),
+        JSON.stringify({ row: { Status: "doing", Owner: "agent" } }, null, 2) + "\n",
+        "utf8"
+      );
+      fs.writeFileSync(path.join(repoRoot, renderedRel), "doing\n", "utf8");
+      execFileSync("git", ["add", boardRel, renderedRel], { cwd: repoRoot });
+      execFileSync("git", ["commit", "-qm", "base"], { cwd: repoRoot });
+
+      // Terminal boundary: the row was already flipped to done on disk (status
+      // + Owner + landing_index) and the derived artifact re-rendered.
+      fs.writeFileSync(
+        path.join(repoRoot, boardRel),
+        JSON.stringify(
+          { row: { Status: "done", Owner: "agent", landing_index: { idx: 1 } } },
+          null,
+          2
+        ) + "\n",
+        "utf8"
+      );
+      fs.writeFileSync(path.join(repoRoot, renderedRel), "done\n", "utf8");
+
+      const residualBoardDirty = () =>
+        execFileSync("git", ["status", "--porcelain=v1", "--", boardRel], {
+          cwd: repoRoot,
+          encoding: "utf8",
+        }).trim() !== "";
+
+      fn({ repoRoot, boardRel, renderedRel, residualBoardDirty });
+    } finally {
+      fs.rmSync(repoRoot, { recursive: true, force: true });
+    }
+  };
+
+  // WITH the board json in the path set (the COORD-196 terminal-boundary path):
+  // the row transition is committed atomically and NO residual board change
+  // remains in the working tree.
+  withRepo(({ repoRoot, boardRel, renderedRel, residualBoardDirty }) => {
+    const delta = __testing.computeSyncDelta(repoRoot, [renderedRel, boardRel]);
+    assert.ok(
+      delta.includes(boardRel),
+      "terminal-boundary delta must include the canonical board json"
+    );
+    __testing.commitCanonicalDelta(repoRoot, "chore: finalize sync", delta);
+    assert.equal(
+      residualBoardDirty(),
+      false,
+      "after the terminal-boundary sync commit the board row must be committed atomically with NO residual uncommitted change"
+    );
+  });
+
+  // WITHOUT the board json (the standalone `gov sync` / pre-fix behavior): the
+  // derived artifact is committed but the canonical board row stays DIRTY —
+  // this is exactly the defect COORD-196 fixes, asserted as a negative.
+  withRepo(({ repoRoot, boardRel, renderedRel, residualBoardDirty }) => {
+    const delta = __testing.computeSyncDelta(repoRoot, [renderedRel]);
+    assert.ok(
+      !delta.includes(boardRel),
+      "a sync without the board pathspec must not pick up the board json"
+    );
+    __testing.commitCanonicalDelta(repoRoot, "chore: derived-only sync", delta);
+    assert.equal(
+      residualBoardDirty(),
+      true,
+      "without the board json in the path set the row transition is left uncommitted (the pre-fix residual)"
+    );
+  });
+});
+
 test("ENT-001: computeSyncDelta matches DIRECTORY pathspecs against their untracked contents (not just collapsed `?? dir/`)", () => {
   const { execFileSync } = require("node:child_process");
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ent001-delta-"));

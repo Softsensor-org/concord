@@ -1,6 +1,6 @@
 {
   "name": "concord",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Softsensor Concord — governed multi-agent coordination engine (the coord/ scaffold, driven by the gov CLI). Zero runtime dependencies.",
   "license": "Apache-2.0",
   "private": true,

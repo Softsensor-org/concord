@@ -73,7 +73,7 @@ function checkDeployGateContract(workflowText) {
 module.exports = { checkDeployGateContract };
 
 test("template deploy workflow exists and consumes the canonical gate contract", (t) => {
-  // The public release cut ships ONLY public-ci.yml as its workflow (COORD-121):
+  // Generated release cuts ship no GitHub Actions CI by default:
   // deploy.yml.template is donor-only infrastructure and is dropped from the cut.
   // When it is absent (i.e. running inside a published cut), this contract has
   // nothing to assert — the donor suite still enforces it. Skip rather than fail.

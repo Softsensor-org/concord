@@ -1,0 +1,15 @@
+{"ts":"2026-01-01T00:00:00.000Z","command":"start","ticket":"INS-001","before_status":"todo","after_status":"doing","result":"succeeded","prev_event_hash":"genesis"}
+{"ts":"2026-01-01T00:30:00.000Z","command":"update-plan","ticket":"INS-001","before_status":"doing","after_status":"doing","result":"succeeded","prev_event_hash":"a1"}
+{"ts":"2026-01-01T01:00:00.000Z","command":"move-review","ticket":"INS-001","before_status":"doing","after_status":"review","result":"succeeded","prev_event_hash":"a2"}
+{"ts":"2026-01-01T01:10:00.000Z","command":"recover","ticket":"INS-001","before_status":"review","after_status":"doing","result":"restored","details":{"reason":"board tasks.json reset to todo during rebase; reconcile doing-state to the live runtime"},"prev_event_hash":"a3"}
+{"ts":"2026-01-01T01:20:00.000Z","command":"manual-reconcile","ticket":"INS-001","result":"succeeded","details":{"reason":"concurrent governed append crossed the prev_event_hash chain; chain-repair applied"},"prev_event_hash":"a4"}
+{"ts":"2026-01-01T01:30:00.000Z","command":"move-review","ticket":"INS-001","before_status":"doing","after_status":"review","result":"succeeded","prev_event_hash":"a5"}
+{"ts":"2026-01-01T03:30:00.000Z","command":"mark-done","ticket":"INS-001","before_status":"review","after_status":"done","result":"succeeded","prev_event_hash":"a6"}
+{"ts":"2026-01-02T00:00:00.000Z","command":"start","ticket":"INS-002","before_status":"todo","after_status":"doing","result":"succeeded","prev_event_hash":"a7"}
+{"ts":"2026-01-02T01:00:00.000Z","command":"move-review","ticket":"INS-002","before_status":"doing","after_status":"review","result":"succeeded","prev_event_hash":"a8"}
+{"ts":"2026-01-02T02:00:00.000Z","command":"mark-done","ticket":"INS-002","before_status":"review","after_status":"done","result":"succeeded","prev_event_hash":"a9"}
+{"ts":"2026-01-03T00:00:00.000Z","command":"manual-reconcile","ticket":"INS-003","result":"succeeded","details":{"reason":"board tasks.json doing-state reset during merge-conflict resolution while rebasing"},"prev_event_hash":"a10"}
+{"ts":"2026-01-04T00:00:00.000Z","command":"start","ticket":"INS-004","before_status":"todo","after_status":"doing","result":"succeeded","prev_event_hash":"a11"}
+{"ts":"2026-01-04T01:00:00.000Z","command":"move-review","ticket":"INS-004","before_status":"doing","after_status":"review","result":"succeeded","prev_event_hash":"a12"}
+{"ts":"2026-01-04T01:30:00.000Z","command":"mark-done","ticket":"INS-004","before_status":"review","after_status":"done","result":"succeeded","prev_event_hash":"a13"}
+{"ts":"2026-01-05T00:00:00.000Z","command":"doctor-fix","ticket":"INS-005","result":"repaired","details":{"reason":"removed orphan worktree lock for INS-005"},"prev_event_hash":"a14"}

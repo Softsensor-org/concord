@@ -21,7 +21,28 @@ agents.json
 agent_sessions.json
 locks/*.lock
 locks/
-memory/
+# COORD-140: coord/memory/ holds DERIVED, REBUILDABLE memory artifacts
+# (MEMORY_ARCHITECTURE.md §6.1). The GENERATED output is gitignored — it is
+# regenerated deterministically by `decision-extractor.js --rebuild`. But the
+# committed substrate (the eval benchmark + the .gitkeep) stays tracked. So
+# ignore the derived files explicitly rather than the whole directory.
+memory/decisions.ndjson
+memory/index.json
+memory/summaries/
+memory/insights/
+memory/embeddings/
+# COORD-143: the Phase-3 graph-link index (memory-graph.js --rebuild) is a
+# DERIVED, REBUILDABLE artifact like decisions.ndjson — built from the board +
+# decision records, holding no authority. Gitignored; only the generator +
+# fixtures + tests are committed.
+memory/graph/
+memory/recall-cache/
+# COORD-145: captured procedural-rule candidates are a derived, append-only
+# CAPTURE queue (MEMORY_ARCHITECTURE.md §3 procedural layer). They hold no
+# authority — promotion only ROUTES a candidate to the governed submit/review/
+# land lane (it never writes a procedural file). Gitignored like every other
+# coord/memory/ artifact: rebuildable input, not committed truth.
+memory/procedural-candidates.ndjson
 
 # Gate artifacts are runtime output of `gov gate` / the repo gate.sh runners
 # (coverage reports + the COORD-080 complete gate artifact JSON). Generated, not

@@ -2,7 +2,7 @@
 
 **You've got Claude Code, Codex, and Cursor working across your repos — and they collide.** Branches stomped, half-finished work with no owner, flaky gates you can't trust, and no honest answer to *"which agent changed this, and was it reviewed?"*
 
-**Concord is the coordination + governance layer for multi-agent development.** A shared, audited board where a fleet of AI agents work *without* colliding: per-ticket worktrees + lifecycle locks, evidence-gated review, and a tamper-evident journal of who did what.
+**Concord is the coordination + governance layer for multi-agent development.** A shared, audited board where a fleet of AI agents work *without* colliding: per-ticket worktrees + lifecycle locks, track-specific proof harnesses, evidence-gated review, and a tamper-evident journal of who did what.
 
 **See it in 2 minutes:** `npm run demo` (in `frontend/apps/coord-ui`) → open `localhost:3002` — a live cockpit of agents coordinating on a real board, with the full audit trail.
 
@@ -52,7 +52,7 @@ The `coord/` directory includes stub templates for product, architecture, and do
 
 ## Agent Skills (`.claude/commands/`)
 
-The template includes 19 slash-command skills for Claude Code (and adaptable for other agents):
+The template includes 27 slash-command skills for Claude Code (and adaptable for other agents):
 
 ### Governance & Workflow
 | Skill | Command | Purpose |
@@ -84,6 +84,30 @@ The template includes 19 slash-command skills for Claude Code (and adaptable for
 | Review | `/review <ticket>` | Self or cross-agent review (`--codex`, `--gemini`) |
 | Land | `/land <ticket>` | Merge after a separate review |
 | Resume | `/resume <ticket>` | Same-owner session handoff for an in-progress ticket |
+
+### Track Skills (multi-track governance)
+
+Beyond code, Concord uses **track-specific governed harnesses**: each work type
+gets the right setup, proof artifact, gate-proc, review policy, and closeout
+contract. Code work proves tests/contracts; content proves links/SEO/preview;
+infra proves deployment safety; live-MCP work proves scoped, redacted receipts;
+bootstrap/backfill work proves resource, idempotency, and runtime-success
+evidence; data products prove data contracts, row-count reconciliation, and
+lineage. The lifecycle and audit journal stay common. See the track profiles
+under `coord/product/` (e.g. `CONTENT_SITE_GOVERNANCE_PROFILE.md`,
+`MULTI_TRACK_GOVERNANCE_PROFILE.md`, `DATA_ANALYTICS_TRACK.md`,
+`PRODUCT_ENGINEERING_TRACK.md`).
+
+| Skill | Command | Track | Purpose |
+|-------|---------|-------|---------|
+| Content Edit | `/content-edit <page>` | Marketing | Plain-English content change, gated by the content gate-proc |
+| SEO Check | `/seo-check [scope]` | Marketing | Run the content gate locally (HTML validity, broken links, SEO) |
+| Publish | `/publish <change>` | Marketing | Gate, submit, and ship a content change |
+| Data Pipeline | `/data-pipeline run\|certify` | Data & analytics | Run and certify a pipeline against its data contract |
+| Data Contract | `/data-contract <output>` | Data & analytics | Author or check a per-output data contract (DQ gates) |
+| Analytics Query | `/analytics-query` | Product-eng | Bounded production-MCP read with a governed receipt |
+| Insight Analyst | `/insight-analyst [scope]` | Product-eng | Interpret receipted findings and route fixes |
+| Live-MCP Policy | `/live-mcp-policy` | Product-eng | Show a live operation's class, scope, and approval requirement |
 
 ### Skill Workflow
 
@@ -134,7 +158,7 @@ Pre-configured with codeTree, Sentry, and Datadog:
 
 | Server | Purpose | Config needed? |
 |--------|---------|----------------|
-| **governance** | 30 typed governance tools — ticket lifecycle without shelling out | No — works out of the box |
+| **governance** | typed governance tools — ticket lifecycle + runtime-evidence receipts, without shelling out (receipt-writing tools are mutation-gated; read-only checks stay open) | No — works out of the box |
 | **codeTree** | AST-level codebase exploration — 25x token reduction for navigation | No — works out of the box |
 | **Sentry** | Error tracking, issue search, release monitoring | Yes — auth token + org + project |
 | **Datadog** | Metrics, logs, APM, dashboard queries | Yes — API key + app key |
@@ -178,6 +202,12 @@ packaged `coord` CLI:
   engine-upgrade automation that re-pins, verifies, and rolls back on failure)
   all ship today. The packaged-installer / managed-upgrade gap is closed; see
   [QUICKSTART.md](./QUICKSTART.md) to get started.
+- **Runtime evidence (`gov` receipts)** — governed, journaled receipts for
+  *live/runtime* operations: production-MCP reads, bootstrap/backfill jobs, and
+  deployments, with `gov verify` / `gov falsify` and deploy-identity checks.
+  Receipt-writing is mutation-gated and real receipts are gitignored
+  (`coord/evidence/**`), so they never ship. This extends the tamper-evident
+  audit trail from code work to deploy/production operations.
 
 A few things remain intentionally out of scope for the Community edition:
 

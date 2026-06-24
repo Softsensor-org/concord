@@ -746,8 +746,14 @@ test("rebindAgent --fresh works when there is no prior binding (GOV-013)", () =>
 
 test("rebindAgent --fresh fails closed when the provider pool is exhausted (GOV-013)", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-rebind-exhausted-"));
+  const runtimeDir = path.join(tempDir, ".runtime");
   const agentsPath = path.join(tempDir, "agents.json");
   const sessionsPath = path.join(tempDir, "agent_sessions.json");
+  const eventLogPath = path.join(runtimeDir, "governance-events.ndjson");
+  const snapshotPath = path.join(runtimeDir, "governance-latest-snapshot.json");
+  const snapshotsDir = path.join(runtimeDir, "governance-snapshots");
+  fs.mkdirSync(snapshotsDir, { recursive: true });
+  fs.writeFileSync(eventLogPath, "", "utf8");
   const now = new Date().toISOString();
   // Only one anthropic handle registered, and it is already bound to the caller.
   fs.writeFileSync(agentsPath, JSON.stringify([
@@ -772,6 +778,9 @@ test("rebindAgent --fresh fails closed when the provider pool is exhausted (GOV-
     AGENTS_PATH: __testing.paths.AGENTS_PATH,
     AGENT_SESSIONS_PATH: __testing.paths.AGENT_SESSIONS_PATH,
     QUESTIONS_PATH: __testing.paths.QUESTIONS_PATH,
+    GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
+    GOVERNANCE_SNAPSHOT_PATH: __testing.paths.GOVERNANCE_SNAPSHOT_PATH,
+    GOVERNANCE_SNAPSHOTS_DIR: __testing.paths.GOVERNANCE_SNAPSHOTS_DIR,
     CLAUDE_SESSION_ID: process.env.CLAUDE_SESSION_ID,
     CLAUDECODE: process.env.CLAUDECODE,
     CODEX_THREAD_ID: process.env.CODEX_THREAD_ID,
@@ -781,6 +790,9 @@ test("rebindAgent --fresh fails closed when the provider pool is exhausted (GOV-
   __testing.paths.AGENTS_PATH = agentsPath;
   __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
   __testing.paths.QUESTIONS_PATH = questionsPath;
+  __testing.paths.GOVERNANCE_EVENT_LOG_PATH = eventLogPath;
+  __testing.paths.GOVERNANCE_SNAPSHOT_PATH = snapshotPath;
+  __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = snapshotsDir;
   process.env.CLAUDE_SESSION_ID = "claude-exhausted-thread";
   process.env.CLAUDECODE = "1";
   delete process.env.CODEX_THREAD_ID;
@@ -802,6 +814,9 @@ test("rebindAgent --fresh fails closed when the provider pool is exhausted (GOV-
     __testing.paths.AGENTS_PATH = original.AGENTS_PATH;
     __testing.paths.AGENT_SESSIONS_PATH = original.AGENT_SESSIONS_PATH;
     __testing.paths.QUESTIONS_PATH = original.QUESTIONS_PATH;
+    __testing.paths.GOVERNANCE_EVENT_LOG_PATH = original.GOVERNANCE_EVENT_LOG_PATH;
+    __testing.paths.GOVERNANCE_SNAPSHOT_PATH = original.GOVERNANCE_SNAPSHOT_PATH;
+    __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = original.GOVERNANCE_SNAPSHOTS_DIR;
     for (const key of ["CLAUDE_SESSION_ID", "CLAUDECODE", "CODEX_THREAD_ID", "AGENT_THREAD_ID"]) {
       if (original[key] === undefined) {
         delete process.env[key];

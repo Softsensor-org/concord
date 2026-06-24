@@ -156,6 +156,79 @@
       "type": "array",
       "items": { "type": "string" }
     },
+    "bootstrap_risk": {
+      "description": "Optional server-bootstrap / startup / backfill / derived-data risk metadata (COORD-159). Advisory only; absent on tickets that do not touch deployed startup or data-generation work. Field vocabulary is canonicalized in coord/product/SERVER_BOOTSTRAP_JOB_CONTRACT.md.",
+      "type": "object",
+      "properties": {
+        "startup_work_class": {
+          "type": "string",
+          "enum": [
+            "local_bootstrap",
+            "deploy_bootstrap",
+            "startup_work",
+            "server_bootstrap_job",
+            "derived_data_job",
+            "production_repair"
+          ]
+        },
+        "runs_at_boot": { "type": "boolean" },
+        "shares_app_process": { "type": "boolean" },
+        "resource_envelope": {
+          "type": "object",
+          "properties": {
+            "memory_mb": { "type": ["number", "null"] },
+            "timeout_s": { "type": ["number", "null"] },
+            "expected_rows": { "type": ["number", "null"] },
+            "batch_size": { "type": ["number", "null"] },
+            "db_pool_impact": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        },
+        "idempotency_strategy": { "type": ["string", "null"] },
+        "checkpoint_strategy": { "type": ["string", "null"] },
+        "verification_signal": { "type": ["string", "null"] },
+        "rollback_or_disable": { "type": ["string", "null"] },
+        "observability_requirements": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "data_access_shape": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "live_mcp": {
+      "description": "Optional live/production-MCP operation declaration (COORD-153). PRESENCE marks the ticket as a live-mcp operation and turns on the live-MCP lifecycle enforcement gate. Operation-class policy (approval/redaction/cleanup) is sourced from coord/scripts/runtime-evidence.js; see coord/docs/PRODUCTION_MCP_ADAPTER_PLAN.md.",
+      "type": "object",
+      "properties": {
+        "adapter": { "type": ["string", "null"] },
+        "operation": { "type": ["string", "null"] },
+        "operation_class": {
+          "type": ["string", "null"],
+          "enum": [
+            "read_safe",
+            "read_sensitive",
+            "write_low",
+            "write_prod",
+            "destructive",
+            null
+          ]
+        },
+        "environment": {
+          "type": ["string", "null"],
+          "enum": ["local", "staging", "prod", null]
+        },
+        "scope": { "type": ["string", "null"] },
+        "approval": { "type": ["string", "null"] },
+        "redaction": { "type": ["string", "null"] },
+        "cleanup": { "type": ["string", "null"] },
+        "cleanup_required": { "type": ["boolean", "string", "null"] },
+        "product_impact": { "type": ["boolean", "string", "null"] },
+        "promotion": { "type": ["string", "null"] },
+        "receipt_path": { "type": ["string", "null"] },
+        "receipt": { "type": ["object", "null"] }
+      },
+      "additionalProperties": false
+    },
     "security_surface": {
       "type": ["string", "null"]
     },

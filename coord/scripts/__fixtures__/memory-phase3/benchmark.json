@@ -1,0 +1,18 @@
+{
+  "$schema_note": "COORD-143 fixture benchmark for memory-eval.test.js. Tiny synthetic 2-case set used only to exercise the metric math + gate logic deterministically. NOT the real eval ground truth (that is coord/memory/eval/benchmark.json).",
+  "version": 1,
+  "cases": [
+    {
+      "id": "FIX-001",
+      "question": "GR-001",
+      "expected_sources": [{ "type": "decision", "id": "GR-001", "path": "ignored" }],
+      "must_include": ["GR-001"]
+    },
+    {
+      "id": "FIX-002",
+      "question": "GR-002",
+      "expected_sources": [{ "type": "decision", "id": "GR-002", "path": "ignored" }],
+      "must_include": ["GR-002"]
+    }
+  ]
+}

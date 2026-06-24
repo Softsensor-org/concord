@@ -1,5 +1,83 @@
 # Changelog
 
+## v0.1.6 — 2026-06-24
+
+### Added
+- **Multi-track governance** — the governed lane now extends beyond code to
+  non-code work via per-track gate-procs and skills:
+  - **Marketing/content track** — content gate-proc (HTML validity + broken-link
+    + SEO checks) and skills `/content-edit`, `/seo-check`, `/publish`.
+  - **Data & analytics track** — a data-contract gate-proc (per-output contracts
+    with hard-fail DQ gates: reconcile tolerance, baseline band, key-coverage) and
+    skills `/data-pipeline`, `/data-contract`.
+  - **Product-engineering track** — an evidence-only gate plus skills
+    `/analytics-query`, `/insight-analyst`, `/live-mcp-policy` (bounded
+    production-MCP reads with governed receipts).
+  - Track → review-policy + RBAC posture mapping, a track registry, and
+    borrowable profiles documented under `coord/product/`
+    (`MULTI_TRACK_GOVERNANCE_PROFILE.md`, `CONTENT_SITE_GOVERNANCE_PROFILE.md`,
+    `DATA_ANALYTICS_TRACK.md`, `PRODUCT_ENGINEERING_TRACK.md`).
+- **Governed memory layer** — a deterministic, source-cited memory system over the
+  repo's real execution history (zero external deps, no vectors required):
+  - `gov recall "<query>"` — cited retrieval (exact id/path → BM25 →
+    provenance-weighted ranking); every answer line traces to a hash-linked source;
+    permission-aware.
+  - `gov insights` — strategic execution-insight reports (recurring failure themes,
+    arch-debt by subsystem, churn, gate/review/recovery health); recommends-only,
+    aggregated by repo (never per-person).
+  - `gov prework <ticket>` — pre-work context pack surfacing relevant prior work and
+    already-failed approaches for the touched area.
+  - `gov closeout-summary <ticket>` — evidence-backed closeout grounded in the
+    ticket's journal/plan/commits with event-hash + chain-head citations.
+  - `gov learned-rule` — routes learned procedural-rule changes through the governed
+    review/land lane instead of silently rewriting agent behavior.
+  - Derived decision records + summary tiers (ticket→epic→subsystem→repo) with
+    source-hash staleness detection; memory classification
+    (public/internal/sensitive/secret-prohibited); and an **optional, measured**
+    semantic (graph + vector) layer that stays OFF unless it beats the deterministic
+    baseline on the eval harness. See `coord/docs/MEMORY_ARCHITECTURE.md`.
+- **Optional quality-dimension adapters** — external-tool adapters that **skip
+  gracefully when the tool isn't installed (never fail the gate)** and ratchet on
+  new-vs-baseline findings: mutation/property testing, SAST (Semgrep), supply chain
+  (dependency-free CycloneDX SBOM + Trivy/Grype CVE scan), accessibility
+  (axe/pa11y + visual regression), performance budgets (size-limit/Lighthouse/k6),
+  and a shared package + cross-repo duplication-convergence gate; plus a
+  diverse/adversarial review-lens catalog. See `coord/docs/QUALITY_DIMENSIONS.md`.
+- **Live-MCP / runtime-operation governance** — lifecycle enforcement for tickets
+  that declare a live/production-MCP operation (operation class, adapter, scope,
+  approval, redaction, receipt, cleanup — closeout blocks until satisfied);
+  reference adapter patterns (read-only narrowed case reads; temporary-access /
+  cleanup receipts); a read-only `/live-mcp` cockpit view; and a bridge letting
+  live-MCP receipts satisfy server-bootstrap job evidence.
+- **Server-bootstrap / backfill safety** — optional `bootstrap_risk` plan fields,
+  advisory (non-blocking) validation, a backfill query/volume safety checklist +
+  scanner, and a read-only `/bootstrap-risk` cockpit view (server-readiness kept
+  distinct from job-completion).
+- **Per-event journal non-repudiation** — optional Merkle batch signing (ed25519)
+  giving per-event inclusion proofs over the hash-chained journal, with a pluggable
+  (KMS-ready) key provider. Backward compatible with existing journals.
+- **Setup config UX** — `coord init --wizard` generates config-as-code for the user
+  to review and commit (idempotent, no-clobber) + a read-only `/configuration`
+  cockpit view. Config-as-code on the governed lifecycle, not a runtime admin console.
+- **Docs light lane** — reference/design-doc tickets use a reduced-completeness
+  governed lane; behavior-changing procedural docs (AGENTS.md, `.claude/`, CLAUDE.md,
+  GOVERNANCE.md) still require the full reviewed lane.
+- **Data-contract before/after proof** — a `reconciles_to_row_count` assertion on the
+  data-analytics track that hard-fails backfill/reseed outputs lacking a row-count proof.
+- Architecture Decision Records under `coord/docs/decisions/`.
+
+### Fixed / Changed
+- **`gov finalize` now commits the board-row status transition atomically** on the
+  no-PR landing lane (previously the canonical board row was left uncommitted after
+  finalize, requiring a manual follow-up commit).
+- Content gate-proc real-site accuracy (sitemap root + asset link resolution).
+- README de-staled: skill count corrected (19 → 27) and a Track Skills table added.
+
+### Enterprise tier
+- Production-MCP adapter hardening: RBAC per adapter/operation-class, service-account
+  policy, SIEM audit-export shape, ed25519 adapter signing/versioning, a break-glass
+  workflow for destructive operations, and tenant/repo-family scoping.
+
 ## v0.1.5 — 2026-06-22
 
 ### Added

@@ -162,7 +162,9 @@ isCommitAncestorOfRef
 isCompleteLockPayload
 isDoingStatus
 isInsideGitWorkTree
+isLightLaneEligible
 isPlanSectionBoundary
+isProceduralDocPath
 isProductRepo
 isRecoverableGovernanceDriftPath
 isRepoBackedCode
@@ -278,6 +280,7 @@ resolveRepoCodeForTicket
 resolveRepoIntegrationBranch
 resolveSourceCommitSha
 resolveTicketBaseRef
+resolveTicketLightLane
 resolveTicketTier
 resolveWorktreeBaseCompareRef
 restoreGovernanceRestorePoint

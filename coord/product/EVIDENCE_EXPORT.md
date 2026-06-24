@@ -34,6 +34,7 @@ be added to the governed help/verb-parity surface first).
 - `coord/.runtime/governance-events.ndjson` — append-only event log (actor, ts, transition)
 - `coord/.runtime/plans/<TICKET>.json` — requirement_closure, feature_proof, repo_gates, self_review_cycles, critical_invariants
 - `coord/board/tasks.json` — `landing_index`, `pr_index`, `waiver_index`, `followup_exceptions`, `review_findings`
+- `coord/.runtime/plans/<TICKET>.json` `live_mcp` declaration + `coord/evidence/live-mcp/*.json` receipts — live-MCP lifecycle status (COORD-156)
 
 ## Evidence types and presence rules
 
@@ -62,6 +63,12 @@ evidence types are absent for the in-scope ticket(s), else `gap`.
   over the same range reproduces the same hash).
 - **Markdown** (`--format md`) — control-coverage tables + per-ticket summary
   with gap flags.
+- **Live-MCP** (COORD-156) — a `live_mcp` section lists every ticket that
+  declares a `live_mcp` plan object (explicit detection via the COORD-153 gate),
+  its recorded receipt (COORD-152), and any UNRESOLVED cleanup/promote (and other)
+  closeout blockers, so an export honestly shows what production-MCP work is still
+  pending. The `summary` reports `live_mcp_tickets` and
+  `live_mcp_with_unresolved_blockers`.
 
 ## Guarantees (tested)
 

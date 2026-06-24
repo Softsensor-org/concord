@@ -468,8 +468,9 @@ test("validateBoard allows a transfer-scoped canonical lock-location bypass for 
   // paths, the literal mismatches and the test fires the wrong error.
   const __coordPaths = createCoordPaths({ coordDir: path.dirname(__dirname) });
   const repoRoots = __coordPaths.repoRoots;
-  const repoRegistry = __coordPaths.repoRegistry;
+  const expectedLockRepo = __testing.expectedLockRepoForCode("B");
   const createdRepoRootLinks = [];
+  const createdRepoRootParentDirs = [];
   const fakeLockPath = path.join(runtimeLocksDir, `${ticketId}.lock`);
   const worktreePath = tempRepo;
   const branch = "agent/claudea0000-msrv-003-transfer-test";
@@ -492,6 +493,11 @@ test("validateBoard allows a transfer-scoped canonical lock-location bypass for 
     const repoRoot = repoRoots[repoCode];
     if (!repoRoot || fs.existsSync(repoRoot)) {
       continue;
+    }
+    const parentDir = path.dirname(repoRoot);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+      createdRepoRootParentDirs.push(parentDir);
     }
     fs.symlinkSync(targetPath, repoRoot, "dir");
     createdRepoRootLinks.push(repoRoot);
@@ -546,10 +552,9 @@ test("validateBoard allows a transfer-scoped canonical lock-location bypass for 
     owner,
     ticket: ticketId,
     status: "doing",
-    // Same source of truth as validateBoard: repoRegistry[ticket.Repo].
-    // Works on coord-template (B=backend), acme-ops (B=msrv), acme
-    // (B=acme-api), and any future nested/absolute repo path.
-    repo: repoRegistry.B,
+    // Same source of truth as validateBoard: the board module's configured
+    // expected lock repo for ticket.Repo.
+    repo: expectedLockRepo,
     branch,
     head,
     worktree: worktreePath,
@@ -607,6 +612,9 @@ test("validateBoard allows a transfer-scoped canonical lock-location bypass for 
     fs.readFileSync = originalReadFileSync;
     for (const repoRoot of createdRepoRootLinks) {
       fs.rmSync(repoRoot, { force: true });
+    }
+    for (const parentDir of createdRepoRootParentDirs.reverse()) {
+      fs.rmSync(parentDir, { recursive: true, force: true });
     }
   }
 });

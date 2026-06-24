@@ -18,6 +18,18 @@
 
 const { defaultFail } = require("./governance-context.js");
 const { STATUS, FINDING_STATUS } = require("./governance-constants.js");
+// COORD-160: advisory-only server-bootstrap/backfill risk surfacing. Pure and
+// dependency-free, so it is required directly rather than dependency-injected.
+const { buildBootstrapAdvisory } = require("./bootstrap-advisory.js");
+// COORD-153: live-MCP lifecycle enforcement surface. Pure and dependency-free,
+// required directly like the bootstrap advisory. `gov explain` embeds the
+// declared-vs-missing-evidence object so operators see exactly what blocks
+// closeout for a live-mcp ticket.
+const { buildLiveMcpLifecycle } = require("./live-mcp-lifecycle.js");
+// COORD-164: bootstrap-via-live-mcp bridge surface. Pure and dependency-free.
+// `gov explain` embeds the per-requirement mapping + coverage blockers for a
+// server bootstrap job that runs as a live-MCP operation.
+const { buildBootstrapViaLiveMcpLifecycle } = require("./bootstrap-via-live-mcp.js");
 
 module.exports = function createTicketGuidance(deps = {}) {
   const fail = deps.fail || defaultFail;
@@ -173,7 +185,22 @@ module.exports = function createTicketGuidance(deps = {}) {
       provenanceDrift: provenanceIssues.blocking,
       recentIssueEvents: collectTicketGovernanceIssueEvents(ticketId),
     });
-    const governanceReadiness = deriveGovernanceReadiness(ticketId, ref.row, board, lock, readPlanState(ticketId), questionsGuidance);
+    const planState = readPlanState(ticketId);
+    const governanceReadiness = deriveGovernanceReadiness(ticketId, ref.row, board, lock, planState, questionsGuidance);
+    // COORD-160: advisory-only. Never affects start/submit blockers, readiness,
+    // or the exit code — it is a read-only surfacing embedded in the report.
+    const bootstrapAdvisory = buildBootstrapAdvisory({ row: ref.row, planState });
+    // COORD-153: enforcement (not advisory) — the same missing-evidence issues
+    // are also appended to submit/move-review blockers via
+    // collectReviewPlanReadinessIssues, so this surface is purely the
+    // human-readable mirror. `declared:false` for every non-live-mcp ticket.
+    const liveMcpLifecycle = buildLiveMcpLifecycle({ planState });
+    // COORD-164: bootstrap-via-live-mcp bridge surfacing. Enforcement (the
+    // coverage blocker) is also appended to submit/move-review blockers via
+    // collectReviewPlanReadinessIssues, so this is the human-readable mirror plus
+    // the per-requirement mapping. `declared:false` unless BOTH live_mcp and
+    // bootstrap_risk are present.
+    const bootstrapViaLiveMcp = buildBootstrapViaLiveMcpLifecycle({ planState });
 
     console.log(JSON.stringify({
       ticket: ref.row,
@@ -206,6 +233,20 @@ module.exports = function createTicketGuidance(deps = {}) {
         blockers: submitBlockers,
       },
       governance_readiness: governanceReadiness,
+      bootstrap_advisory: bootstrapAdvisory,
+      live_mcp_lifecycle: {
+        declared: liveMcpLifecycle.declared,
+        enforced: liveMcpLifecycle.declared,
+        missing_evidence: liveMcpLifecycle.issues.map((issue) => issue.code),
+        blockers: liveMcpLifecycle.issues,
+      },
+      bootstrap_via_live_mcp: {
+        declared: bootstrapViaLiveMcp.declared,
+        enforced: bootstrapViaLiveMcp.declared,
+        missing_evidence: bootstrapViaLiveMcp.issues.map((issue) => issue.code),
+        blockers: bootstrapViaLiveMcp.issues,
+        mapping: bootstrapViaLiveMcp.mapping || null,
+      },
       questions_guidance: questionsGuidance,
       next_commands: buildTicketNextCommands({
         board,

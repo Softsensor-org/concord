@@ -20,6 +20,34 @@ const path = require("node:path");
 const governanceModule = require("./governance.js");
 const { __testing } = governanceModule;
 
+function withTempSnapshotPaths(tempDir) {
+  const runtimeDir = path.join(tempDir, ".runtime");
+  const snapshotPath = path.join(runtimeDir, "governance-latest-snapshot.json");
+  const snapshotsDir = path.join(runtimeDir, "governance-snapshots");
+  fs.mkdirSync(snapshotsDir, { recursive: true });
+  return { snapshotPath, snapshotsDir };
+}
+
+function seedLatestSnapshot(snapshotPath, snapshotsDir) {
+  const snapshot = __testing.buildGovernanceSnapshot();
+  fs.mkdirSync(snapshotsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(snapshotsDir, `${snapshot.digest}.json`),
+    JSON.stringify(snapshot, null, 2)
+  );
+  fs.writeFileSync(
+    snapshotPath,
+    JSON.stringify({
+      digest: snapshot.digest,
+      recorded_at: snapshot.recorded_at || null,
+      ts: new Date().toISOString(),
+      command: "test-baseline",
+      ticket: null,
+    }, null, 2)
+  );
+  return snapshot;
+}
+
 test("rebuildBoardFromJournal repairs a regressed status row from the journal (GOV-012)", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-rebuild-regressed-"));
   const boardPath = path.join(tempDir, "tasks.json");
@@ -29,6 +57,7 @@ test("rebuildBoardFromJournal repairs a regressed status row from the journal (G
   // temp file to keep this regression test from polluting the live log.
   const questionsPath = path.join(tempDir, "QUESTIONS.md");
   fs.writeFileSync(questionsPath, "# Questions\n\n## Instructions\n");
+  const { snapshotPath, snapshotsDir } = withTempSnapshotPaths(tempDir);
 
   // Board has MSRV-132 stuck at todo; journal says it landed to done 5 minutes ago.
   fs.writeFileSync(boardPath, JSON.stringify({
@@ -52,11 +81,16 @@ test("rebuildBoardFromJournal repairs a regressed status row from the journal (G
     BOARD_PATH: __testing.paths.BOARD_PATH,
     GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
     QUESTIONS_PATH: __testing.paths.QUESTIONS_PATH,
+    GOVERNANCE_SNAPSHOT_PATH: __testing.paths.GOVERNANCE_SNAPSHOT_PATH,
+    GOVERNANCE_SNAPSHOTS_DIR: __testing.paths.GOVERNANCE_SNAPSHOTS_DIR,
   };
 
   __testing.paths.BOARD_PATH = boardPath;
   __testing.paths.GOVERNANCE_EVENT_LOG_PATH = eventLogPath;
   __testing.paths.QUESTIONS_PATH = questionsPath;
+  __testing.paths.GOVERNANCE_SNAPSHOT_PATH = snapshotPath;
+  __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = snapshotsDir;
+  seedLatestSnapshot(snapshotPath, snapshotsDir);
 
   const stdoutLines = [];
   const originalLog = console.log;
@@ -81,6 +115,8 @@ test("rebuildBoardFromJournal repairs a regressed status row from the journal (G
     __testing.paths.BOARD_PATH = original.BOARD_PATH;
     __testing.paths.GOVERNANCE_EVENT_LOG_PATH = original.GOVERNANCE_EVENT_LOG_PATH;
     __testing.paths.QUESTIONS_PATH = original.QUESTIONS_PATH;
+    __testing.paths.GOVERNANCE_SNAPSHOT_PATH = original.GOVERNANCE_SNAPSHOT_PATH;
+    __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = original.GOVERNANCE_SNAPSHOTS_DIR;
   }
 });
 
@@ -104,16 +140,22 @@ test("rebuildBoardFromJournal is idempotent — second run reports no drift (GOV
   );
   const questionsPath = path.join(tempDir, "QUESTIONS.md");
   fs.writeFileSync(questionsPath, "# Questions\n\n## Instructions\n");
+  const { snapshotPath, snapshotsDir } = withTempSnapshotPaths(tempDir);
 
   const original = {
     BOARD_PATH: __testing.paths.BOARD_PATH,
     GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
     QUESTIONS_PATH: __testing.paths.QUESTIONS_PATH,
+    GOVERNANCE_SNAPSHOT_PATH: __testing.paths.GOVERNANCE_SNAPSHOT_PATH,
+    GOVERNANCE_SNAPSHOTS_DIR: __testing.paths.GOVERNANCE_SNAPSHOTS_DIR,
   };
 
   __testing.paths.BOARD_PATH = boardPath;
   __testing.paths.GOVERNANCE_EVENT_LOG_PATH = eventLogPath;
   __testing.paths.QUESTIONS_PATH = questionsPath;
+  __testing.paths.GOVERNANCE_SNAPSHOT_PATH = snapshotPath;
+  __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = snapshotsDir;
+  seedLatestSnapshot(snapshotPath, snapshotsDir);
 
   const stdoutLines = [];
   const originalLog = console.log;
@@ -130,6 +172,8 @@ test("rebuildBoardFromJournal is idempotent — second run reports no drift (GOV
     __testing.paths.BOARD_PATH = original.BOARD_PATH;
     __testing.paths.GOVERNANCE_EVENT_LOG_PATH = original.GOVERNANCE_EVENT_LOG_PATH;
     __testing.paths.QUESTIONS_PATH = original.QUESTIONS_PATH;
+    __testing.paths.GOVERNANCE_SNAPSHOT_PATH = original.GOVERNANCE_SNAPSHOT_PATH;
+    __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = original.GOVERNANCE_SNAPSHOTS_DIR;
   }
 });
 
@@ -146,16 +190,22 @@ test("rebuildBoardFromJournal fails with a clear error when the row is missing f
   );
   const questionsPath = path.join(tempDir, "QUESTIONS.md");
   fs.writeFileSync(questionsPath, "# Questions\n\n## Instructions\n");
+  const { snapshotPath, snapshotsDir } = withTempSnapshotPaths(tempDir);
 
   const original = {
     BOARD_PATH: __testing.paths.BOARD_PATH,
     GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
     QUESTIONS_PATH: __testing.paths.QUESTIONS_PATH,
+    GOVERNANCE_SNAPSHOT_PATH: __testing.paths.GOVERNANCE_SNAPSHOT_PATH,
+    GOVERNANCE_SNAPSHOTS_DIR: __testing.paths.GOVERNANCE_SNAPSHOTS_DIR,
   };
 
   __testing.paths.BOARD_PATH = boardPath;
   __testing.paths.GOVERNANCE_EVENT_LOG_PATH = eventLogPath;
   __testing.paths.QUESTIONS_PATH = questionsPath;
+  __testing.paths.GOVERNANCE_SNAPSHOT_PATH = snapshotPath;
+  __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = snapshotsDir;
+  seedLatestSnapshot(snapshotPath, snapshotsDir);
 
   try {
     assert.throws(
@@ -167,6 +217,8 @@ test("rebuildBoardFromJournal fails with a clear error when the row is missing f
     __testing.paths.BOARD_PATH = original.BOARD_PATH;
     __testing.paths.GOVERNANCE_EVENT_LOG_PATH = original.GOVERNANCE_EVENT_LOG_PATH;
     __testing.paths.QUESTIONS_PATH = original.QUESTIONS_PATH;
+    __testing.paths.GOVERNANCE_SNAPSHOT_PATH = original.GOVERNANCE_SNAPSHOT_PATH;
+    __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = original.GOVERNANCE_SNAPSHOTS_DIR;
   }
 });
 
@@ -195,16 +247,22 @@ test("rebuildBoardFromJournal --all repairs every regressed row best-effort (GOV
   );
   const questionsPath = path.join(tempDir, "QUESTIONS.md");
   fs.writeFileSync(questionsPath, "# Questions\n\n## Instructions\n");
+  const { snapshotPath, snapshotsDir } = withTempSnapshotPaths(tempDir);
 
   const original = {
     BOARD_PATH: __testing.paths.BOARD_PATH,
     GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
     QUESTIONS_PATH: __testing.paths.QUESTIONS_PATH,
+    GOVERNANCE_SNAPSHOT_PATH: __testing.paths.GOVERNANCE_SNAPSHOT_PATH,
+    GOVERNANCE_SNAPSHOTS_DIR: __testing.paths.GOVERNANCE_SNAPSHOTS_DIR,
   };
 
   __testing.paths.BOARD_PATH = boardPath;
   __testing.paths.GOVERNANCE_EVENT_LOG_PATH = eventLogPath;
   __testing.paths.QUESTIONS_PATH = questionsPath;
+  __testing.paths.GOVERNANCE_SNAPSHOT_PATH = snapshotPath;
+  __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = snapshotsDir;
+  seedLatestSnapshot(snapshotPath, snapshotsDir);
 
   const stdoutLines = [];
   const originalLog = console.log;
@@ -229,5 +287,7 @@ test("rebuildBoardFromJournal --all repairs every regressed row best-effort (GOV
     __testing.paths.BOARD_PATH = original.BOARD_PATH;
     __testing.paths.GOVERNANCE_EVENT_LOG_PATH = original.GOVERNANCE_EVENT_LOG_PATH;
     __testing.paths.QUESTIONS_PATH = original.QUESTIONS_PATH;
+    __testing.paths.GOVERNANCE_SNAPSHOT_PATH = original.GOVERNANCE_SNAPSHOT_PATH;
+    __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = original.GOVERNANCE_SNAPSHOTS_DIR;
   }
 });

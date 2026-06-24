@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "metadata": { "title": "Insight-report fixture board" },
+  "sections": [
+    {
+      "kind": "markdown",
+      "level": 2,
+      "heading": "Intro",
+      "body": ["Not a ticket table."]
+    },
+    {
+      "kind": "table",
+      "level": 2,
+      "heading": "Memory Subsystem",
+      "columns": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      "rows": [
+        {
+          "ID": "INS-001",
+          "Repo": "X",
+          "Type": "feature",
+          "Pri": "P2",
+          "Status": "done",
+          "Owner": "agentA",
+          "Description": "[Memory] worked ticket; chain-integrity finding; high churn",
+          "Depends On": ""
+        },
+        {
+          "ID": "INS-002",
+          "Repo": "X",
+          "Type": "feature",
+          "Pri": "P2",
+          "Status": "done",
+          "Owner": "agentA",
+          "Description": "[Memory] worked ticket; chain-integrity recurrence; not-implemented carve-out",
+          "Depends On": "INS-001"
+        },
+        {
+          "ID": "INS-003",
+          "Repo": "X",
+          "Type": "feature",
+          "Pri": "P3",
+          "Status": "deferred",
+          "Owner": "unassigned",
+          "Description": "[Memory] deferred ticket -> subsystem arch debt",
+          "Depends On": "INS-002"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "level": 2,
+      "heading": "Bootstrap Subsystem",
+      "columns": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      "rows": [
+        {
+          "ID": "INS-004",
+          "Repo": "B",
+          "Type": "feature",
+          "Pri": "P1",
+          "Status": "done",
+          "Owner": "agentB",
+          "Description": "[Server bootstrap] clean backend ticket, no failures",
+          "Depends On": ""
+        },
+        {
+          "ID": "INS-005",
+          "Repo": "F",
+          "Type": "bug",
+          "Pri": "P2",
+          "Status": "done",
+          "Owner": "agentC",
+          "Description": "a frontend ticket with one isolated worktree event (thin signal)",
+          "Depends On": ""
+        }
+      ]
+    }
+  ]
+}

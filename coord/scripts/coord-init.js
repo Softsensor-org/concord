@@ -24,6 +24,7 @@ const nodeFs = require("node:fs");
 const nodePath = require("node:path");
 
 const { buildStarterBoard } = require("./coord-init-starter-board.js");
+const createCoordInitWizard = require("./coord-init-wizard.js");
 
 // Minimal project.config.js scaffold. Mirrors the documented two-repo default
 // shape (see coord/project.config.js) but trimmed to the seam an adopter must
@@ -161,6 +162,15 @@ module.exports = function createCoordInit(deps = {}) {
   // "create" entries write the file (creating parent dirs); "skip" entries
   // touch nothing.
   function run(args = []) {
+    // COORD-150: `coord init --wizard` delegates to the interactive config-as-code
+    // scaffolder (coord-init-wizard.js). The default `coord init` path below stays
+    // the idempotent no-clobber bootstrap. The wizard GENERATES config for review;
+    // it applies no runtime state.
+    if (args.includes("--wizard")) {
+      const wizardArgs = args.filter((a) => a !== "--wizard");
+      return createCoordInitWizard(deps).run(wizardArgs);
+    }
+
     const opts = parseArgs(args);
     if (opts.help) {
       printUsage();
@@ -218,13 +228,16 @@ module.exports = function createCoordInit(deps = {}) {
   }
 
   function printUsage() {
-    log("Usage: coord init [--dir <path>] [--dry-run]");
+    log("Usage: coord init [--dir <path>] [--dry-run] [--wizard]");
     log("");
     log("Bootstrap a repo into a governed-board layout (idempotent, no-clobber).");
     log("");
     log("Options:");
     log("  --dir <path>   Target repo root. Defaults to the current directory.");
     log("  --dry-run      Print the plan without writing any files.");
+    log("  --wizard       Interactive config-as-code scaffolder: GENERATES");
+    log("                 coord/project.config.js for you to review + commit.");
+    log("                 Run `coord init --wizard --help` for wizard options.");
     log("  -h, --help     Show this help text.");
   }
 

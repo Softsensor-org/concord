@@ -5,7 +5,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const { spawnSync, spawn } = require("child_process");
+const { spawn } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -153,22 +153,26 @@ test("runCli: bad subcommand and unparseable JSON return usage/parse error (2)",
   );
 });
 
-test("audit-policy CLI is invokable as a real process (runner integration shape)", () => {
-  const res = spawnSync("node", [CLI, "classify", "--threshold", "high"], {
-    input: JSON.stringify({ metadata: { vulnerabilities: { critical: 1, total: 1 } } }),
-    encoding: "utf8",
+test("audit-policy CLI classify path fails on a critical vulnerability", () => {
+  const chunks = [];
+  const rc = runCli(["classify", "--threshold", "high"], {
+    stdin: JSON.stringify({ metadata: { vulnerabilities: { critical: 1, total: 1 } } }),
+    stdout: { write: (s) => chunks.push(s) },
+    stderr: { write: () => {} },
   });
-  assert.equal(res.status, 1, "critical vuln must exit non-zero");
-  assert.match(res.stdout, /audit: fail threshold=high/);
+  assert.equal(rc, 1, "critical vuln must exit non-zero");
+  assert.match(chunks.join(""), /audit: fail threshold=high/);
 });
 
-test("audit-policy CLI exits 0 (pass) on clean audit JSON", () => {
-  const res = spawnSync("node", [CLI, "classify"], {
-    input: JSON.stringify({ metadata: { vulnerabilities: { info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0 } } }),
-    encoding: "utf8",
+test("audit-policy CLI classify path exits 0 (pass) on clean audit JSON", () => {
+  const chunks = [];
+  const rc = runCli(["classify"], {
+    stdin: JSON.stringify({ metadata: { vulnerabilities: { info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0 } } }),
+    stdout: { write: (s) => chunks.push(s) },
+    stderr: { write: () => {} },
   });
-  assert.equal(res.status, 0);
-  assert.match(res.stdout, /audit: pass/);
+  assert.equal(rc, 0);
+  assert.match(chunks.join(""), /audit: pass/);
 });
 
 // --- Template gate.sh runner integration (COORD-076) -----------------------

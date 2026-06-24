@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "ticket_id": "GR-002",
+  "requirement_closure": [
+    "Ticket ask: sibling graph-fixture ticket",
+    "Implemented: touched coord/scripts/shared-target.js and referenced GR-009",
+    "Not implemented: none",
+    "Deferred to: none",
+    "Closeout verdict: complete"
+  ],
+  "critical_invariants": [],
+  "self_review_cycles": []
+}

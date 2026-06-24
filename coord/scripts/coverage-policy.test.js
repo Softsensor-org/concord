@@ -162,19 +162,26 @@ test("runCli: bad subcommand returns usage error (2)", () => {
   assert.equal(runCli(["nope"], { stdout: { write: () => {} }, stderr: { write: () => {} } }), 2);
 });
 
-test("coverage-policy CLI is invokable as a real process (runner integration shape)", () => {
-  const res = spawnSync("node", [CLI, "classify", "--min", "80"], {
-    input: coverageReport({ lines: 50, branches: 50, functions: 50 }),
-    encoding: "utf8",
+test("coverage-policy CLI classify path fails below the minimum", () => {
+  const chunks = [];
+  const rc = runCli(["classify", "--min", "80"], {
+    stdin: coverageReport({ lines: 50, branches: 50, functions: 50 }),
+    stdout: { write: (s) => chunks.push(s) },
+    stderr: { write: () => {} },
   });
-  assert.equal(res.status, 1, "below-min coverage must exit non-zero");
-  assert.match(res.stdout, /coverage: fail min=80/);
+  assert.equal(rc, 1, "below-min coverage must exit non-zero");
+  assert.match(chunks.join(""), /coverage: fail min=80/);
 });
 
-test("coverage-policy CLI exits 0 (warn) on no coverage data", () => {
-  const res = spawnSync("node", [CLI, "classify"], { input: "ℹ tests 0\n", encoding: "utf8" });
-  assert.equal(res.status, 0);
-  assert.match(res.stdout, /coverage: warn/);
+test("coverage-policy CLI classify path exits 0 (warn) on no coverage data", () => {
+  const chunks = [];
+  const rc = runCli(["classify"], {
+    stdin: "ℹ tests 0\n",
+    stdout: { write: (s) => chunks.push(s) },
+    stderr: { write: () => {} },
+  });
+  assert.equal(rc, 0);
+  assert.match(chunks.join(""), /coverage: warn/);
 });
 
 // --- Template gate.sh runner integration (COORD-077) -----------------------
