@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "metadata": { "title": "Memory Phase-3 fixture board" },
+  "sections": [
+    {
+      "kind": "table",
+      "level": 2,
+      "heading": "Graph Fixture",
+      "columns": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      "rows": [
+        {
+          "ID": "GR-001",
+          "Repo": "X",
+          "Type": "feature",
+          "Pri": "P2",
+          "Status": "done",
+          "Owner": "claudea1",
+          "Description": "[Graph] parent ticket that depends on GR-002 and defers to GR-003",
+          "Depends On": "GR-002"
+        },
+        {
+          "ID": "GR-002",
+          "Repo": "X",
+          "Type": "feature",
+          "Pri": "P2",
+          "Status": "done",
+          "Owner": "claudea2",
+          "Description": "[Graph] sibling in the same epic, shares a file with GR-003",
+          "Depends On": ""
+        },
+        {
+          "ID": "GR-003",
+          "Repo": "X",
+          "Type": "chore",
+          "Pri": "P3",
+          "Status": "done",
+          "Owner": "claudea3",
+          "Description": "[Other] deferred-to target of GR-001, shares a file with GR-002",
+          "Depends On": ""
+        },
+        {
+          "ID": "GR-004",
+          "Repo": "X",
+          "Type": "chore",
+          "Pri": "P3",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "[Other] co-cites GR-009 with GR-002 (shared-citation edge)",
+          "Depends On": ""
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,672 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://softsensor.ai/concord/schemas/business-discovery.schema.json",
+  "title": "Concord Business Discovery Run",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "schema_version",
+    "project",
+    "generator",
+    "sources",
+    "records",
+    "relationships",
+    "contradictions",
+    "questions",
+    "question_ledger",
+    "decision_ledger",
+    "reflection_ledger",
+    "promotion_candidates",
+    "adapter_signals",
+    "summary"
+  ],
+  "properties": {
+    "kind": {
+      "const": "concord.business_discovery.run"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "scope", "repos"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "repos": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "generated_at_utc": {
+      "type": "string"
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "command"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "command": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/record" }
+    },
+    "relationships": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relationship" }
+    },
+    "contradictions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/contradiction" }
+    },
+    "questions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/question" }
+    },
+    "question_ledger": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/question_ledger_entry" }
+    },
+    "decision_ledger": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/decision_ledger_entry" }
+    },
+    "reflection_ledger": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/reflection_ledger_entry" }
+    },
+    "promotion_candidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/promotion_candidate" }
+    },
+    "adapter_signals": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/adapter_signal" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "files_scanned",
+        "records",
+        "sources",
+        "questions",
+        "decisions",
+        "reflections",
+        "promotion_candidates",
+        "adapter_signals",
+        "package_managers",
+        "languages",
+        "truncated"
+      ],
+      "properties": {
+        "files_scanned": { "type": "integer", "minimum": 0 },
+        "records": { "type": "integer", "minimum": 0 },
+        "sources": { "type": "integer", "minimum": 0 },
+        "questions": { "type": "integer", "minimum": 0 },
+        "decisions": { "type": "integer", "minimum": 0 },
+        "reflections": { "type": "integer", "minimum": 0 },
+        "promotion_candidates": { "type": "integer", "minimum": 0 },
+        "adapter_signals": { "type": "integer", "minimum": 0 },
+        "package_managers": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "languages": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "truncated": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "authority", "freshness", "sensitivity", "visibility"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": [
+            "file",
+            "test",
+            "git",
+            "ticket",
+            "plan",
+            "journal_event",
+            "runtime_receipt",
+            "database",
+            "ui_screenshot",
+            "external_pointer",
+            "human_note"
+          ]
+        },
+        "path": { "type": ["string", "null"] },
+        "uri": { "type": ["string", "null"] },
+        "commit": { "type": ["string", "null"] },
+        "line_start": { "type": ["integer", "null"], "minimum": 1 },
+        "line_end": { "type": ["integer", "null"], "minimum": 1 },
+        "event_hash": { "type": ["string", "null"] },
+        "chain_head": { "type": ["string", "null"] },
+        "source_hash": { "type": ["string", "null"] },
+        "authority": {
+          "enum": [
+            "implementation",
+            "test_proof",
+            "approved_policy",
+            "accepted_decision",
+            "requirement",
+            "runtime_observation",
+            "review_comment",
+            "legacy_note",
+            "summary"
+          ]
+        },
+        "freshness": {
+          "enum": ["current", "stale", "unknown"]
+        },
+        "sensitivity": {
+          "enum": [
+            "public",
+            "internal",
+            "private_pointer_only",
+            "sensitive",
+            "secret_prohibited"
+          ]
+        },
+        "visibility": {
+          "enum": [
+            "public",
+            "internal",
+            "private_pointer_only",
+            "sensitive",
+            "secret_prohibited"
+          ]
+        }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "statement",
+        "scope",
+        "confidence",
+        "status",
+        "classification",
+        "evidence",
+        "authority"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": [
+            "fact",
+            "business_object",
+            "field_rule",
+            "business_rule",
+            "workflow",
+            "integration_contract",
+            "configuration_surface",
+            "data_dependency",
+            "ux_behavior",
+            "decision",
+            "hypothesis",
+            "contradiction",
+            "question",
+            "reflection"
+          ]
+        },
+        "subject": { "type": ["string", "null"] },
+        "predicate": { "type": ["string", "null"] },
+        "object": { "type": ["string", "null"] },
+        "statement": { "type": "string", "minLength": 1 },
+        "scope": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "repos": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true
+            },
+            "bounded_context": { "type": ["string", "null"] },
+            "tenants": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true
+            },
+            "applies_when": { "type": ["string", "null"] }
+          }
+        },
+        "confidence": {
+          "enum": ["confirmed", "observed", "inferred", "hypothesis", "contradicted", "unknown", "deprecated", "waived"]
+        },
+        "computed_confidence": {
+          "enum": ["confirmed", "observed", "inferred", "hypothesis", "contradicted", "unknown", "deprecated", "waived"]
+        },
+        "confidence_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "confidence_inputs": { "$ref": "#/$defs/confidence_inputs" },
+        "status": {
+          "enum": ["scratch", "candidate", "accepted", "rejected", "superseded", "stale", "deprecated", "waived"]
+        },
+        "classification": {
+          "enum": ["public", "internal", "private_pointer_only", "sensitive", "secret_prohibited"]
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence_ref" },
+          "minItems": 1
+        },
+        "authority": { "$ref": "#/$defs/record_authority" },
+        "history": { "$ref": "#/$defs/history" },
+        "review": { "$ref": "#/$defs/review" }
+      }
+    },
+    "evidence_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id"],
+      "properties": {
+        "source_id": { "type": "string", "minLength": 1 },
+        "note": { "type": ["string", "null"] }
+      }
+    },
+    "history": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "effective_from": { "type": ["string", "null"] },
+        "effective_to": { "type": ["string", "null"] },
+        "supersedes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "superseded_by": { "type": ["string", "null"] },
+        "source_hashes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "owner": { "type": ["string", "null"] },
+        "review_required": { "type": "boolean" },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "record_authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "confidence",
+        "source_authorities",
+        "freshness",
+        "sensitivity",
+        "can_guide_implementation",
+        "approval_required",
+        "reason"
+      ],
+      "properties": {
+        "confidence": {
+          "enum": ["confirmed", "observed", "inferred", "hypothesis", "contradicted", "unknown", "deprecated", "waived"]
+        },
+        "computed_confidence": {
+          "enum": ["confirmed", "observed", "inferred", "hypothesis", "contradicted", "unknown", "deprecated", "waived"]
+        },
+        "confidence_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "confidence_inputs": { "$ref": "#/$defs/confidence_inputs" },
+        "source_authorities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "implementation",
+              "test_proof",
+              "approved_policy",
+              "accepted_decision",
+              "requirement",
+              "runtime_observation",
+              "review_comment",
+              "legacy_note",
+              "summary"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "freshness": {
+          "enum": ["current", "stale", "unknown"]
+        },
+        "sensitivity": {
+          "enum": [
+            "public",
+            "internal",
+            "private_pointer_only",
+            "sensitive",
+            "secret_prohibited"
+          ]
+        },
+        "can_guide_implementation": { "type": "boolean" },
+        "approval_required": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "confidence_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "extractor_confidence",
+        "verification_level",
+        "source_authority_score",
+        "corroborating_source_count",
+        "freshness",
+        "conflict_state",
+        "sensitivity",
+        "review_status",
+        "source_authorities"
+      ],
+      "properties": {
+        "extractor_confidence": {
+          "enum": ["confirmed", "observed", "inferred", "hypothesis", "contradicted", "unknown", "deprecated", "waived"]
+        },
+        "verification_level": {
+          "enum": [
+            "human_approved",
+            "machine_verified",
+            "intent_and_enforcement",
+            "intent_only",
+            "observed_behavior",
+            "unverified"
+          ]
+        },
+        "source_authority_score": { "type": "integer", "minimum": 0, "maximum": 35 },
+        "corroborating_source_count": { "type": "integer", "minimum": 0 },
+        "freshness": { "enum": ["current", "stale", "unknown"] },
+        "conflict_state": { "enum": ["clear", "conflicted"] },
+        "sensitivity": {
+          "enum": [
+            "public",
+            "internal",
+            "private_pointer_only",
+            "sensitive",
+            "secret_prohibited"
+          ]
+        },
+        "review_status": {
+          "enum": ["approved", "machine_verified", "accepted", "waived", "rejected", "pending"]
+        },
+        "source_authorities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "implementation",
+              "test_proof",
+              "approved_policy",
+              "accepted_decision",
+              "requirement",
+              "runtime_observation",
+              "review_comment",
+              "legacy_note",
+              "summary",
+              "unknown"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "type", "to"],
+      "properties": {
+        "from": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": [
+            "has_property",
+            "constrained_by",
+            "enforced_by",
+            "participates_in",
+            "maps_to",
+            "configured_by",
+            "depends_on",
+            "conflicts_with",
+            "supersedes",
+            "raises_question",
+            "decided_by",
+            "promotes_to"
+          ]
+        },
+        "to": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence_ref" }
+        }
+      }
+    },
+    "contradiction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "record_ids", "status", "statement"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "record_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 2,
+          "uniqueItems": true
+        },
+        "status": { "enum": ["open", "resolved", "waived"] },
+        "statement": { "type": "string", "minLength": 1 },
+        "resolution": { "type": ["string", "null"] }
+      }
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "question", "owner", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "question": { "type": "string", "minLength": 1 },
+        "owner": { "type": ["string", "null"] },
+        "status": { "enum": ["open", "answered", "deferred", "waived"] },
+        "blocks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "question_ledger_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "question",
+        "owner",
+        "status",
+        "priority",
+        "impact",
+        "ask_reason",
+        "evidence",
+        "blocks",
+        "decision_required",
+        "generated_from"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "question": { "type": "string", "minLength": 1 },
+        "owner": { "type": ["string", "null"] },
+        "status": { "enum": ["open", "answered", "deferred", "waived"] },
+        "priority": { "enum": ["high", "medium", "low"] },
+        "impact": { "type": "string", "minLength": 1 },
+        "ask_reason": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence_ref" },
+          "minItems": 1
+        },
+        "blocks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "decision_required": { "type": "boolean" },
+        "generated_from": {
+          "enum": ["signal", "adapter", "contradiction", "missing_authority", "scan_sanity"]
+        }
+      }
+    },
+    "decision_ledger_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "question_id",
+        "subject",
+        "owner",
+        "status",
+        "decision",
+        "options",
+        "rationale",
+        "evidence",
+        "consequences",
+        "waiver"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "question_id": { "type": ["string", "null"] },
+        "subject": { "type": "string", "minLength": 1 },
+        "owner": { "type": ["string", "null"] },
+        "status": { "enum": ["pending", "accepted", "rejected", "waived"] },
+        "decision": { "type": ["string", "null"] },
+        "options": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "rationale": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence_ref" },
+          "minItems": 1
+        },
+        "consequences": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "waiver": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["owner", "scope", "reason", "revisit_condition"],
+          "properties": {
+            "owner": { "type": "string", "minLength": 1 },
+            "scope": { "type": "string", "minLength": 1 },
+            "reason": { "type": "string", "minLength": 1 },
+            "revisit_condition": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "reflection_ledger_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "category",
+        "statement",
+        "evidence",
+        "related_records",
+        "adapter_id",
+        "recommendation",
+        "status"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "category": {
+          "enum": [
+            "assumption_disproved",
+            "pattern_confirmed",
+            "pattern_rejected",
+            "adapter_improvement",
+            "future_run_note"
+          ]
+        },
+        "statement": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence_ref" },
+          "minItems": 1
+        },
+        "related_records": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "adapter_id": { "type": ["string", "null"] },
+        "recommendation": { "type": ["string", "null"] },
+        "status": { "enum": ["candidate", "accepted", "rejected"] }
+      }
+    },
+    "promotion_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "record_id", "target", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "record_id": { "type": "string", "minLength": 1 },
+        "target": { "enum": ["requirement", "memory", "adr", "ticket", "question"] },
+        "status": { "enum": ["proposed", "accepted", "rejected", "deferred"] },
+        "required_reviewer": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "adapter_signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "confidence", "matched_paths", "probes", "risks", "questions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "confidence": {
+          "enum": ["confirmed", "observed", "inferred", "hypothesis", "contradicted", "unknown"]
+        },
+        "matched_paths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "probes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "risks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "questions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

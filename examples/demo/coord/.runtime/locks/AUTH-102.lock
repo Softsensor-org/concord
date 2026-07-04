@@ -1,0 +1,13 @@
+{
+  "agent_id": "a12",
+  "owner": "claudea12",
+  "ticket": "AUTH-102",
+  "status": "review",
+  "repo": "frontend",
+  "branch": "agent/claudea12-auth-102-reset-password-ui-flow",
+  "head": "b2c3d4e5f60718293a4b5c6d7e8f90123456789a",
+  "worktree": "frontend/.worktrees/claudea12/AUTH-102",
+  "session_id": "a12-demo",
+  "started_at_utc": "2026-06-11T14:20:00.000Z",
+  "heartbeat_utc": "2026-06-12T10:45:00.000Z"
+}

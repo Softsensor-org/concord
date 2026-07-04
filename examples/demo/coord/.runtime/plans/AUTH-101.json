@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "ticket_id": "AUTH-101",
+  "markdown_heading": "AUTH-101 — Password reset with rate limiting",
+  "review_round": 1,
+  "intended_files": [
+    "backend/src/services/passwordReset.ts",
+    "backend/src/models/resetToken.ts",
+    "backend/tests/units/passwordReset.test.ts"
+  ],
+  "change_summary": [
+    "Added password-reset service with single-use, time-bound tokens and per-account rate limiting; all issuance/consumption audited."
+  ],
+  "verification_commands": [
+    "cd backend && npm run build",
+    "cd backend && npm test -- passwordReset"
+  ],
+  "critical_invariants": [
+    "Reset tokens are single-use and expire; a consumed or expired token is always rejected.",
+    "Reset requests never reveal whether an account exists (no enumeration).",
+    "Every token issuance and consumption is written to the audit log with actor and timestamp."
+  ],
+  "requirement_closure": [
+    "Ticket ask: Add password reset with per-account rate limiting and audited token issuance (FR-1.1).",
+    "Implemented: passwordReset service with single-use time-bound tokens, per-account rate limit, and audit records on issue/consume; constant-time response to avoid enumeration; unit tests cover expiry, reuse, rate limit, and enumeration.",
+    "Not implemented: none",
+    "Deferred to: none",
+    "Closeout verdict: complete"
+  ],
+  "feature_proof": [
+    "symbol:backend/src/services/passwordReset.ts#requestReset",
+    "symbol:backend/src/services/passwordReset.ts#consumeToken",
+    "path:backend/src/models/resetToken.ts",
+    "text:rate limit exceeded",
+    "route:POST /auth/reset"
+  ],
+  "repo_gates": [
+    "cd backend && npm run build [result=pass; attribution=clean] - tsc clean",
+    "cd backend && npm test -- passwordReset [result=pass; attribution=clean] - 11 passed"
+  ],
+  "self_review_cycles": [
+    { "cycle": 1, "total": 4, "lens": "contract/state invariants", "risks": ["token reuse", "expiry not enforced"], "findings": "single-use enforced via consumed flag; expiry checked before use; tests assert both", "verification": "npm test -- passwordReset", "verdict": "pass" },
+    { "cycle": 2, "total": 4, "lens": "auth/security/failure modes", "risks": ["account enumeration", "rate-limit bypass"], "findings": "constant-time response regardless of account existence; rate limit keyed per account_id; enumeration + limit tests pass", "verification": "npm test -- passwordReset", "verdict": "pass" },
+    { "cycle": 3, "total": 4, "lens": "tests/operability/performance", "risks": ["unaudited path", "noisy logs"], "findings": "issue/consume both audited; structured log fields; no hot-path N+1", "verification": "npm test -- passwordReset", "verdict": "pass" },
+    { "cycle": 4, "total": 4, "lens": "requirement closure", "risks": ["FR-1.1 partially met"], "findings": "every FR-1.1 clause mapped to code + test; closeout complete", "verification": "review against product/REQUIREMENTS.md FR-1.1", "verdict": "pass" }
+  ],
+  "synced_from_markdown_at": "2026-05-28T15:09:00Z"
+}

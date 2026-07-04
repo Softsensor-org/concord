@@ -1,0 +1,42 @@
+{
+  "status": "pass",
+  "source": "scripts/gate.sh --lane full",
+  "started_at": "2026-06-12T10:30:00.000Z",
+  "ended_at": "2026-06-12T10:33:20.000Z",
+  "duration_ms": 213000,
+  "budget": {
+    "target_ms": 300000,
+    "status": "within"
+  },
+  "git": {
+    "branch": "agent/geminia21-auth-105-audit-log-viewer",
+    "commit": "e5f60718293a4b5c6d7e8f9012345678abcdef01",
+    "worktree_clean": true
+  },
+  "authority": {
+    "status": "authoritative",
+    "reason": "clean worktree at recorded commit"
+  },
+  "steps": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "duration_ms": 38000
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "duration_ms": 15000
+    },
+    {
+      "name": "test",
+      "status": "pass",
+      "duration_ms": 72000
+    },
+    {
+      "name": "build",
+      "status": "pass",
+      "duration_ms": 88000
+    }
+  ]
+}

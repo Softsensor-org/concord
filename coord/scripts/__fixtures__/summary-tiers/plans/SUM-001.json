@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "ticket_id": "SUM-001",
+  "requirement_closure": [
+    "Ticket ask: produce a worked decision-bearing record for the summary-tier fixture",
+    "Implemented: a fixture plan record with requirement_closure + a self-review cycle",
+    "Not implemented: none",
+    "Deferred to: none",
+    "Closeout verdict: complete"
+  ],
+  "critical_invariants": [
+    "A summary points at the decision record's hash-linked source, never replaces it."
+  ],
+  "self_review_cycles": [
+    {
+      "cycle": 1,
+      "total": 1,
+      "lens": "Requirement closure",
+      "diff": "added fixture decision record",
+      "risks": ["fixture could drift from real shape"],
+      "findings": "none",
+      "verification": "node --test coord/scripts/summary-tiers.test.js",
+      "verdict": "pass",
+      "raw": "lens=Requirement closure; diff=added fixture decision record; risks=fixture could drift from real shape; findings=none; verification=node --test coord/scripts/summary-tiers.test.js; verdict=pass"
+    }
+  ]
+}

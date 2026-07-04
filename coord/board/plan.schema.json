@@ -1,0 +1,351 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coord/board/plan.schema.json",
+  "title": "Coordination Governance Plan Record",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "ticket_id",
+    "startup_checklist",
+    "traceability_gate",
+    "governance",
+    "baseline_reproduction",
+    "intended_files",
+    "change_summary",
+    "verification_commands",
+    "critical_invariants",
+    "requirement_closure",
+    "feature_proof",
+    "repo_gates",
+    "self_review_cycles",
+    "rollback_strategy"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "ticket_id": {
+      "type": "string",
+      "pattern": "^[A-Z]+-\\d+$"
+    },
+    "markdown_heading": {
+      "type": "string"
+    },
+    "startup_checklist": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "traceability_gate": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "governance": {
+      "type": "object",
+      "required": ["expected_closeout", "ticket_local_repairs"],
+      "properties": {
+        "expected_closeout": {
+          "type": "object",
+          "required": ["method", "base_ref"],
+          "properties": {
+            "method": {
+              "type": "string",
+              "enum": ["pr", "no_pr", "fulfilled_by"]
+            },
+            "base_ref": {
+              "type": "string"
+            },
+            "provenance_note": {
+              "type": ["string", "null"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "review_profile": {
+          "type": "string",
+          "enum": ["standard", "bounded_repair"]
+        },
+        "ticket_local_repairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "required_question_logged"],
+            "properties": {
+              "kind": { "type": "string" },
+              "required_question_logged": { "type": "boolean" },
+              "note": { "type": ["string", "null"] }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "review_round": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "baseline_reproduction": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "prior_findings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "scaffold_placeholders": {
+      "type": "object",
+      "properties": {
+        "intended_files": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "intended_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "change_summary": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "verification_commands": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "critical_invariants": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "requirement_closure": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "feature_proof": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "adr_refs": {
+      "description": "Optional accepted/proposed ADR references relevant to this ticket's decision surface (COORD-322).",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "decision_required": {
+      "description": "Optional decision/ADR readiness metadata for high-impact tickets (COORD-322).",
+      "type": "object",
+      "properties": {
+        "required": { "type": "boolean" },
+        "status": {
+          "type": ["string", "null"],
+          "enum": ["required", "not-required", "waived", "investigating", "deferred", null]
+        },
+        "reason": { "type": ["string", "null"] },
+        "risk_class": { "type": ["string", "null"] },
+        "waiver": { "type": ["string", "null"] },
+        "owner": { "type": ["string", "null"] },
+        "expires": { "type": ["string", "null"] },
+        "adr_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "repo_gates": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "self_review_cycles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["cycle", "total", "raw"],
+        "properties": {
+          "cycle": { "type": "integer", "minimum": 1 },
+          "total": { "type": "integer", "minimum": 1 },
+          "lens": { "type": ["string", "null"] },
+          "diff": { "type": ["string", "null"] },
+          "risks": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "findings": { "type": ["string", "null"] },
+          "verification": { "type": ["string", "null"] },
+          "verdict": { "type": ["string", "null"] },
+          "raw": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "rollback_strategy": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "bootstrap_risk": {
+      "description": "Optional server-bootstrap / startup / backfill / derived-data risk metadata (COORD-159). Advisory only; absent on tickets that do not touch deployed startup or data-generation work. Field vocabulary is canonicalized in coord/product/SERVER_BOOTSTRAP_JOB_CONTRACT.md.",
+      "type": "object",
+      "properties": {
+        "startup_work_class": {
+          "type": "string",
+          "enum": [
+            "local_bootstrap",
+            "deploy_bootstrap",
+            "startup_work",
+            "server_bootstrap_job",
+            "derived_data_job",
+            "production_repair"
+          ]
+        },
+        "runs_at_boot": { "type": "boolean" },
+        "shares_app_process": { "type": "boolean" },
+        "resource_envelope": {
+          "type": "object",
+          "properties": {
+            "memory_mb": { "type": ["number", "null"] },
+            "timeout_s": { "type": ["number", "null"] },
+            "expected_rows": { "type": ["number", "null"] },
+            "batch_size": { "type": ["number", "null"] },
+            "db_pool_impact": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        },
+        "idempotency_strategy": { "type": ["string", "null"] },
+        "checkpoint_strategy": { "type": ["string", "null"] },
+        "verification_signal": { "type": ["string", "null"] },
+        "rollback_or_disable": { "type": ["string", "null"] },
+        "observability_requirements": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "data_access_shape": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "live_mcp": {
+      "description": "Optional live/production-MCP operation declaration (COORD-153). PRESENCE marks the ticket as a live-mcp operation and turns on the live-MCP lifecycle enforcement gate. Operation-class policy (approval/redaction/cleanup) is sourced from coord/scripts/runtime-evidence.js; see coord/docs/PRODUCTION_MCP_ADAPTER_PLAN.md.",
+      "type": "object",
+      "properties": {
+        "adapter": { "type": ["string", "null"] },
+        "operation": { "type": ["string", "null"] },
+        "operation_class": {
+          "type": ["string", "null"],
+          "enum": [
+            "read_safe",
+            "read_sensitive",
+            "write_low",
+            "write_prod",
+            "destructive",
+            null
+          ]
+        },
+        "environment": {
+          "type": ["string", "null"],
+          "enum": ["local", "staging", "prod", null]
+        },
+        "scope": { "type": ["string", "null"] },
+        "approval": { "type": ["string", "null"] },
+        "redaction": { "type": ["string", "null"] },
+        "cleanup": { "type": ["string", "null"] },
+        "cleanup_required": { "type": ["boolean", "string", "null"] },
+        "product_impact": { "type": ["boolean", "string", "null"] },
+        "promotion": { "type": ["string", "null"] },
+        "receipt_path": { "type": ["string", "null"] },
+        "receipt": { "type": ["object", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "context_pack_ack": {
+      "description": "Optional structured context-pack usage acknowledgement (COORD-348). Records which memory/context sections were considered, which items were treated as authority vs advisory only, and how closeout learning should be handled.",
+      "type": "object",
+      "properties": {
+        "refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "considered": {
+          "type": "object",
+          "properties": {
+            "active_constraints": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "adrs": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "business_rules": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "conflicts": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "stale_warnings": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "open_questions": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "authority": {
+          "type": "object",
+          "properties": {
+            "constraints": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "advisory_only": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "closeout_learning": {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "type": ["string", "null"],
+              "enum": ["promote", "demote", "scratch-only", "mixed", "none", null]
+            },
+            "promote": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "demote": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "scratch_only": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "rationale": {
+              "type": ["string", "null"]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "gate_plan": {
+      "description": "Optional deterministic gate-plan receipt (COORD-379). Produced by gov gate-plan <ticket>; records selected/skipped gates, affected-target fallback, risk class, and required evidence. The receipt is planning evidence only and does not execute gates.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "security_surface": {
+      "type": ["string", "null"]
+    },
+    "synced_from_markdown_at": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

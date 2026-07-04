@@ -1,0 +1,44 @@
+**/.next/
+**/.worktrees/
+**/node_modules/
+**/out/
+*.tsbuildinfo
+.DS_Store
+.claude/settings.local.json
+# ENT-001 durable journal bucket split: coord/.runtime/ is ignored by default,
+# but the DURABLE governance evidence buckets are un-ignored (tracked) so a
+# fresh clone can validate its own board. Tracked: the journal and the canonical
+# plan records. Everything else under .runtime/ (locks, sessions, agents.json,
+# gate-procs, session-threads, the latest-snapshot pointer, scratch) stays
+# ignored. Note: `coord/.runtime/*` (NOT `coord/.runtime/`) so git descends
+# into the dir and the `!` negations below can re-include specific paths.
+coord/.runtime/*
+# Durable journal (tracked). The per-mutation governance-snapshots/ history
+# bucket is intentionally NOT tracked (COORD-105): board validate never reads
+# it, and tracking it caused unbounded git bloat (2427+ files / ~28MB, no
+# pruning). COORD-108: governance-latest-snapshot.json is likewise NOT tracked —
+# it is a single regenerable board-state-at-last-mutation pointer that MUTATES on
+# every gov command (perpetually-dirty worktree) and is not needed for
+# fresh-clone validate; the journal + plan records are the durable evidence. Both
+# stay on local disk as recovery scratch.
+!coord/.runtime/governance-events.ndjson
+# Durable canonical plan records (tracked).
+!coord/.runtime/plans/
+coord/evidence/**/*.json
+**/artifacts/gates/
+# COORD-138: the bundled cockpit demo ships a curated, read-only gate-artifact
+# fixture so `npm run demo` shows passing proofs on the Gates/Evidence views.
+# These are committed demo data (not real gate output), so un-ignore them.
+!examples/demo/*/artifacts/
+!examples/demo/*/artifacts/gates/
+!examples/demo/*/artifacts/gates/*.json
+# COORD-140: coord/memory/ derived artifacts (decisions.ndjson etc.) are
+# gitignored as DERIVED + REBUILDABLE (MEMORY_ARCHITECTURE.md §6.1). The precise
+# rules live in coord/.gitignore (consulted for paths under coord/); this anchor
+# documents the policy at the repo root.
+coord/memory/decisions.ndjson
+
+# COORD-450: SEA binary build artifacts (built in CI, never committed)
+dist/
+release/sea/bundle.tar
+release/sea/sea-prep.blob

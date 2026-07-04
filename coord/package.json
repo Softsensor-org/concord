@@ -1,0 +1,41 @@
+{
+  "name": "concord",
+  "version": "0.1.7",
+  "description": "Softsensor Concord — governed multi-agent coordination engine (the coord/ scaffold, driven by the gov CLI). Zero runtime dependencies.",
+  "license": "Apache-2.0",
+  "private": false,
+  "type": "commonjs",
+  "bin": {
+    "concord": "scripts/coord-cli.js",
+    "gov": "scripts/governance.js"
+  },
+  "files": [
+    "scripts/",
+    "board/",
+    "paths.js",
+    "project.config.js",
+    "engine-pin.json",
+    "TEMPLATE_SYNC_MANIFEST.json",
+    "GOVERNANCE.md",
+    "GOVERNANCE_ARCHITECTURE.md",
+    "AGENTS.md",
+    "AGENT_STARTUP_CHECKLIST.md",
+    "product/",
+    "prompts/",
+    "docs/"
+  ],
+  "engines": {
+    "node": ">=22.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Softsensor-org/concord"
+  },
+  "scripts": {
+    "test": "node --test scripts/*.test.js board/*.test.js",
+    "mutation": "stryker run && node scripts/mutation-policy.js classify --root . --report reports/mutation/mutation.json"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "^9.6.1"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "metadata": {
+    "title": "Requirements Walking Skeleton Fixture",
+    "last_updated": "2026-06-25T00:00:00Z",
+    "canonical_references": []
+  },
+  "sections": [
+    {
+      "kind": "table",
+      "level": 3,
+      "heading": "Fixture Tickets",
+      "separator_before": false,
+      "columns": [],
+      "rows": [
+        {
+          "ID": "REQSKEL-001",
+          "Repo": "X",
+          "Type": "feature",
+          "Pri": "P1",
+          "Status": "done",
+          "Owner": "fixture",
+          "Description": "[URS-001] Link requirement evidence to delivery ticket.",
+          "Requirement IDs": "URS-001",
+          "Expected Evidence Class": "test_gate, manual_review"
+        },
+        {
+          "ID": "REQSKEL-002",
+          "Repo": "X",
+          "Type": "feature",
+          "Pri": "P1",
+          "Status": "done",
+          "Owner": "fixture",
+          "Description": "[URS-002] Surface traceability coverage.",
+          "Requirement IDs": "URS-002",
+          "Expected Evidence Class": "test_gate, manual_review"
+        }
+      ]
+    }
+  ],
+  "prompt_index": {},
+  "waiver_index": {}
+}

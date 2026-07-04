@@ -1,0 +1,74 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node coord/scripts/hooks/session-start.js",
+            "description": "GCV-1: export durable governance identity (COORD_PROVIDER/SESSION_ID/TRANSCRIPT/INSTANCE_ID + CLAUDE_SESSION_ID) via CLAUDE_ENV_FILE; source-aware (preserves instance id on clear/compact)"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"$TOOL_INPUT\" | grep -q 'gov commit' && coord/scripts/gov heartbeat $(echo \"$TOOL_INPUT\" | grep -oP '[A-Z]+-\\d+' | head -1) 2>/dev/null || true",
+            "description": "Auto-sync lock HEAD after every gov commit"
+          },
+          {
+            "type": "command",
+            "command": "echo \"$TOOL_INPUT\" | grep -qE 'gov start|coord/scripts/agent do' && WT=$(echo \"$TOOL_OUTPUT\" | grep -oP 'worktree=\\K[^ ]+' 2>/dev/null | head -1) && [ -z \"$WT\" ] && WT=$(echo \"$TOOL_OUTPUT\" | grep -oP '\"worktree\":\\s*\"\\K[^\"]+' 2>/dev/null | head -1) || true; [ -n \"${WT:-}\" ] && cd \"$WT\" 2>/dev/null && git fetch origin dev && git rebase origin/dev 2>/dev/null || true",
+            "description": "Auto-rebase governed worktree after gov start or agent do"
+          },
+          {
+            "type": "command",
+            "command": "echo \"$TOOL_INPUT\" | grep -qE 'gov land|coord/scripts/agent land' && echo \"$TOOL_OUTPUT\" | grep -q '\"status\": \"merged\"' && node -e \"const fs=require('fs'); const m=fs.existsSync('coord/TEST_MATURITY.md')?fs.readFileSync('coord/TEST_MATURITY.md','utf8'):''; const last=m.match(/Last updated: (.*)/); if(!last||last[1]==='not yet run'){console.log('ADVISORY: Test maturity has never been audited. Consider running /test-strategy after this epic.')}else{const d=new Date(last[1]); const age=Math.floor((Date.now()-d.getTime())/86400000); if(age>7)console.log('ADVISORY: Test maturity last audited '+age+' days ago. Consider running /test-strategy.')}\" 2>/dev/null || true",
+            "description": "Advise test-strategy run after governed landing if maturity is stale"
+          },
+          {
+            "type": "command",
+            "command": "( echo \"$TOOL_INPUT\" | grep -qE 'gov land|coord/scripts/agent land' || exit 0; echo \"$TOOL_OUTPUT\" | grep -q '\"status\": \"merged\"' || exit 0; TICKET=$(echo \"$TOOL_INPUT\" | grep -oP '[A-Z]+-\\d+' | head -1); [ -n \"$TICKET\" ] || exit 0; REPO_ROOT=$(node -e \"const p=require('./coord/paths.js').createCoordPaths(); const t=JSON.parse(require('fs').readFileSync(p.boardPath,'utf8')); const rows=t.sections.flatMap(s=>s.rows||[]); const r=rows.find(r=>r.ID==='$TICKET'); if(r&&r.Repo!=='X'){const root=p.repoRoots[r.Repo]; if(root)console.log(root)}\" 2>/dev/null); [ -n \"$REPO_ROOT\" ] || exit 0; git -C \"$REPO_ROOT\" diff origin/dev~1..origin/dev --name-only 2>/dev/null | grep -qE '\\.test\\.' && exit 0; echo \"ADVISORY: Last landed ticket ($TICKET) diff has no test files. Consider checking /test-strategy $TICKET for coverage gaps.\" ) 2>/dev/null || true",
+            "description": "Advise when a landed ticket has no test files in its diff"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node coord/scripts/gov code-index --git 2>/dev/null || true",
+            "description": "Auto-refresh code symbol index after every file edit (git-mode: only changed files, <100ms)"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node coord/scripts/gov code-index --git 2>/dev/null || true",
+            "description": "Auto-refresh code symbol index after every file write (git-mode: only changed files, <100ms)"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"$TOOL_INPUT\" | grep -qE 'git (merge|cherry-pick|push).*dev' && echo 'BLOCKED: Never merge to dev manually. Use gov land or gov finalize.' && exit 1 || true",
+            "description": "Block direct merges to dev — must use governed landing"
+          }
+        ]
+      }
+    ]
+  }
+}

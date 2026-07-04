@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "ticket_id": "INS-001",
+  "requirement_closure": [
+    "Ticket ask: build the memory chain feature",
+    "Implemented: the feature plus its tests",
+    "Not implemented: none",
+    "Deferred to: none",
+    "Closeout verdict: complete"
+  ],
+  "critical_invariants": [
+    "The journal hash-chain prev_event_hash link must never be broken."
+  ],
+  "self_review_cycles": [
+    {
+      "cycle": 1,
+      "total": 2,
+      "lens": "Security and failure modes",
+      "diff": "wired the chain append path",
+      "risks": ["concurrent governed appends could cross the prev_event_hash chain"],
+      "findings": "found a journal chain integrity gap under concurrent append; fixed before submit",
+      "verification": "node --test",
+      "verdict": "fail",
+      "raw": "lens=Security and failure modes; risks=concurrent governed appends could cross the prev_event_hash chain; findings=found a journal chain integrity gap under concurrent append; verdict=fail"
+    },
+    {
+      "cycle": 2,
+      "total": 2,
+      "lens": "Requirement closure",
+      "diff": "re-verified the chain",
+      "risks": ["none"],
+      "findings": "none",
+      "verification": "node --test",
+      "verdict": "pass",
+      "raw": "lens=Requirement closure; findings=none; verdict=pass"
+    }
+  ]
+}

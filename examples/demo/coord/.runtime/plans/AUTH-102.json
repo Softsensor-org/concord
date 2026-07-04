@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "ticket_id": "AUTH-102",
+  "markdown_heading": "AUTH-102 — Reset-password UI flow",
+  "review_round": 1,
+  "intended_files": [
+    "frontend/src/screens/ResetPassword/index.tsx",
+    "frontend/src/__tests__/resetPassword.test.tsx"
+  ],
+  "change_summary": [
+    "Reset-password UI flow with request, sent, verify-low-confidence, and done states."
+  ],
+  "verification_commands": ["cd frontend && yarn build", "cd frontend && yarn test resetPassword"],
+  "critical_invariants": [
+    "The UI never reveals whether an account exists.",
+    "A low-confidence request surfaces a verify state rather than silently proceeding."
+  ],
+  "requirement_closure": [
+    "Ticket ask: Reset-password UI flow with verify-on-low-confidence states (FR-1.2).",
+    "Implemented: request + sent + done states wired to the AUTH-101 service.",
+    "Not implemented: verify-low-confidence state still in review.",
+    "Deferred to: none",
+    "Closeout verdict: incomplete"
+  ],
+  "feature_proof": [
+    "route:/reset-password",
+    "symbol:frontend/src/screens/ResetPassword/index.tsx#ResetPassword"
+  ],
+  "repo_gates": [
+    "cd frontend && yarn build [result=pass; attribution=clean] - build ok"
+  ],
+  "self_review_cycles": [
+    { "cycle": 1, "total": 4, "lens": "contract/state invariants", "risks": ["state leak on error"], "findings": "states modeled explicitly; error path does not reveal account existence", "verification": "yarn test resetPassword", "verdict": "pass" },
+    { "cycle": 2, "total": 4, "lens": "auth/security/failure modes", "risks": ["enumeration via timing/UI"], "findings": "uniform messaging; under review for the verify state", "verification": "manual + yarn test", "verdict": "pass" }
+  ],
+  "synced_from_markdown_at": "2026-06-01T11:00:00Z"
+}

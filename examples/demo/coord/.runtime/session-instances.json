@@ -1,0 +1,47 @@
+[
+  {
+    "session_id": "a13-demo",
+    "agent_id": "a13",
+    "handle": "claudea13",
+    "host": "runner-1",
+    "pid": 11670,
+    "started_at": "2026-06-12T08:30:00.000Z",
+    "last_seen_at": "2026-06-12T11:05:00.000Z"
+  },
+  {
+    "session_id": "g21-demo",
+    "agent_id": "g21",
+    "handle": "geminia21",
+    "host": "runner-2",
+    "pid": 10801,
+    "started_at": "2026-06-12T09:15:00.000Z",
+    "last_seen_at": "2026-06-12T11:02:00.000Z"
+  },
+  {
+    "session_id": "c02-demo",
+    "agent_id": "c02",
+    "handle": "codexa02",
+    "host": "runner-3",
+    "pid": 12113,
+    "started_at": "2026-06-11T16:00:00.000Z",
+    "last_seen_at": "2026-06-12T10:58:00.000Z"
+  },
+  {
+    "session_id": "a12-demo",
+    "agent_id": "a12",
+    "handle": "claudea12",
+    "host": "runner-1",
+    "pid": 14695,
+    "started_at": "2026-06-11T14:20:00.000Z",
+    "last_seen_at": "2026-06-12T10:45:00.000Z"
+  },
+  {
+    "session_id": "c01-demo",
+    "agent_id": "c01",
+    "handle": "codexa01",
+    "host": "runner-2",
+    "pid": 10869,
+    "started_at": "2026-06-09T10:00:00.000Z",
+    "last_seen_at": "2026-06-12T08:40:00.000Z"
+  }
+]

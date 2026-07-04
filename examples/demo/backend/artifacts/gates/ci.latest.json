@@ -1,0 +1,37 @@
+{
+  "status": "pass",
+  "source": "scripts/gate.sh --lane ci",
+  "started_at": "2026-06-12T10:30:00.000Z",
+  "ended_at": "2026-06-12T10:33:20.000Z",
+  "duration_ms": 148000,
+  "budget": {
+    "target_ms": 200000,
+    "status": "within"
+  },
+  "git": {
+    "branch": "dev",
+    "commit": "c3d4e5f60718293a4b5c6d7e8f9012345678abcd",
+    "worktree_clean": true
+  },
+  "authority": {
+    "status": "authoritative",
+    "reason": "clean worktree at recorded commit"
+  },
+  "steps": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "duration_ms": 42000
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "duration_ms": 18000
+    },
+    {
+      "name": "unit",
+      "status": "pass",
+      "duration_ms": 96000
+    }
+  ]
+}

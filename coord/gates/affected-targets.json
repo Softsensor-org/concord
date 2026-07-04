@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-06-28",
+  "full_gate": {
+    "commands": [
+      "node --test coord/scripts/governance.test.js"
+    ]
+  },
+  "targets": [
+    {
+      "id": "coord:gate-planner",
+      "command": "node --test coord/scripts/gate-plan.test.js coord/scripts/affected-targets.test.js",
+      "files": [
+        "coord/scripts/gate-plan.js",
+        "coord/scripts/gate-plan.test.js",
+        "coord/scripts/affected-targets.js",
+        "coord/scripts/affected-targets.test.js",
+        "coord/gates/affected-targets.json",
+        "coord/gates/affected-targets.schema.json"
+      ]
+    },
+    {
+      "id": "coord:track-evidence",
+      "command": "node --test coord/scripts/track-evidence-policy.test.js",
+      "files": [
+        "coord/scripts/track-evidence-policy.js",
+        "coord/scripts/track-evidence-policy.test.js",
+        "coord/gates/track-evidence-policy.json"
+      ]
+    },
+    {
+      "id": "coord:infra",
+      "command": "node --test coord/scripts/infra-gate.test.js",
+      "files": [
+        "coord/scripts/infra-gate.js",
+        "coord/scripts/infra-gate.test.js"
+      ]
+    },
+    {
+      "id": "coord:authority",
+      "command": "node --test coord/scripts/canonical-derived-authority.test.js",
+      "files": [
+        "coord/scripts/canonical-derived-authority.js",
+        "coord/scripts/canonical-derived-authority.test.js",
+        "coord/product/CANONICAL_DERIVED_AUTHORITY.md"
+      ]
+    },
+    {
+      "id": "coord:lifecycle",
+      "command": "node --test coord/scripts/governance-validation.test.js coord/scripts/plan-records.test.js coord/scripts/lifecycle.test.js",
+      "files": [
+        "coord/scripts/governance-validation.js",
+        "coord/scripts/plan-records.js",
+        "coord/scripts/lifecycle.js",
+        "coord/scripts/cli.js",
+        "coord/board/plan.schema.json"
+      ],
+      "depends_on": [
+        "coord:gate-planner",
+        "coord:track-evidence"
+      ]
+    }
+  ]
+}

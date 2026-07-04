@@ -1,0 +1,26 @@
+{
+  "models": {
+    "claude-opus-4": {
+      "input": 15,
+      "output": 75
+    },
+    "claude-sonnet-4": {
+      "input": 3,
+      "output": 15
+    },
+    "gpt-5-codex": {
+      "input": 10,
+      "output": 40
+    },
+    "gemini-2.5-pro": {
+      "input": 1.25,
+      "output": 10
+    }
+  },
+  "default": {
+    "input": 15,
+    "output": 75
+  },
+  "currency": "USD",
+  "unit": "per_1m_tokens"
+}

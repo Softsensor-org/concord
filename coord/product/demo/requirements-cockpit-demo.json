@@ -1,0 +1,100 @@
+{
+  "kind": "concord.requirements.cockpit_demo",
+  "schema_version": 1,
+  "generated_at_utc": "1970-01-01T00:00:00.000Z",
+  "source": {
+    "requirements": "coord/product/REQUIREMENTS.md",
+    "requirements_protocol": "coord/product/REQUIREMENTS_ASSURANCE_PROTOCOL.md",
+    "ui_contract": "coord/product/COORD_UI_CONTRACT.md",
+    "screen_index_contract": "coord/product/SCREEN_INDEX_CONTRACT.md"
+  },
+  "scenario": {
+    "name": "Existing repo plus existing URS",
+    "positioning": "Concord overlays an existing repo, existing requirements source, existing tickets, and generated evidence artifacts.",
+    "non_goals": [
+      "does not replace the customer's PRD or URS authoring system",
+      "does not mutate requirements, board rows, or evidence from the web tier",
+      "does not copy private requirement bodies into public demo data"
+    ]
+  },
+  "requirements_coverage": {
+    "baseline_state": "present",
+    "stable_requirement_id_examples": ["REQ-001A", "REQ-021", "REQ-039"],
+    "states_shown": ["unlinked", "planned", "partial", "satisfied", "waived", "defect", "stale"],
+    "explicit_vs_inferred_visible": true
+  },
+  "persona_blockers": [
+    {
+      "persona": "Engineering lead",
+      "surface": "operator cockpit",
+      "workflow": "inspect requirement-to-ticket evidence before closeout",
+      "blocker_ticket": "COORD-203",
+      "status": "sample-linked"
+    },
+    {
+      "persona": "Business reviewer",
+      "surface": "requirements cockpit",
+      "workflow": "distinguish inferred screen coverage from confirmed coverage",
+      "blocker_ticket": "COORD-202",
+      "status": "sample-linked"
+    }
+  ],
+  "screen_coverage": {
+    "explicit_links": [
+      {
+        "screen_id": "requirements.traceability",
+        "route": "/traceability",
+        "requirement_id": "REQ-001A",
+        "confidence": "explicit"
+      }
+    ],
+    "inferred_links": [
+      {
+        "screen_id": "requirements.sources",
+        "route": "/requirements/sources",
+        "requirement_id": "REQ-039",
+        "confidence": "inferred",
+        "review_action": "business analyst confirmation required before closure"
+      }
+    ],
+    "unlinked_worklist": ["requirements.demo"]
+  },
+  "donor_derived_provenance": {
+    "source_policy": "private pointer or scrubbed summary only",
+    "sample_sources": [
+      {
+        "source_ref": "private://donor/repo#workflow",
+        "authority": "donor",
+        "scrub_status": "private_pointer_only",
+        "generalization_decision": "reuse_pattern"
+      }
+    ],
+    "public_cut_safe": true
+  },
+  "stale_impacts": [
+    {
+      "requirement_id": "REQ-039",
+      "change": "changed",
+      "impacted_tickets": ["COORD-242"],
+      "required_action": "revalidate-linked-work-or-record-waiver"
+    }
+  ],
+  "ticket_evidence_closeout": [
+    {
+      "ticket": "COORD-242",
+      "requirement_ids": ["REQ-039"],
+      "evidence_classes": ["test_gate", "manual_review"],
+      "closeout_state": "satisfied",
+      "proof_refs": [
+        "node --test coord/scripts/requirements-baseline-gate.test.js",
+        "node coord/scripts/coord-cli.js requirements baseline --track enterprise --json"
+      ]
+    }
+  ],
+  "copyable_commands": [
+    "coord requirements baseline --json --output coord/.runtime/requirements/baseline-presence.json",
+    "coord requirements trace --registry coord/.runtime/requirements/registry.json --json --output coord/.runtime/requirements/traceability.json",
+    "coord requirements-stale-impact --baseline coord/.runtime/requirements/baseline-registry.json --json --output coord/.runtime/requirements/stale-impact.json",
+    "coord requirements-cockpit-model --json --output coord/.runtime/requirements/cockpit-model.json"
+  ]
+}

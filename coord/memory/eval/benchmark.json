@@ -1,0 +1,54 @@
+{
+  "$schema_note": "COORD-140 [Memory] Phase 0 eval benchmark. Per coord/docs/MEMORY_ARCHITECTURE.md §8: this is the recall-with-citations harness EVERY later memory phase is measured against (recall@k, citation precision, answer groundedness). It encodes question -> expected-citation cases grounded in REAL repo history. It is DATA ONLY: it does NOT implement retrieval/recall (that is COORD-141). Every expected source below is a real, existing ticket / file / decision-record that coord/scripts/decision-extractor.test.js validates to exist. 'must_include' lists substrings a correct cited answer must contain; 'expected_sources' lists the hash-linked sources a correct answer must cite.",
+  "version": 1,
+  "cases": [
+    {
+      "id": "EVAL-001",
+      "question": "Why was COORD-159 deferred and to which ticket?",
+      "rationale": "Decision-layer 'why' question answered straight from requirement_closure.deferred_to of the COORD-159 decision record.",
+      "expected_sources": [
+        { "type": "decision", "id": "COORD-159", "path": "coord/.runtime/plans/COORD-159.json" }
+      ],
+      "must_include": ["COORD-160", "bootstrap_risk"]
+    },
+    {
+      "id": "EVAL-002",
+      "question": "Which files define the conformance attestation signing (ed25519 over the journal chain head)?",
+      "rationale": "File-citation question. The ed25519 signing of the attestation subject lives in conformance-attestation.js; MEMORY_ARCHITECTURE.md §2 documents that the signed subject includes journal_chain_head.",
+      "expected_sources": [
+        { "type": "file", "path": "coord/scripts/conformance-attestation.js" },
+        { "type": "file", "path": "coord/docs/MEMORY_ARCHITECTURE.md" }
+      ],
+      "must_include": ["ed25519", "journal_chain_head"]
+    },
+    {
+      "id": "EVAL-003",
+      "question": "What broke when governed agents appended to the journal concurrently, and how was it repaired?",
+      "rationale": "Real multi-agent contention history: concurrent governed appends crossed prev_event_hash links and broke the hash-chain; COORD-124 added the guarded gov repair-chain capability to re-link and re-anchor it. Grounded in the COORD-124 decision record (critical_invariants + requirement_closure).",
+      "expected_sources": [
+        { "type": "decision", "id": "COORD-124", "path": "coord/.runtime/plans/COORD-124.json" },
+        { "type": "file", "path": "coord/scripts/journal.js" }
+      ],
+      "must_include": ["prev_event_hash", "repair-chain"]
+    },
+    {
+      "id": "EVAL-004",
+      "question": "Which ticket extends COORD-139's Memory architecture spec into the Phase 0 substrate, and what does it deliver?",
+      "rationale": "Decision-chain question across the [Memory] backlog: COORD-139 (the spec) defers the roadmap forward; COORD-140 is the Phase 0 substrate that emits decisions.ndjson + this benchmark. Grounded in the COORD-139 decision record's deferred_to and the architecture doc's phased plan.",
+      "expected_sources": [
+        { "type": "decision", "id": "COORD-139", "path": "coord/.runtime/plans/COORD-139.json" },
+        { "type": "file", "path": "coord/docs/MEMORY_ARCHITECTURE.md" }
+      ],
+      "must_include": ["COORD-140", "Phase 0"]
+    },
+    {
+      "id": "EVAL-005",
+      "question": "Why does baseline reproduction run in a throwaway git worktree instead of the live tree?",
+      "rationale": "Invariant-citation question. COORD-126 records the critical invariant that baseline computation is isolated in a throwaway git worktree and never mutates the live tree. Answered from the COORD-126 decision record's critical_invariants.",
+      "expected_sources": [
+        { "type": "decision", "id": "COORD-126", "path": "coord/.runtime/plans/COORD-126.json" }
+      ],
+      "must_include": ["worktree"]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{"ts":"2026-02-01T00:00:00.000Z","command":"start","ticket":"PRW-101","before_status":"todo","after_status":"doing","result":"succeeded","prev_event_hash":"genesis"}
+{"ts":"2026-02-01T01:00:00.000Z","command":"manual-reconcile","ticket":"PRW-101","result":"succeeded","details":{"reason":"checkout refund rounding produced a one-cent discrepancy under split payment; reconciled the ledger before closeout"},"prev_event_hash":"p1"}
+{"ts":"2026-02-01T02:00:00.000Z","command":"mark-done","ticket":"PRW-101","before_status":"review","after_status":"done","result":"succeeded","prev_event_hash":"p2"}
+{"ts":"2026-02-02T00:00:00.000Z","command":"start","ticket":"PRW-200","before_status":"todo","after_status":"doing","result":"succeeded","prev_event_hash":"p3"}
+{"ts":"2026-02-02T01:00:00.000Z","command":"recover","ticket":"PRW-200","before_status":"review","after_status":"doing","result":"restored","details":{"reason":"email digest smtp delivery double-sent notifications; rolled back the duplicate send"},"prev_event_hash":"p4"}
+{"ts":"2026-02-02T02:00:00.000Z","command":"mark-done","ticket":"PRW-200","before_status":"review","after_status":"done","result":"succeeded","prev_event_hash":"p5"}

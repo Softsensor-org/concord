@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "ticket_id": "REQSKEL-002",
+  "feature_proof": [
+    "path:fixture/traceability.js"
+  ],
+  "repo_gates": [
+    "node --test fixture"
+  ],
+  "self_review_cycles": [
+    {
+      "verdict": "pass"
+    }
+  ],
+  "requirement_closure": [
+    "Ticket ask: Surface traceability coverage.",
+    "Implemented: Fixture ticket links URS-002 to evidence.",
+    "Closeout verdict: complete"
+  ]
+}
