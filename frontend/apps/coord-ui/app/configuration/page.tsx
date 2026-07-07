@@ -9,6 +9,8 @@ import { loadConfigView } from '../../lib/config-view';
  * the governed lane (edit the file + commit). Preserves the SEC-001/SEC-002
  * read-only / fail-closed cockpit invariant.
  */
+export const dynamic = 'force-dynamic';
+
 export default function ConfigurationPage() {
   const cfg = loadConfigView();
 

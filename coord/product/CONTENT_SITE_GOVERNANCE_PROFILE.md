@@ -4,7 +4,7 @@
 > devops). The product-engineering and data & analytics tracks, plus the full implemented model, live in
 > [`MULTI_TRACK_GOVERNANCE_PROFILE.md`](MULTI_TRACK_GOVERNANCE_PROFILE.md) — read that for the current shape.
 
-Status: **Implemented (pilot)** · Owner: Softsensor · First consumer: `softsensor-website` (the Softsensor.ai static marketing site on Azure Static Web Apps)
+Status: **Implemented (pilot)** · Owner: Softsensor · First consumer: `example-content-site` (a static marketing site on Azure Static Web Apps)
 
 > This document specifies a reusable extension to coord-template: a **multi-track
 > governance profile** that lets one Concord-managed project govern *content*
@@ -20,7 +20,7 @@ Status: **Implemented (pilot)** · Owner: Softsensor · First consumer: `softsen
 ## 1. Use case
 
 Softsensor.ai's marketing site is a static HTML site (16 pages) deployed to Azure
-Static Web Apps via GitHub Actions (`Softsensor-org/softsensor-website`, push to
+Static Web Apps via GitHub Actions (`Softsensor-org/example-content-site`, push to
 `main` → build → deploy). It will become the primary site once a custom domain is
 pointed at it. Three different populations need to change this repo:
 
@@ -96,7 +96,7 @@ downstream.
 
 | Need | Seam used | Change |
 |---|---|---|
-| Register `softsensor-website` as a governed repo | `coord/project.config.js` `repos` | add repo `W` (path, `integrationBranch: main`, `ticketPrefixes`) |
+| Register `example-content-site` as a governed repo | `coord/project.config.js` `repos` | add repo `W` (path, `integrationBranch: main`, `ticketPrefixes`) |
 | Map ticket id → track | `ticketPrefixes` + new `tracks` config block | new config key `tracks` mapping prefix→track→{gateProc, defaultLane, skills, reviewPolicy} |
 | Content/infra gates | `gate-proc-registry.js` | register `content` and `infra` gate-procs alongside the existing test gate |
 | Track-aware skills | `.claude/commands/` | add `content-edit`, `seo-check`, `publish` (marketing); reuse existing dev skills |
@@ -113,7 +113,7 @@ Make tracks a first-class, reusable capability. Tracks/gate-procs/skills shipped
 template defaults; the two-repo demo profile stays the default, content-site profile
 is opt-in. Tickets: `COORD-` (see §7).
 
-**Phase B — Downstream: instantiate on `softsensor-website`.**
+**Phase B — Downstream: instantiate on `example-content-site`.**
 Borrow `coord/` into the website project, set `project.config.js` (repo `W` + tracks),
 seed the `WEB-`/`DOC-`/`DEV-`/`OPS-` board, wire the content/infra gate scripts to the
 real site, connect the Azure preview URL. Tickets: `WEB-`/`OPS-`.
@@ -140,7 +140,7 @@ runbook per track.
 - **COORD-A5 — Track→review-policy + RBAC mapping.** Per-track approver counts/required artifacts; track→role map (documented posture).
 - **COORD-A6 — Content-site profile docs + opt-in wiring.** This doc finalized, `TESTING_AND_GATES.md`/`QUALITY_AUTOMATION.md` cross-links, profile toggle so the two-repo default is unchanged.
 
-### Downstream (softsensor-website) — `WEB-` / `OPS-`
+### Downstream (example-content-site) — `WEB-` / `OPS-`
 - **WEB-B1 — Borrow `coord/` + configure.** Add repo `W` + tracks to `project.config.js`; seed board sections for the four prefixes.
 - **WEB-B2 — Wire `content` gate to the real site.** `gate:site` script (validate/links/SEO/Lighthouse) + capture Azure preview URL.
 - **WEB-B3 — Seed the SEO/meta backlog as `WEB-` tickets** (canonical, OG/Twitter, JSON-LD, sitemap.xml, robots.txt) — the audit from the site review.

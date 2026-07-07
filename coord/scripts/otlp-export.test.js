@@ -1,3 +1,5 @@
+// COORD-299: relocate this worker's ephemeral coarse state-locks + memory corpus to an os.tmpdir() sandbox
+require("./governance-test-utils.js").sandboxProcessRuntimeLocks();
 // Behavior tests for coord/scripts/otlp-export.js — the ENT-005 OTLP exporter.
 // The module is a pure DI factory (mirroring token-economics.js), so we drive it
 // directly with fixture journals/board deps: hermetic, no env munging, no live

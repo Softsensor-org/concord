@@ -231,6 +231,18 @@ module.exports = function createCloseout(deps = {}) {
         updateCanonicalPlanState(ticketId, buildNoPrCloseoutPlanUpdate(ref.row, options));
         return result;
       }
+      // COORD-434: idempotent finalize recovery. markDone is a journaled mutation
+      // but the closeout plan write (updateCanonicalPlanState) is a separate,
+      // non-journaled step done AFTER it — so a crash between them leaves a `done`
+      // board row against a stale plan record, and the old code failed the retry
+      // with "must be doing or review". For an already-`done` ticket, re-drive the
+      // closeout plan write idempotently so a re-run completes the stranded write
+      // instead of dead-ending. (It stays the LAST step, so the COORD-220 seal is
+      // not tripped — no governed mutation runs after this out-of-band plan write.)
+      if (ref.row.Status === STATUS.DONE) {
+        updateCanonicalPlanState(ticketId, buildNoPrCloseoutPlanUpdate(ref.row, options));
+        return;
+      }
       fail(`Ticket ${ticketId} must be doing or review to finalize; current status is "${ref.row.Status}".`);
     }
 

@@ -10,6 +10,8 @@ function fmt(ts?: string): string {
   }
 }
 
+export const dynamic = 'force-dynamic';
+
 export default function WaiversPage() {
   const w = loadWaivers();
   const codeChips = Object.entries(w.byCode)

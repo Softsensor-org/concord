@@ -61,6 +61,38 @@ interface ReceiptEngine {
   latestReceipt: (kind: string, ticket: string, options?: { coordDir?: string }) => string | null;
   readReceipt: (filePath: string, fail?: (msg: string) => never) => Record<string, unknown>;
 }
+interface LiveMcpViewModelCore {
+  meaningful: (value: unknown) => value is string;
+  statusField: (value: unknown, redacted: boolean) => StatusField;
+  receiptStatus: (args: {
+    id: string;
+    declaration: Record<string, unknown>;
+    engine: ReceiptEngine | null;
+    redacted: boolean;
+    coordDir: string;
+    projectRoot: string;
+  }) => ReceiptStatus;
+  buildTicketView: (args: {
+    id: string;
+    status: string;
+    planState: unknown;
+    declaration: Record<string, unknown>;
+    lifecycle: LiveMcpEngine;
+    receipts: ReceiptEngine | null;
+    redacted: boolean;
+    coordDir: string;
+    projectRoot: string;
+  }) => LiveMcpTicketView;
+  collectLiveMcpExportTicket: (args: {
+    id: string;
+    planState: unknown;
+    declaration: Record<string, unknown>;
+    lifecycle: LiveMcpEngine;
+    receipts: ReceiptEngine | null;
+    coordDir: string;
+    projectRoot: string;
+  }) => LiveMcpExportTicket;
+}
 
 function loadLifecycleEngine(): LiveMcpEngine | null {
   try {
@@ -79,6 +111,14 @@ function loadReceiptEngine(): ReceiptEngine | null {
     return null;
   }
 }
+
+function loadViewModelCore(): LiveMcpViewModelCore {
+  return requireExternal<LiveMcpViewModelCore>(
+    path.join(COORD_DIR, 'scripts', 'coord-ui-live-mcp-view-model.js')
+  );
+}
+
+const viewModelCore = loadViewModelCore();
 
 // ---- Surfaced types ----
 
@@ -143,13 +183,12 @@ export interface LiveMcpView {
 // ---- helpers ----
 
 function meaningful(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
+  return viewModelCore.meaningful(value);
 }
 
 /** A required-evidence field → present/absent, with the detail masked for viewer. */
 function statusField(value: unknown, redacted: boolean): StatusField {
-  if (!meaningful(value)) return { state: 'absent', detail: null };
-  return { state: 'present', detail: redacted ? null : value.trim() };
+  return viewModelCore.statusField(value, redacted);
 }
 
 function listPlanIds(): string[] {
@@ -194,40 +233,14 @@ function receiptStatus(
   engine: ReceiptEngine | null,
   redacted: boolean
 ): ReceiptStatus {
-  if (!engine) return { state: 'unknown', result: null, path: null };
-  try {
-    // Prefer the latest recorded receipt; fall back to an author-declared path.
-    let file = engine.latestReceipt('live-mcp', id, { coordDir: COORD_DIR });
-    if (!file && meaningful(declaration.receipt_path)) {
-      file = path.resolve(COORD_DIR, '..', declaration.receipt_path.trim());
-    }
-    if (!file || !fs.existsSync(file)) {
-      // An inline embedded receipt still satisfies "recorded".
-      const inline = declaration.receipt;
-      if (inline && typeof inline === 'object' && !Array.isArray(inline)) {
-        const result = (inline as Record<string, unknown>).result;
-        return {
-          state: 'present',
-          result: redacted ? null : meaningful(result) ? result : 'recorded',
-          path: null
-        };
-      }
-      return { state: 'absent', result: null, path: null };
-    }
-    const receipt = engine.readReceipt(file, (msg: string) => {
-      throw new Error(msg);
-    });
-    const result = receipt.result;
-    const rel = path.relative(path.dirname(COORD_DIR), file).split(path.sep).join('/');
-    return {
-      state: 'present',
-      result: redacted ? null : meaningful(result) ? result : 'recorded',
-      path: redacted ? null : rel
-    };
-  } catch {
-    // Unreadable / malformed receipt: surface "unknown" rather than throwing.
-    return { state: 'unknown', result: null, path: null };
-  }
+  return viewModelCore.receiptStatus({
+    id,
+    declaration,
+    engine,
+    redacted,
+    coordDir: COORD_DIR,
+    projectRoot: path.dirname(COORD_DIR)
+  });
 }
 
 function buildTicketView(
@@ -238,30 +251,17 @@ function buildTicketView(
   receipts: ReceiptEngine | null,
   redacted: boolean
 ): LiveMcpTicketView {
-  const result = lifecycle.buildLiveMcpLifecycle({ planState });
-  const linkedDev = declaration.development_ticket ?? declaration.linked_ticket;
-  const deployedVerification = declaration.deployed_verification ?? declaration.deploy_receipt;
-  return {
+  return viewModelCore.buildTicketView({
     id,
     status: boardStatus(id),
-    adapter: meaningful(declaration.adapter) ? declaration.adapter.trim() : null,
-    operation:
-      meaningful(declaration.operation) && !redacted ? declaration.operation.trim() : null,
-    environment: meaningful(declaration.environment) ? declaration.environment.trim() : null,
-    operationClass: meaningful(declaration.operation_class)
-      ? declaration.operation_class.trim()
-      : null,
-    scope: statusField(declaration.scope, redacted),
-    approval: statusField(declaration.approval, redacted),
-    redaction: statusField(declaration.redaction, redacted),
-    cleanup: statusField(declaration.cleanup, redacted),
-    promotion: statusField(declaration.promotion, redacted),
-    receipt: receiptStatus(id, declaration, receipts, redacted),
-    blockers: Array.isArray(result.issues) ? result.issues : [],
-    linkedDevelopmentTicket: meaningful(linkedDev) ? linkedDev.trim() : null,
-    deployedVerificationReceipt:
-      meaningful(deployedVerification) && !redacted ? deployedVerification.trim() : null
-  };
+    planState,
+    declaration,
+    lifecycle,
+    receipts,
+    redacted,
+    coordDir: COORD_DIR,
+    projectRoot: path.dirname(COORD_DIR)
+  });
 }
 
 /**
@@ -330,18 +330,15 @@ export function collectLiveMcpExport(): LiveMcpExportTicket[] {
     const planState = readPlanRecord(id);
     const declaration = lifecycle.readLiveMcpDeclaration(planState);
     if (!declaration) continue;
-    const result = lifecycle.buildLiveMcpLifecycle({ planState });
-    const r = receiptStatus(id, declaration, receipts, false);
-    out.push({
+    out.push(viewModelCore.collectLiveMcpExportTicket({
       id,
-      adapter: meaningful(declaration.adapter) ? declaration.adapter.trim() : null,
-      operationClass: meaningful(declaration.operation_class)
-        ? declaration.operation_class.trim()
-        : null,
-      environment: meaningful(declaration.environment) ? declaration.environment.trim() : null,
-      receiptPath: r.path,
-      unresolvedBlockers: Array.isArray(result.issues) ? result.issues : []
-    });
+      planState,
+      declaration,
+      lifecycle,
+      receipts,
+      coordDir: COORD_DIR,
+      projectRoot: path.dirname(COORD_DIR)
+    }));
   }
   return out;
 }

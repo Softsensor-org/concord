@@ -22,6 +22,40 @@
 const createCoordInit = require("./coord-init.js");
 const createCoordConformance = require("./coord-conformance.js");
 const createCoordUpgrade = require("./coord-upgrade.js");
+const createReadinessDoctor = require("./readiness-doctor.js");
+const requirementsImport = require("./requirements-import.js");
+const requirementsLinkage = require("./requirements-linkage.js");
+const requirementsTraceability = require("./requirements-traceability.js");
+const requirementsScreenCoverage = require("./requirements-screen-coverage.js");
+const requirementsPersonaWorkflow = require("./requirements-persona-workflow.js");
+const requirementsWorkflowAlignment = require("./requirements-workflow-alignment.js");
+const requirementsEvidencePolicy = require("./requirements-evidence-policy.js");
+const requirementsDonorReuse = require("./requirements-donor-reuse.js");
+const requirementsDonorDerived = require("./requirements-donor-derived.js");
+const requirementsCommandContracts = require("./requirements-command-contracts.js");
+const requirementsArtifactModel = require("./requirements-artifact-model.js");
+const requirementsWalkingSkeleton = require("./requirements-walking-skeleton.js");
+const requirementsReviewPack = require("./requirements-review-pack.js");
+const requirementsSequencing = require("./requirements-sequencing.js");
+const requirementsConformance = require("./requirements-conformance.js");
+const requirementsSurfaceConformance = require("./requirements-surface-conformance.js");
+const requirementsCockpitModel = require("./requirements-cockpit-model.js");
+const requirementsDomainBoundary = require("./requirements-domain-boundary.js");
+const requirementsStaleImpact = require("./requirements-stale-impact.js");
+const requirementsGeneralizationAudit = require("./requirements-generalization-audit.js");
+const requirementsBaselineGate = require("./requirements-baseline-gate.js");
+const requirementsLinkageBackfill = require("./requirements-linkage-backfill.js");
+const commandRegistry = require("./command-registry.js");
+const adrValidator = require("./adr-validator.js");
+const explorationPromotion = require("./exploration-promotion.js");
+const businessContextPack = require("./business-context-pack.js");
+const businessDiscovery = require("./business-discovery.js");
+const businessDiscoverySynthesize = require("./business-discovery-synthesize.js");
+const knowledgeClaimCompiler = require("./knowledge-claim-compiler.js");
+const affectedTargets = require("./affected-targets.js");
+const canonicalDerivedAuthority = require("./canonical-derived-authority.js");
+const onboard = require("./onboard.js");
+const trackPresets = require("./track-presets.js");
 
 // Build the command registry. Factored so tests can build a registry with
 // injected deps (fs/log/cwd) and assert routing without touching the real repo.
@@ -29,23 +63,262 @@ function buildRegistry(deps = {}) {
   const init = createCoordInit(deps);
   const conformance = createCoordConformance(deps);
   const upgrade = createCoordUpgrade(deps);
+  const doctor = createReadinessDoctor(deps);
   return {
+    "affected-targets": {
+      summary: commandRegistry.productSummary("affected-targets"),
+      run: (args) => {
+        const result = affectedTargets.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "adr-validate": {
+      summary: commandRegistry.productSummary("adr-validate"),
+      run: (args) => {
+        const result = adrValidator.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    commands: {
+      summary: commandRegistry.productSummary("commands"),
+      run: (args) => {
+        const result = commandRegistry.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "business-discovery": {
+      summary: commandRegistry.productSummary("business-discovery"),
+      run: (args) => {
+        const result = businessDiscovery.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "business-context-pack": {
+      summary: commandRegistry.productSummary("business-context-pack"),
+      run: (args) => {
+        const result = businessContextPack.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "business-discovery-synthesize": {
+      summary: commandRegistry.productSummary("business-discovery-synthesize"),
+      run: (args) => {
+        const result = businessDiscoverySynthesize.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "authority-check": {
+      summary: commandRegistry.productSummary("authority-check"),
+      run: (args) => {
+        const result = canonicalDerivedAuthority.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    doctor: {
+      summary: commandRegistry.productSummary("doctor"),
+      run: (args) => {
+        const result = doctor.run(args);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "exploration-promote": {
+      summary: commandRegistry.productSummary("exploration-promote"),
+      run: (args) => {
+        const result = explorationPromotion.run(args);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
     init: {
-      summary: "Bootstrap a repo into a governed-board layout (idempotent, no-clobber).",
+      summary: commandRegistry.productSummary("init"),
       run: (args) => {
         const result = init.run(args);
         return { code: result.code != null ? result.code : 0 };
       },
     },
+    onboard: {
+      summary: commandRegistry.productSummary("onboard"),
+      run: (args) => {
+        const result = onboard.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "track-presets": {
+      summary: commandRegistry.productSummary("track-presets"),
+      run: (args) => {
+        const result = trackPresets.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "knowledge-claim-compile": {
+      summary: commandRegistry.productSummary("knowledge-claim-compile"),
+      run: (args) => {
+        const result = knowledgeClaimCompiler.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-import": {
+      summary: commandRegistry.productSummary("requirements-import"),
+      run: (args) => {
+        const result = requirementsImport.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    requirements: {
+      summary: commandRegistry.productSummary("requirements"),
+      run: (args) => {
+        const result = requirementsCommandContracts.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-linkage": {
+      summary: commandRegistry.productSummary("requirements-linkage"),
+      run: (args) => {
+        const result = requirementsLinkage.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-linkage-backfill": {
+      summary: commandRegistry.productSummary("requirements-linkage-backfill"),
+      run: (args) => {
+        const result = requirementsLinkageBackfill.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-conformance": {
+      summary: commandRegistry.productSummary("requirements-conformance"),
+      run: (args) => {
+        const result = requirementsConformance.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-baseline-gate": {
+      summary: commandRegistry.productSummary("requirements-baseline-gate"),
+      run: (args) => {
+        const result = requirementsBaselineGate.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-cockpit-model": {
+      summary: commandRegistry.productSummary("requirements-cockpit-model"),
+      run: (args) => {
+        const result = requirementsCockpitModel.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-traceability": {
+      summary: commandRegistry.productSummary("requirements-traceability"),
+      run: (args) => {
+        const result = requirementsTraceability.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-screen-coverage": {
+      summary: commandRegistry.productSummary("requirements-screen-coverage"),
+      run: (args) => {
+        const result = requirementsScreenCoverage.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-stale-impact": {
+      summary: commandRegistry.productSummary("requirements-stale-impact"),
+      run: (args) => {
+        const result = requirementsStaleImpact.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-surface-conformance": {
+      summary: commandRegistry.productSummary("requirements-surface-conformance"),
+      run: (args) => {
+        const result = requirementsSurfaceConformance.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-persona-workflow": {
+      summary: commandRegistry.productSummary("requirements-persona-workflow"),
+      run: (args) => {
+        const result = requirementsPersonaWorkflow.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-workflow-alignment": {
+      summary: commandRegistry.productSummary("requirements-workflow-alignment"),
+      run: (args) => {
+        const result = requirementsWorkflowAlignment.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-evidence-policy": {
+      summary: commandRegistry.productSummary("requirements-evidence-policy"),
+      run: (args) => {
+        const result = requirementsEvidencePolicy.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-donor-reuse": {
+      summary: commandRegistry.productSummary("requirements-donor-reuse"),
+      run: (args) => {
+        const result = requirementsDonorReuse.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-domain-boundary": {
+      summary: commandRegistry.productSummary("requirements-domain-boundary"),
+      run: (args) => {
+        const result = requirementsDomainBoundary.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-generalization-audit": {
+      summary: commandRegistry.productSummary("requirements-generalization-audit"),
+      run: (args) => {
+        const result = requirementsGeneralizationAudit.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-donor-derived": {
+      summary: commandRegistry.productSummary("requirements-donor-derived"),
+      run: (args) => {
+        const result = requirementsDonorDerived.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-artifacts": {
+      summary: commandRegistry.productSummary("requirements-artifacts"),
+      run: (args) => {
+        const result = requirementsArtifactModel.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-walking-skeleton": {
+      summary: commandRegistry.productSummary("requirements-walking-skeleton"),
+      run: (args) => {
+        const result = requirementsWalkingSkeleton.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-review-pack": {
+      summary: commandRegistry.productSummary("requirements-review-pack"),
+      run: (args) => {
+        const result = requirementsReviewPack.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
+    "requirements-sequencing": {
+      summary: commandRegistry.productSummary("requirements-sequencing"),
+      run: (args) => {
+        const result = requirementsSequencing.run(args, deps);
+        return { code: result.code != null ? result.code : 0 };
+      },
+    },
     conformance: {
-      summary: "Verify engine conformance (journal chain self-verify; --attest/--verify signed attestation).",
+      summary: commandRegistry.productSummary("conformance"),
       run: (args) => {
         const result = conformance.run(args);
         return { code: result.code != null ? result.code : 0 };
       },
     },
     upgrade: {
-      summary: "Apply a new engine version (--from <dir|bundle>) into a repo, re-pin + verify; rollback on failure.",
+      summary: commandRegistry.productSummary("upgrade"),
       run: (args) => {
         const result = upgrade.run(args);
         return { code: result.code != null ? result.code : 0 };

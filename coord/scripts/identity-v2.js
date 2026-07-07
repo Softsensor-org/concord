@@ -41,6 +41,71 @@ function readEnvIdentity(env = process.env) {
   return { provider, providerSessionId, instanceId, transcriptPath, present };
 }
 
+function normalizeSsoClaims(claims = {}, opts = {}) {
+  const c = claims && typeof claims === "object" ? claims : {};
+  const issuer = String(c.iss || c.issuer || opts.issuer || "").trim();
+  const subject = String(c.sub || c.oid || c.objectId || "").trim();
+  const email = String(c.email || c.preferred_username || c.upn || "").trim().toLowerCase();
+  const displayName = String(c.name || c.display_name || email || subject || "").trim();
+  const tenantId = String(c.tid || c.tenant_id || opts.tenantId || "").trim();
+  const groups = Array.isArray(c.groups)
+    ? c.groups.map((group) => String(group).trim()).filter(Boolean)
+    : [];
+  const present = Boolean(issuer && (subject || email));
+  const stableId = present
+    ? [
+        "sso",
+        tenantId || issuer,
+        subject || email,
+      ].join(":")
+    : "";
+  return {
+    provider: String(opts.provider || "oidc").trim() || "oidc",
+    issuer,
+    tenant_id: tenantId,
+    subject,
+    email,
+    display_name: displayName,
+    groups,
+    stable_id: stableId,
+    present,
+  };
+}
+
+function governedActorFromSso(claims = {}, opts = {}) {
+  const identity = normalizeSsoClaims(claims, opts);
+  if (!identity.present) {
+    return {
+      present: false,
+      actor: null,
+      reason: "missing trusted SSO/OIDC issuer and subject/email",
+    };
+  }
+  return {
+    present: true,
+    actor: {
+      kind: "human",
+      owner: opts.ownerPrefix
+        ? `${opts.ownerPrefix}${identity.email || identity.subject}`
+        : identity.email || identity.subject,
+      identity_provider: identity.provider,
+      identity_issuer: identity.issuer,
+      identity_subject: identity.subject,
+      identity_email: identity.email,
+      display_name: identity.display_name,
+      tenant_id: identity.tenant_id,
+      groups: identity.groups,
+      stable_id: identity.stable_id,
+      attribution: {
+        actor_type: "human-sso",
+        actor_id: identity.stable_id,
+        email: identity.email,
+        issuer: identity.issuer,
+      },
+    },
+  };
+}
+
 function emptyRegistry() {
   return { version: 1, instances: [], leases: {} };
 }
@@ -293,13 +358,30 @@ function readRegistry(runtimeDir) {
 function writeRegistry(runtimeDir, reg) {
   const p = registryPath(runtimeDir);
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(normalizeRegistry(reg), null, 2) + "\n", "utf8");
+  // COORD-429: atomic write. A crash mid-write must never torn-truncate the
+  // owner-lease registry — a partial JSON file makes the next readRegistry() fall
+  // back to emptyRegistry(), silently dropping EVERY registered lease. Write to a
+  // temp file in the same directory (so rename stays on one filesystem) and rename
+  // into place; rename is atomic on POSIX, so a reader sees either the old or the
+  // new complete file, never a torn one. (Concurrent lost-update is already
+  // prevented by the withAgentStateLock around the claim read-modify-write.)
+  const body = JSON.stringify(normalizeRegistry(reg), null, 2) + "\n";
+  const tmp = `${p}.tmp-${process.pid}`;
+  try {
+    fs.writeFileSync(tmp, body, "utf8");
+    fs.renameSync(tmp, p);
+  } catch (error) {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort temp cleanup */ }
+    throw error;
+  }
 }
 
 module.exports = {
   DEFAULT_TTL_SECONDS,
   ttlMsFromEnv,
   readEnvIdentity,
+  normalizeSsoClaims,
+  governedActorFromSso,
   emptyRegistry,
   normalizeRegistry,
   isFresh,

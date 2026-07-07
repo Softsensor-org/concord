@@ -16,6 +16,12 @@ function createFollowups(deps = {}) {
     readBoard,
     uniqueStrings,
     isDoingStatus,
+    // COORD-279 (item 3): OPTIONAL deferred accessor for the journal's historical
+    // ticket-id set. When wired, nextTicketId reserves against the MAX of live
+    // board rows AND every id that ever existed in the journal, so a removed
+    // row's id is never reissued (historical-collision class). Optional so the
+    // pure followups surface stays unit-testable without a journal.
+    historicalTicketIds,
   } = deps;
 
 function buildDependencyRepairNextSteps(ticketId, readiness, board) {
@@ -95,12 +101,37 @@ function nextTicketId(board, prefix) {
   const P = String(prefix || "").toUpperCase().replace(/[^A-Z]/g, "");
   if (!P) fail('Auto-id needs a letters-only --prefix, e.g. --prefix TRUST.');
   let max = 0, width = 3;
-  for (const row of getRows(board)) {
-    const m = String(row.ID || "").match(/^([A-Z]+)-(\d+)$/);
+  const consider = (id) => {
+    const m = String(id || "").match(/^([A-Z]+)-(\d+)$/);
     if (m && m[1] === P) {
       const n = parseInt(m[2], 10);
       if (n > max) max = n;
       if (m[2].length > width) width = m[2].length;
+    }
+  };
+  for (const row of getRows(board)) {
+    consider(row.ID);
+  }
+  // COORD-279 (item 3): also reserve against the journal's historical ids so a
+  // removed row's id is never reissued (collides with immutable history).
+  if (typeof historicalTicketIds === "function") {
+    let historical;
+    try {
+      historical = historicalTicketIds() || [];
+    } catch (error) {
+      // COORD-430: fail CLOSED. The prior catch silently fell back to live-rows-
+      // only, re-enabling the exact historical-id reuse COORD-279 prevents (a
+      // removed row's id reissued, colliding with immutable audit lineage) with no
+      // signal. Surface the failure so the enclosing governed mutation aborts and
+      // can retry once the journal is readable, rather than allocating a possibly-
+      // colliding id. (An empty/new journal returns [] and does not throw.)
+      throw new Error(
+        `nextTicketId: cannot reserve ids against journal history (journal read failed: ${error?.message || error}). ` +
+        `Refusing to allocate an id that may collide with immutable history — repair the journal (gov doctor / gov recover) and retry.`
+      );
+    }
+    for (const id of historical) {
+      consider(id);
     }
   }
   return `${P}-${String(max + 1).padStart(width, "0")}`;
@@ -139,7 +170,14 @@ function findOutstandingCloseoutBlockerFollowups(board, parentTicketId) {
     if (!exception || exception.type !== "closeout-blocker" || exception.parent !== parentTicketId) {
       return false;
     }
-    return row.Status !== STATUS.DONE && row.Status !== STATUS.SUPERSEDED;
+    // COORD-285: a `proposed` (quarantined) follow-up has not been accepted as
+    // real work yet, so it must not count as an OUTSTANDING closeout blocker for
+    // its parent — only non-terminal, non-quarantined work blocks closeout.
+    return (
+      row.Status !== STATUS.DONE &&
+      row.Status !== STATUS.SUPERSEDED &&
+      row.Status !== STATUS.PROPOSED
+    );
   });
 }
 

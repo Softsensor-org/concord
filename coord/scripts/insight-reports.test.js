@@ -123,6 +123,50 @@ test("arch-debt ranks subsystems by deferral / not-implemented / follow-up debt"
   assert.ok(!debt.some((d) => d.subsystem === "Bootstrap Subsystem"));
 });
 
+// COORD-198: requirement_closure is append-only, so a re-closed ticket (partial ->
+// complete) keeps the superseded "Not implemented: X" line in the ordered array.
+// The recency-correct parse resolves to the LATEST line ("Not implemented: none —
+// ...", a none-class value), so arch-debt must NOT flag the ticket as a
+// not-implemented carve-out.
+const extractor = require("./decision-extractor.js");
+
+test("arch-debt does NOT flag a re-closed (partial -> complete) ticket as a not-implemented carve-out", () => {
+  const reclosedClosure = extractor.parseRequirementClosure([
+    "Ticket ask: ship the feature behind the acceptance bar.",
+    "Implemented: first pass that fell short.",
+    "Not implemented: ACCEPTANCE-cut NOT met on the first closure.",
+    "Deferred to: none",
+    "Closeout verdict: partial",
+    "Ticket ask: finish the feature so the acceptance bar is met.",
+    "Implemented: second pass that landed the full bar.",
+    "Not implemented: none — full acceptance bar met",
+    "Deferred to: none",
+    "Closeout verdict: complete",
+  ]);
+  const stillOpenClosure = extractor.parseRequirementClosure([
+    "Ticket ask: ship the second feature.",
+    "Implemented: partial.",
+    "Not implemented: the edge-case path is left unhandled.",
+    "Deferred to: none",
+    "Closeout verdict: partial",
+  ]);
+  const tickets = [
+    { id: "RC-198", repo: "coord", type: "bug", status: "done", description: "", subsystem: "Recency Subsystem" },
+    { id: "RC-199", repo: "coord", type: "bug", status: "done", description: "", subsystem: "Recency Subsystem" },
+  ];
+  const plansById = new Map([
+    ["RC-198", { ticket_id: "RC-198", path: "coord/.runtime/plans/RC-198.json", closure: reclosedClosure }],
+    ["RC-199", { ticket_id: "RC-199", path: "coord/.runtime/plans/RC-199.json", closure: stillOpenClosure }],
+  ]);
+
+  const section = insights.detectArchDebtBySubsystem(tickets, plansById, "coord/board/tasks.json", "deadbeefchainhead");
+  const claim = section.claims.find((c) => c.subsystem === "Recency Subsystem");
+  assert.ok(claim, "the still-open RC-199 keeps the subsystem on the debt list");
+  // The re-closed RC-198 is NOT flagged; only the genuinely-open RC-199 is.
+  assert.ok(!claim.not_implemented_tickets.includes("RC-198"), "re-closed-complete ticket is not a carve-out");
+  assert.ok(claim.not_implemented_tickets.includes("RC-199"), "the genuinely-open ticket IS a carve-out");
+});
+
 // --- SECTION 3: churn-instead-of-value ---------------------------------------
 
 test("churn detection flags a high-rework ticket and counts true doing re-entries (not in-doing self-loops)", () => {

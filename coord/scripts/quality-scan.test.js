@@ -14,6 +14,7 @@ const os = require("os");
 const path = require("path");
 
 const qs = require("./quality-scan.js");
+const proposeCron = require("./quality-propose-cron.js");
 
 // --- helpers ---------------------------------------------------------------
 function finding(over = {}) {
@@ -103,6 +104,15 @@ test("findingToProposal: new checks get a title + fix framing (quality-scan pick
   const dc = qs.findingToProposal(finding({ check: "deadcode", value: "orphanFn", threshold: "0-refs", severity: "warn", line: 9 }));
   assert.match(dc.title, /Remove or justify dead code: 'orphanFn'/);
   assert.match(dc.description, /unreferenced/);
+  const prodloc = qs.findingToProposal(finding({
+    check: "prodloc",
+    file: "coord/scripts/new-monolith.js",
+    value: 1300,
+    threshold: 1200,
+    severity: "fail",
+  }));
+  assert.match(prodloc.title, /Reduce coord production module size/);
+  assert.match(prodloc.description, /production module/);
 });
 
 // --- proposal mapping ------------------------------------------------------
@@ -114,10 +124,14 @@ test("findingToProposal: maps severity->priority and embeds the qkey marker", ()
   assert.match(p.description, /Suggested fix:/);
 });
 
-test("findingToProposal: warn->P3 but monolith stays P2 even at warn", () => {
+test("findingToProposal: warn->P3 but architectural-risk checks stay P2 even at warn", () => {
   assert.strictEqual(qs.findingToProposal(finding({ severity: "warn" })).pri, "P3");
   assert.strictEqual(
     qs.findingToProposal(finding({ check: "monolith", severity: "warn" })).pri,
+    "P2"
+  );
+  assert.strictEqual(
+    qs.findingToProposal(finding({ check: "prodloc", severity: "warn" })).pri,
     "P2"
   );
 });
@@ -363,6 +377,125 @@ test("runCli: --apply invokes the runner against the (temp) board", () => {
     assert.strictEqual(code, 0);
     assert.ok(calls.length >= 1, "apply must call the runner at least once");
     assert.match(outBuf, /FILED QSCAN-001/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// --- COORD-286: --propose files quarantined `proposed` tickets ------------
+// BACKCOMPAT: default DEFAULT_OPTIONS.status is `todo` and the filing path is
+// the historical `gov open-followup` (already exercised by the applyPlan test
+// above, asserted here explicitly so a regression is named).
+test("COORD-286 BACKCOMPAT: default status is todo and files via open-followup", () => {
+  assert.strictEqual(qs.DEFAULT_OPTIONS.status, "todo");
+  const calls = [];
+  const runner = (bin, args) => {
+    calls.push(args);
+    return { status: 0, stdout: "Created related follow-up ticket QSCAN-001 after COORD-083.\n", stderr: "" };
+  };
+  const plan = qs.planTickets({ findings: [finding()], board: boardWith([]), severityFloor: "fail", cap: 10 });
+  const res = qs.applyPlan(plan, qs.DEFAULT_OPTIONS, runner);
+  assert.strictEqual(res.created.length, 1);
+  assert.ok(calls[0].includes("open-followup"), "default path stays open-followup");
+  assert.ok(!calls[0].includes("--status"), "default path does not stamp a status");
+});
+
+// PROPOSE-FILES-PROPOSED: --propose routes through the COORD-285 create path
+// `gov file-ticket --status proposed` and parses the new "Filed ticket" output.
+test("COORD-286 PROPOSE-FILES-PROPOSED: --propose files via file-ticket --status proposed", () => {
+  const calls = [];
+  const runner = (bin, args) => {
+    calls.push(args);
+    const id = `QSCAN-00${calls.length}`;
+    return { status: 0, stdout: `Filed ticket ${id} (X/refactor/P3, status=proposed).\n`, stderr: "" };
+  };
+  const opts = Object.assign({}, qs.DEFAULT_OPTIONS, { status: "proposed" });
+  const plan = qs.planTickets({
+    findings: [finding({ file: "x.js", severity: "warn" })],
+    board: boardWith([]),
+    severityFloor: "warn",
+    cap: 10,
+  });
+  const res = qs.applyPlan(plan, opts, runner);
+  assert.strictEqual(res.created.length, 1);
+  assert.strictEqual(res.created[0].ticket, "QSCAN-001", "id parsed from 'Filed ticket' output");
+  const args = calls[0];
+  assert.ok(args.includes("file-ticket"), "proposed path uses file-ticket (the create verb)");
+  assert.ok(!args.includes("open-followup"), "proposed path does NOT use open-followup");
+  const si = args.indexOf("--status");
+  assert.ok(si !== -1 && args[si + 1] === "proposed", "stamps --status proposed");
+  // The qkey marker still rides in --description so dedup is unchanged.
+  const di = args.indexOf("--description");
+  assert.match(args[di + 1], /\[qkey:size:x\.js:loc\]/);
+});
+
+// DEDUP-INCLUDES-PROPOSED: a same-qkey `proposed` row on the board is a dedup
+// hit — the cadence is idempotent and does not double-file a proposal.
+test("COORD-286 DEDUP-INCLUDES-PROPOSED: an existing proposed ticket dedups (no double-file)", () => {
+  const key = qs.stableFindingKey(finding());
+  const board = boardWith([
+    { ID: "QSCAN-001", Status: "proposed", Description: `[auto-quality] ... [qkey:${key}]` },
+  ]);
+  // openTicketKeys must collect the key from the proposed (non-closed) row.
+  assert.ok(qs.openTicketKeys(board).has(key), "proposed rows contribute qkeys to dedup");
+  const plan = qs.planTickets({ findings: [finding()], board, severityFloor: "fail", cap: 10 });
+  assert.strictEqual(plan.counts.skippedOpen, 1, "proposed same-qkey row is an already-open skip");
+  assert.strictEqual(plan.counts.toFile, 0, "no double-file: idempotent re-run");
+});
+
+test("COORD-286: runCli rejects an invalid --status", () => {
+  let errBuf = "";
+  const err = { write: (s) => { errBuf += s; } };
+  const code = qs.runCli(["--status", "doing"], { stdout: { write() {} }, stderr: err });
+  assert.strictEqual(code, 2);
+  assert.match(errBuf, /invalid --status/);
+});
+
+test("COORD-286: --propose CLI dry-run reports status=proposed", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qscan-"));
+  try {
+    fs.writeFileSync(path.join(tmp, "big.js"), Array.from({ length: 1600 }, (_, i) => `const x${i}=${i};`).join("\n"));
+    const boardPath = path.join(tmp, "board.json");
+    fs.writeFileSync(boardPath, JSON.stringify(boardWith([])));
+    let outBuf = "";
+    const out = { write: (s) => { outBuf += s; } };
+    const code = qs.runCli(
+      ["--root", tmp, "--board", boardPath, "--severity-floor", "warn", "--propose"],
+      { stdout: out, stderr: { write() {} } },
+      () => ({ status: 0, stdout: "", stderr: "" })
+    );
+    assert.strictEqual(code, 0);
+    assert.match(outBuf, /status=proposed/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// The single-shot cadence runner: runs scan-and-propose ONCE in the cadence
+// shape (warn floor + --apply + --propose) and files through file-ticket.
+test("COORD-286: quality-propose-cron single-shot runner files proposals once", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qscan-"));
+  try {
+    fs.writeFileSync(path.join(tmp, "big.js"), Array.from({ length: 1600 }, (_, i) => `const x${i}=${i};`).join("\n"));
+    const boardPath = path.join(tmp, "board.json");
+    fs.writeFileSync(boardPath, JSON.stringify(boardWith([])));
+    const calls = [];
+    const runner = (bin, args) => {
+      calls.push(args);
+      return { status: 0, stdout: `Filed ticket QSCAN-00${calls.length} (X/refactor/P3, status=proposed).\n`, stderr: "" };
+    };
+    let outBuf = "";
+    const code = proposeCron.runScheduledProposal(
+      { root: tmp, board: boardPath, cap: 3 },
+      { stdout: { write: (s) => { outBuf += s; } }, stderr: { write() {} } },
+      runner
+    );
+    assert.strictEqual(code, 0);
+    assert.ok(calls.length >= 1, "runner files at least one proposal");
+    assert.ok(calls[0].includes("file-ticket"), "cadence runner uses the proposed create path");
+    const si = calls[0].indexOf("--status");
+    assert.strictEqual(calls[0][si + 1], "proposed");
+    assert.match(outBuf, /status=proposed/);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

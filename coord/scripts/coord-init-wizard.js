@@ -30,12 +30,16 @@
 
 const nodeFs = require("node:fs");
 const nodePath = require("node:path");
+const createAdoptionProfileRegistry = require("./adoption-profile-registry.js");
+const phaseModel = require("./governance-phase-model.js");
 
 // ---------------------------------------------------------------------------
 // Pure config-as-code generator.
 // ---------------------------------------------------------------------------
 
 const SINGLE_UPPER = /^[A-Z]$/;
+const CONFIG_REL = "coord/project.config.js";
+const SETUP_DECISIONS_REL = "coord/setup.decisions.json";
 
 // Normalize a raw answers object into a validated, defaulted shape. Throws on
 // the few inputs that would generate a structurally invalid config (so the
@@ -86,7 +90,22 @@ function normalizeAnswers(answers = {}) {
     };
   });
 
-  return { coordTicketPrefix, repos };
+  const profile =
+    typeof answers.profile === "string" && answers.profile.trim()
+      ? answers.profile.trim()
+      : null;
+  const phase =
+    typeof answers.phase === "string" && answers.phase.trim()
+      ? answers.phase.trim()
+      : null;
+  const tracks = Array.isArray(answers.tracks)
+    ? Array.from(new Set(answers.tracks.map((t) => String(t).trim()).filter(Boolean))).sort()
+    : [];
+  const gates = Array.isArray(answers.gates)
+    ? Array.from(new Set(answers.gates.map((g) => String(g).trim()).filter(Boolean))).sort()
+    : [];
+
+  return { coordTicketPrefix, repos, profile, phase, tracks, gates };
 }
 
 function jsArrayLiteral(items) {
@@ -134,6 +153,155 @@ ${repoBlocks}
 `;
 }
 
+function detectRepoShape(targetRoot, repos, fs = nodeFs, path = nodePath) {
+  const exists = (rel) => fs.existsSync(path.join(targetRoot, rel));
+  const readJson = (rel) => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(targetRoot, rel), "utf8"));
+    } catch {
+      return null;
+    }
+  };
+  const signals = [];
+  const add = (condition, signal) => {
+    if (condition) signals.push(signal);
+  };
+  add(exists("package.json"), "node");
+  add(exists("pnpm-lock.yaml"), "pnpm");
+  add(exists("yarn.lock"), "yarn");
+  add(exists("pyproject.toml") || exists("requirements.txt"), "python");
+  add(exists("go.mod"), "go");
+  add(exists("Cargo.toml"), "rust");
+  add(exists("Dockerfile") || exists("docker-compose.yml"), "containerized");
+  add(exists(".github/workflows"), "github-actions");
+  add(exists("helm") || exists("k8s") || exists("terraform"), "deployment-infra");
+  add(exists("coord/GOVERNANCE.md"), "existing-concord-governance");
+  add(exists("coord/board/tasks.json"), "existing-concord-board");
+  add(
+    exists("coord/product/REQUIREMENTS.md") || exists("REQUIREMENTS.md") || exists("PRD.md") || exists("URS.md"),
+    "requirements-source"
+  );
+
+  const pkg = readJson("package.json");
+  const scripts = pkg && pkg.scripts && typeof pkg.scripts === "object"
+    ? Object.keys(pkg.scripts).sort()
+    : [];
+  const repoPaths = repos.map((repo) => repo.path);
+  return {
+    root: targetRoot,
+    repo_count: repos.length,
+    repo_paths: repoPaths,
+    shape: repos.length > 1 ? "multi-repo" : "single-repo",
+    signals: Array.from(new Set(signals)).sort(),
+    package_scripts: scripts,
+  };
+}
+
+function inferProfile(shape, answers, registry) {
+  if (answers.profile) return answers.profile;
+  const signals = new Set(shape.signals);
+  if (signals.has("deployment-infra")) return "enterprise";
+  if (signals.has("requirements-source")) return shape.repo_count > 1 ? "product-engineering" : "small-team";
+  if (shape.repo_count > 1) return "product-engineering";
+  if (signals.has("node") || signals.has("python") || signals.has("go") || signals.has("rust")) return "solo-dev";
+  return registry.defaultProfile || "solo-dev";
+}
+
+function inferPhase(shape, profileId, answers) {
+  if (answers.phase) return answers.phase;
+  const signals = new Set(shape.signals);
+  const scripts = new Set(shape.package_scripts);
+  const hasTests = scripts.has("test") || scripts.has("test:unit") || scripts.has("test:ci");
+  if (profileId === "regulated") return "regulated-production";
+  if (profileId === "enterprise" || signals.has("deployment-infra")) return "production";
+  if (signals.has("requirements-source") && hasTests) return "pilot";
+  if (hasTests || signals.has("node") || signals.has("python") || signals.has("go") || signals.has("rust")) return "prototype";
+  return "exploration";
+}
+
+function defaultGates(repos, phase, answers) {
+  const gates = new Set(answers.gates);
+  for (const repo of repos) {
+    if (repo.testCommand) gates.add(`${repo.code}: ${repo.testCommand}`);
+  }
+  if (["pilot", "production", "regulated-production"].includes(phase)) {
+    gates.add("requirements baseline");
+  }
+  if (["production", "regulated-production"].includes(phase)) {
+    gates.add("release/deploy receipt");
+  }
+  return Array.from(gates).sort();
+}
+
+function setupNextSteps(profile, phase) {
+  const steps = [
+    `review ${CONFIG_REL}`,
+    `review ${SETUP_DECISIONS_REL}`,
+    "commit setup artifacts through the governed lane",
+    "run coord doctor --dir .",
+    "replace scaffolded repo paths and ticket prefixes with project-owned values",
+  ];
+  if (profile && profile.required_evidence && profile.required_evidence.length > 0) {
+    steps.push(`confirm evidence expectations: ${profile.required_evidence.join(", ")}`);
+  }
+  if (phase && phase.required_evidence && phase.required_evidence.length > 0) {
+    steps.push(`confirm phase gates: ${phase.required_evidence.join(", ")}`);
+  }
+  return steps;
+}
+
+function generateSetupDecisionArtifact(answers = {}, context = {}) {
+  const cfg = normalizeAnswers(answers);
+  const fs = context.fs || nodeFs;
+  const path = context.path || nodePath;
+  const targetRoot = context.targetRoot || process.cwd();
+  const registry = context.profileRegistry || createAdoptionProfileRegistry({ strict: true });
+  const shape = context.shape || detectRepoShape(targetRoot, cfg.repos, fs, path);
+  const profileId = inferProfile(shape, cfg, registry);
+  const profile = registry.resolveProfile(profileId);
+  if (!profile || profile.id !== profileId) {
+    throw new Error(`wizard: unknown adoption profile ${JSON.stringify(profileId)}`);
+  }
+  const phaseId = inferPhase(shape, profile.id, cfg);
+  const phase = phaseModel.phaseDetails(phaseId);
+  if (!phase || phase.id !== phaseId) {
+    throw new Error(`wizard: unknown governance phase ${JSON.stringify(phaseId)}`);
+  }
+  const tracks = cfg.tracks.length > 0
+    ? cfg.tracks
+    : Array.from(new Set(profile.recommended_tracks || [])).sort();
+  const gates = defaultGates(cfg.repos, phase.id, cfg);
+  const artifact = {
+    kind: "concord.setup_decisions",
+    schema_version: 1,
+    generated_by: "coord init --wizard",
+    target_root: targetRoot,
+    decisions: {
+      coord_ticket_prefix: cfg.coordTicketPrefix,
+      adoption_profile: {
+        id: profile.id,
+        label: profile.label,
+        default_lane: profile.default_lane,
+      },
+      governance_phase: {
+        id: phase.id,
+        label: phase.label,
+      },
+      tracks,
+      gates,
+    },
+    detected_shape: shape,
+    repos: cfg.repos,
+    next_steps: setupNextSteps(profile, phase),
+    safety: {
+      no_clobber: true,
+      writes_runtime_state: false,
+      writes_board_or_journal: false,
+    },
+  };
+  return `${JSON.stringify(artifact, null, 2)}\n`;
+}
+
 // ---------------------------------------------------------------------------
 // Argv parsing (flag-driven / --non-interactive for tests + CI).
 // ---------------------------------------------------------------------------
@@ -151,6 +319,11 @@ function parseArgs(args = []) {
     help: false,
     coordTicketPrefix: null,
     repos: [],
+    profile: null,
+    phase: null,
+    tracks: [],
+    gates: [],
+    setupDecisionsRel: SETUP_DECISIONS_REL,
     unknown: [],
   };
   for (let i = 0; i < args.length; i += 1) {
@@ -170,6 +343,17 @@ function parseArgs(args = []) {
     else if (arg === "--dir" || arg.startsWith("--dir=")) parsed.dir = takeValue();
     else if (arg === "--coord-prefix" || arg.startsWith("--coord-prefix="))
       parsed.coordTicketPrefix = takeValue();
+    else if (arg === "--profile" || arg === "--adoption-profile" || arg.startsWith("--profile=") || arg.startsWith("--adoption-profile="))
+      parsed.profile = takeValue();
+    else if (arg === "--phase" || arg.startsWith("--phase="))
+      parsed.phase = takeValue();
+    else if (arg === "--track" || arg.startsWith("--track=")) {
+      const spec = takeValue();
+      if (spec) parsed.tracks.push(...String(spec).split(",").map((s) => s.trim()).filter(Boolean));
+    } else if (arg === "--gate" || arg.startsWith("--gate=")) {
+      const spec = takeValue();
+      if (spec) parsed.gates.push(...String(spec).split(",").map((s) => s.trim()).filter(Boolean));
+    }
     else if (arg === "--repo" || arg.startsWith("--repo=")) {
       const spec = takeValue();
       if (spec) parsed.repos.push(parseRepoSpec(spec));
@@ -198,30 +382,46 @@ module.exports = function createCoordInitWizard(deps = {}) {
   const fs = deps.fs || nodeFs;
   const log = deps.log || ((line) => console.log(line));
   const cwd = deps.cwd || (() => process.cwd());
+  const profileRegistry = deps.profileRegistry || createAdoptionProfileRegistry({ strict: deps.strictProfiles !== false });
 
-  const CONFIG_REL = "coord/project.config.js";
-
-  // Pure-ish planner: decide create vs. update vs. skip against the target.
-  // Returns { action, rel, abs, content, existing }.
-  function plan(targetRoot, answers, opts) {
-    const abs = nodePath.join(targetRoot, CONFIG_REL);
-    const content = generateProjectConfig(answers);
+  function planFile(targetRoot, rel, content, opts) {
+    const abs = nodePath.join(targetRoot, rel);
     const exists = fs.existsSync(abs);
 
     if (!exists) {
-      return { action: "create", rel: CONFIG_REL, abs, content, existing: null };
+      return { action: "create", rel, abs, content, existing: null };
     }
 
     const existing = fs.readFileSync(abs, "utf8");
     if (existing === content) {
-      return { action: "skip", rel: CONFIG_REL, abs, content, existing, reason: "identical" };
+      return { action: "skip", rel, abs, content, existing, reason: "identical" };
     }
     // Differs. Only write when the operator explicitly confirms/forces; never
     // silently clobber an edited config.
     if (opts.confirm || opts.force) {
-      return { action: "update", rel: CONFIG_REL, abs, content, existing };
+      return { action: "update", rel, abs, content, existing };
     }
-    return { action: "skip", rel: CONFIG_REL, abs, content, existing, reason: "exists-no-confirm" };
+    return { action: "skip", rel, abs, content, existing, reason: "exists-no-confirm" };
+  }
+
+  // Pure-ish planner: decide create vs. update vs. skip against the target.
+  // Returns a config plan plus a setup-decision artifact plan.
+  function plan(targetRoot, answers, opts) {
+    const cfg = normalizeAnswers(answers);
+    const configContent = generateProjectConfig(cfg);
+    const configAbs = nodePath.join(targetRoot, CONFIG_REL);
+    const shape = detectRepoShape(targetRoot, cfg.repos, fs, nodePath);
+    const decisionContent = generateSetupDecisionArtifact(cfg, {
+      fs,
+      path: nodePath,
+      targetRoot,
+      profileRegistry,
+      shape,
+      hasExistingConfig: fs.existsSync(configAbs),
+    });
+    const config = planFile(targetRoot, CONFIG_REL, configContent, opts);
+    const setupDecisions = planFile(targetRoot, opts.setupDecisionsRel || SETUP_DECISIONS_REL, decisionContent, opts);
+    return { action: config.action, config, setupDecisions, files: [config, setupDecisions] };
   }
 
   // Minimal line diff for the printed plan (no deps): show added/removed lines.
@@ -250,7 +450,14 @@ module.exports = function createCoordInitWizard(deps = {}) {
 
     const targetRoot = opts.dir ? nodePath.resolve(cwd(), opts.dir) : nodePath.resolve(cwd());
 
-    const answers = { coordTicketPrefix: opts.coordTicketPrefix, repos: opts.repos };
+    const answers = {
+      coordTicketPrefix: opts.coordTicketPrefix,
+      repos: opts.repos,
+      profile: opts.profile,
+      phase: opts.phase,
+      tracks: opts.tracks,
+      gates: opts.gates,
+    };
     let planned;
     try {
       planned = plan(targetRoot, answers, opts);
@@ -263,44 +470,63 @@ module.exports = function createCoordInitWizard(deps = {}) {
     if (opts.dryRun) log("(dry run — no files will be written)");
     log("");
 
-    if (planned.action === "create") {
-      log(`  create  ${planned.rel}`);
-    } else if (planned.action === "update") {
-      log(`  update  ${planned.rel}  (regenerating from answers)`);
-      for (const line of renderDiff(planned.existing, planned.content)) log(line);
-    } else if (planned.reason === "identical") {
-      log(`  skip    ${planned.rel}  (already matches the generated config)`);
-    } else {
-      log(`  skip    ${planned.rel}  (exists and differs — pass --confirm to regenerate)`);
-      log("");
-      log("Proposed changes (not applied):");
-      for (const line of renderDiff(planned.existing, planned.content)) log(line);
+    for (const filePlan of planned.files) {
+      if (filePlan.action === "create") {
+        log(`  create  ${filePlan.rel}`);
+      } else if (filePlan.action === "update") {
+        log(`  update  ${filePlan.rel}  (regenerating from answers)`);
+        for (const line of renderDiff(filePlan.existing, filePlan.content)) log(line);
+      } else if (filePlan.reason === "identical") {
+        log(`  skip    ${filePlan.rel}  (already matches the generated artifact)`);
+      } else {
+        log(`  skip    ${filePlan.rel}  (exists and differs — pass --confirm to regenerate)`);
+        log("");
+        log("Proposed changes (not applied):");
+        for (const line of renderDiff(filePlan.existing, filePlan.content)) log(line);
+      }
     }
 
-    const willWrite =
-      !opts.dryRun && (planned.action === "create" || planned.action === "update");
+    const blockedByNoClobber = planned.files.some((filePlan) => filePlan.reason === "exists-no-confirm");
+    const writableFiles = blockedByNoClobber
+      ? []
+      : planned.files.filter((filePlan) => filePlan.action === "create" || filePlan.action === "update");
+    const willWrite = !opts.dryRun && writableFiles.length > 0;
     if (willWrite) {
-      fs.mkdirSync(nodePath.dirname(planned.abs), { recursive: true });
-      fs.writeFileSync(planned.abs, planned.content);
+      for (const filePlan of writableFiles) {
+        fs.mkdirSync(nodePath.dirname(filePlan.abs), { recursive: true });
+        fs.writeFileSync(filePlan.abs, filePlan.content);
+      }
     }
 
     log("");
-    if (planned.action === "skip" && planned.reason === "identical") {
-      log("Config already up to date — nothing to do.");
-    } else if (planned.action === "skip") {
+    if (planned.files.every((filePlan) => filePlan.action === "skip" && filePlan.reason === "identical")) {
+      log("Setup artifacts already up to date — nothing to do.");
+    } else if (blockedByNoClobber) {
       log("No changes written (no-clobber). Review the proposed changes above,");
-      log("then re-run with --confirm to regenerate the config.");
+      log("then re-run with --confirm to regenerate setup artifacts.");
     } else if (opts.dryRun) {
-      log(`Would ${planned.action} ${planned.rel}.`);
+      log("Would write the setup artifacts listed above.");
     } else {
-      log(`${planned.action === "create" ? "Created" : "Updated"} ${planned.rel}.`);
+      log(`Wrote ${writableFiles.map((filePlan) => filePlan.rel).join(", ")}.`);
       log("");
-      log("This is config-as-code. Next: review the file, then COMMIT it through");
-      log("the governed lane (e.g. `git add coord/project.config.js` + your normal");
+      log("This is config-as-code. Next: review the files, run `coord doctor`, then COMMIT them through");
+      log("the governed lane (e.g. `git add coord/project.config.js coord/setup.decisions.json` + your normal");
       log("governed commit). The wizard applied NO runtime state.");
     }
 
-    return { ok: true, code: 0, action: planned.action, targetRoot, content: planned.content };
+    return {
+      ok: true,
+      code: 0,
+      action: planned.action,
+      targetRoot,
+      content: planned.config.content,
+      setupDecisions: planned.setupDecisions.content,
+      files: planned.files.map((filePlan) => ({
+        rel: filePlan.rel,
+        action: filePlan.action,
+        reason: filePlan.reason || null,
+      })),
+    };
   }
 
   function printUsage() {
@@ -312,6 +538,10 @@ module.exports = function createCoordInitWizard(deps = {}) {
     log("Non-interactive (flag-driven) options:");
     log("  --repo CODE:path[:branch[:testCmd[:prefixA|prefixB]]]   Add a repo (repeatable)");
     log("  --coord-prefix <PREFIX>   Coord/cross-repo ticket prefix (default COORD)");
+    log("  --profile <id>            Adoption profile (default: inferred)");
+    log("  --phase <id>              Governance phase (default: inferred)");
+    log("  --track <id[,id]>         Suggested track(s); repeatable");
+    log("  --gate <label[,label]>    Suggested setup gate(s); repeatable");
     log("  --dir <path>              Target repo root (default: cwd)");
     log("  --confirm                 Regenerate even if config exists and differs");
     log("  --force                   Alias of --confirm (regenerate)");
@@ -320,9 +550,11 @@ module.exports = function createCoordInitWizard(deps = {}) {
     log("  -h, --help                Show this help");
   }
 
-  return { parseArgs, parseRepoSpec, generateProjectConfig, normalizeAnswers, plan, run, printUsage };
+  return { parseArgs, parseRepoSpec, generateProjectConfig, generateSetupDecisionArtifact, normalizeAnswers, plan, run, printUsage };
 };
 
 // Re-export the pure generator at module scope for direct unit testing.
 module.exports.generateProjectConfig = generateProjectConfig;
+module.exports.generateSetupDecisionArtifact = generateSetupDecisionArtifact;
 module.exports.normalizeAnswers = normalizeAnswers;
+module.exports.detectRepoShape = detectRepoShape;

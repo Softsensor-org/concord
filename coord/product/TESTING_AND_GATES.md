@@ -7,6 +7,8 @@ checks are required before `doing -> review` and before `review -> done`.
 This file is intentionally distinct from:
 
 - `/test-strategy`, which audits an instantiated codebase and recommends gaps
+- [`coord/product/POLICY_ENFORCEMENT_MATRIX.md`](./POLICY_ENFORCEMENT_MATRIX.md),
+  which records which gate policies are enforced, warning-first, advisory, or planned
 - [`coord/TEST_MATURITY.md`](../TEST_MATURITY.md), which records the observed
   maturity snapshot over time
 - [`coord/product/BOOTSTRAP_CONTRACT.md`](./BOOTSTRAP_CONTRACT.md), which
@@ -38,6 +40,9 @@ Projects instantiated from this template should follow these rules:
 - treat testing debt as governed work, not as a hidden narrative note
 - keep policy here generic and durable; put stack-specific commands and runner
   details in repo-local automation docs
+- use `gov publishability-check <ticket>` when a ticket touches canonical,
+  release, engine, or public documentation surfaces so closeout catches
+  publishability work before the release pipeline does
 
 The maturity dimensions tracked by [`coord/TEST_MATURITY.md`](../TEST_MATURITY.md)
 are the default vocabulary for coverage decisions:
@@ -184,6 +189,33 @@ This separation prevents canonical drift:
 - audit method stays in `/test-strategy`
 - measured snapshot stays in `TEST_MATURITY.md`
 
+## Coverage-maturity refresh cadence (COORD-243)
+
+The coverage **gate** (QGATE-003) and the COORD-126 ratchet run per-commit, and
+`gov insights` auto-aggregates gate/recovery health — but the coverage-**maturity**
+analysis in `TEST_MATURITY.md` does not refresh itself on a commit. COORD-243 wires
+that refresh as three layers separated by cost profile, so heavy work never lands in
+`gov doctor`:
+
+| Layer | Where | Cost | What it does |
+|-------|-------|------|--------------|
+| **DETECT** | `gov doctor` (`coverage-maturity.detectMaturityStalenessFromDisk`) | sub-second, READ-ONLY | Flags `TEST_MATURITY.md` as stale by TIME (>14 days since `Last updated`) OR ACTIVITY (>25 tickets landed since), and surfaces a "dimension below threshold" line from recorded coverage/mutation gate signals. Emits ONE warning line per condition. **Never runs a tool, never writes a file.** |
+| **DO** | `gov coverage-rollup` (`coverage-maturity.rollup`) | minutes-scale | Reads the real per-commit coverage gate signals (QGATE-003, recorded in plan records) + the `gov insights` gate/recovery health rollup and rewrites `TEST_MATURITY.md`'s `Last updated`, the gate-health-derived rows, and a History entry. **Writes the artifact** (that is its job). Idempotent: re-running on unchanged inputs is a no-op. `--dry-run` computes without writing. |
+| **TRIGGER** | `coord/scripts/coverage-rollup-cron.js` | thin | A single-shot runner the cadence owner invokes; it just calls the DO verb once. Because DO is idempotent, over-running is harmless. |
+
+Design rule: **doctor DETECTS, a verb DOES, a scheduler decides WHEN.**
+
+Wiring the TRIGGER (pick one per deployment — the runner is wired, the cadence is a
+documented choice):
+
+- **crontab** (e.g. weekly): `0 6 * * 1  cd <repo> && node coord/scripts/coverage-rollup-cron.js`
+- **post-landing hook**: invoke `node coord/scripts/coverage-rollup-cron.js` after a
+  `gov finalize` batch, then commit the refreshed file through the governed sync lane.
+- **CI nightly**: a scheduled job that runs the runner and commits the result.
+
+The refreshed `TEST_MATURITY.md` must still be committed through the governed lane —
+the cron runner produces the artifact; it does not bypass single-writer governance.
+
 ## Gate Lane Policy
 
 The accepted **executable** lane vocabulary — the names accepted by `gov gate
@@ -191,6 +223,29 @@ The accepted **executable** lane vocabulary — the names accepted by `gov gate
 `default | full | ci`. It is single-sourced in
 `coord/scripts/governance-constants.js` (`GATE_LANES`) so governance validation,
 the template runners, and CI cannot drift (COORD-075 / QGATE-001).
+
+## Affected-Target Gate Selection
+
+Large agent fleets should not pay for full-suite validation when the affected
+surface is narrow and the dependency map is known. Concord supports a
+deterministic affected-target selector:
+
+```bash
+coord affected-targets --files coord/scripts/token-economics.js \
+  --map coord/product/affected-targets.example.json --json
+```
+
+Policy:
+
+- affected-target selection is an optimization, not a weakening of the gate;
+- the selector must log selected targets, skipped targets, changed files,
+  coverage mode, and fallback reason;
+- unknown changed files, missing dependency maps, empty maps, or `--full` must
+  select the full gate;
+- selected slices may be used as `default` ticket evidence only when the map is
+  current enough for the changed surface;
+- `full` and `ci` lanes remain the authoritative fallback for release,
+  dependency-graph uncertainty, or suspected semantic conflicts.
 
 Governance also reasons about an `extended` **policy** concept (deeper /
 release-cut coverage). `extended` is *not* an accepted `--lane` value and is not
@@ -379,9 +434,22 @@ ready to enforce.
   - **monolith** — the no-new-monolith hard budget (default `5000` LOC), above
     the `size` warn budget. Absolute-budget form; `runChecks`/`scanRepo` accept
     an optional `baseline` map for layering growth-over-baseline.
+  - **prodloc** — fail-closed production-module LOC budget for non-test
+    `coord/scripts/**` modules (default `1200`, with explicit high-risk engine
+    high-water budgets owned by the decomposition plan). A tracked hotspot that
+    grows beyond its recorded high-water cap fails with ticket-attribution
+    guidance; shrink-only decomposition should lower the cap using
+    `deriveProductionModuleLocBudgets()` so the win is permanent.
+  - **compositionRoot** — fail-closed append-free hub guard for
+    `coord/scripts/lifecycle.js` and `coord/scripts/governance-validation.js`.
+    In diff-aware ratchet gate runs, newly-added non-wiring logic in either root
+    fails; imports, destructuring, registry entries, exports, comments, and
+    punctuation-only wiring are allowed. New feature logic should live in a
+    self-registering module.
 - **Finding shape (the COORD-083 contract)**: every check emits
   `{ check, file, value, threshold, severity, message, line? }`. `check` is one
-  of `size | complexity | imports | duplication | monolith`. This shape is
+  of `size | complexity | imports | duplication | monolith | prodloc |
+  compositionRoot | hardcoding | deadcode`. This shape is
   load-bearing for the ticket generator — do not change it without updating
   COORD-083.
 - **Policy / thresholds**: defaults live in `DEFAULT_CONFIG` in
@@ -396,7 +464,7 @@ ready to enforce.
   records the signal without blocking.
 - **Summary format** (grep-friendly one-liner the runner prints and the board
   signal records):
-  `arch: <result> files=<N> findings=<M> (size=.. complexity=.. imports=.. dup=.. monolith=..)`
+  `arch: <result> files=<N> findings=<M> (size=.. complexity=.. imports=.. dup=.. monolith=.. prodloc=.. compositionRoot=.. hardcoding=.. deadcode=..)`
 - **Governed signal**: the summary is recorded on the repo_gates board entry via
   `gov add-repo-gate --arch "<summary>"`, surfacing the architecture outcome
   alongside the gate result/attribution and the audit/coverage signals
@@ -407,6 +475,32 @@ ready to enforce.
   flags `coord/scripts/lifecycle.js` (~3540 logical LOC, over the 1500 budget) as
   a WARNING — exactly the no-new-monolith signal — without failing the gate
   (warning-first honors existing debt).
+- **Monolith/size PREVENTION ratchet (COORD-284)**: `size` and `monolith` are
+  RATCHETED at the per-ticket `full`/`ci` submit gate so file-size debt cannot
+  grow unnoticed. The policy:
+  - **Existing over-budget files are GRANDFATHERED.** A finding already present on
+    the baseline is PRE-EXISTING and never fails the gate — pre-existing module
+    debt stays warning-first.
+  - **A change that grows a file PAST its budget FAILS its own gate.** Any `size`
+    or `monolith` finding that is NEW relative to the baseline (a file that
+    crosses the budget it was under before, or a brand-new over-budget file)
+    turns the arch step RED (`classify` exits 1 → `gate.sh` sets `fail=1`).
+  - **Baseline is `origin/main`** (override with the `GATE_ARCH_BASELINE` env var;
+    falls back to `main`). The baseline finding set is computed in an isolated,
+    bounded `git worktree` checked out at the ref, scanning the SAME relative
+    subtree the live scan covers. If NO baseline ref is reachable (offline,
+    shallow, detached) the gate falls back to a NON-failing absolute pass with a
+    logged `WARNING` — it never bricks on a missing ref.
+  - **Wiring / seam**: this is the `GATE_ARCH_CONFIG` config seam, NOT hard-coded.
+    The checked-in `coord/config/arch-gate.ratchet.json`
+    (`{"archGate":"ratchet","ratchetFailOnNew":["monolith","size"]}`) is the
+    DEFAULT `GATE_ARCH_CONFIG` for the `full`/`ci` arch step in
+    `backend|frontend/scripts/gate.sh`; an explicit `GATE_ARCH_CONFIG` still wins.
+    `ratchetFailOnNew` escalates the listed checks to a HARD FAIL **only when NEW
+    under ratchet mode** — their own severity stays `warn`, so plain (absolute)
+    `classify` and the no-baseline fallback remain warning-first. `archGate`
+    defaults to `absolute` and `ratchetFailOnNew` defaults to `[]`, so a bare
+    `--ratchet` (no config) does not silently start failing.
 
 ## Lint + Format Enforcement (QUALITY-001 / COORD-081)
 
@@ -701,6 +795,103 @@ the non-default leg locally rather than late in a downstream proving ground.
 When adding engine code, derive integration branches and repo sets from the
 registry (`REPO_INTEGRATION_BRANCHES`, `REPO_ROOTS`) — never hardcode `dev` or
 `B`/`F`.
+
+## Journal Hash-Chain Migration (SHA-1 → SHA-256, COORD-289)
+
+The journal hash-chain is versioned (see
+[`coord/GOVERNANCE_ARCHITECTURE.md`](../GOVERNANCE_ARCHITECTURE.md) →
+"Journal Hash-Chain Era Model"). Testing rules for it:
+
+- **Never mutate the live journal in tests.** All era/migration tests use
+  ISOLATED sandbox journals (`withJournalSandbox`) or hand-built fixtures. The
+  live `coord/.runtime/governance-events.ndjson` is the audit substrate and is
+  off-limits to the test suite.
+- **Back-compat is a gate invariant.** A pre-migration (untouched) repo must
+  append byte-identically to before — no `hash_alg` field, sha1 link. A
+  regression test asserts this; treat any change to pre-migration stored-line
+  bytes as a breaking failure, not a refresh.
+- **The migration is a one-time, human-only, irreversible cutover.** `gov
+  migrate-chain-hash` (default DRY-RUN; `--confirm` to apply) appends the single
+  signed `hash-alg-migration` bridge event. It preconditions `gov conform` PASS,
+  refuses a second migration (idempotent), and is the ONLY way the bridge event is
+  created. After it runs, `gov conform` reports `headAlg = sha256` and a non-zero
+  SHA-256 era while the full SHA-1 history still verifies as historical fact.
+- **Run the gate serially.** Use
+  `env -u COORD_SESSION_ID node --test --test-concurrency=1 coord/scripts/*.test.js
+  coord/board/*.test.js`; `COORD_SESSION_ID` must be unset for the runner (it
+  leaks into ownership tests) and the chain/era tests are deterministic only when
+  serial.
+
+## Test-Harness Isolation: never write the live `coord/` tree (COORD-290, COORD-299)
+
+Tests that mutate `coord/` fixtures MUST run in isolated temp dirs / dedicated
+sandboxes — **NEVER against the live governed runtime.** Writing transient
+fixtures under the SEALED `coord/` tree (e.g. `coord/prompts/tickets/*.tmp`,
+re-rendered `coord/rendered/*`, `coord/PLAN.md`) trips the COORD-220 out-of-band
+seal + COORD-222 co-located guard for the NEXT governed command during concurrent
+governed mutations. The seal is correctly flagging out-of-band mutation — a test
+that leaks live writes is the defect, not the seal.
+
+Rules:
+
+- **Sandbox every write via `os.tmpdir()` + the `__testing.paths` override.** Mirror
+  a well-behaved helper: `fs.mkdtempSync(path.join(os.tmpdir(), ...))`, then point
+  the relevant registry entries (`BOARD_PATH`, `PROMPTS_DIR`, `RENDERED_DIR`,
+  `PLAN_PATH`, `RUNTIME_DIR`, plan-records / lock / snapshot dirs) at the sandbox,
+  and restore them in `finally`. Production paths must resolve through this
+  registry (not a module-level constant) so the override actually takes effect —
+  e.g. `coord/board/board.js` resolves its rendered/PLAN output paths from the
+  registry at render time, and `token-economics.js` resolves prompts via
+  `state.PROMPTS_DIR`.
+- **The harness guard enforces this.** `coord/scripts/test-isolation-guard.js` is a
+  `--require` preload (loaded by `coord/scripts/check-test-isolation.sh`) that
+  THROWS the instant any test writes under the live `coord/prompts/**` /
+  `coord/rendered/**` (seal class) or the live-runtime class (see COORD-299 below)
+  outside its sandbox — catching transient write-then-restore leaks that a
+  post-suite `git status` cannot see. A future test cannot silently regress the
+  rule. `coord/scripts/test-isolation-guard.test.js` unit-covers both classifiers
+  and proves the runtime class fails-closed.
+- **Allowlist (kept tiny and conservative).** `withCanonicalTicketPrompt`
+  legitimately provisions the REAL canonical ticket prompt
+  (`coord/prompts/tickets/COORD-023.md`, `COORD-024.md`) to exercise canonical
+  path resolution; it only writes in a STRIPPED public checkout (no-op in the
+  donor) and removes only what it created. These exact paths are the documented
+  guard exception. Prefer sandboxing over extending the allowlist.
+- **Live-runtime class (COORD-299).** The guard now ALSO fails-closed on the
+  gitignored shared-worktree runtime: `coord/.runtime/**` (journal, snapshots, plan
+  + ticket-lock shards, attestations, conformance-keys, gate-procs), the two coarse
+  directory locks `coord/.coord-state.lock` / `coord/.agent-state.lock`, and
+  `coord/memory/**`. This is the second of the two guarded classes
+  (`isRuntimeViolation`); the seal class (`isViolation`) is unchanged. To make the
+  full runtime sandboxable, the `__testing.paths` registry gained
+  `COORD_STATE_LOCK_DIR`, `AGENT_STATE_LOCK_DIR`, and `MEMORY_DIR` overrides (the two
+  coarse locks resolve LIVE off `state` in `governance-context.js`, like
+  `RUNTIME_DIR` / `GOVERNANCE_EVENT_LOCK_DIR`). The shared sandbox helpers
+  (`withJournalSandbox`, `withGovernedSurfaceSandbox`, `withCleanRuntimeFixture`,
+  `setupCoord003Workspace`, `withRegisterPromptHarness`) redirect these new keys
+  alongside `RUNTIME_DIR`. A test file whose governed calls would only ACQUIRE the
+  ephemeral coarse locks as a side effect can call
+  `governance-test-utils.sandboxProcessRuntimeLocks()` once at the top to relocate
+  this worker's lock + memory dirs to an `os.tmpdir()` sandbox (process-scoped; the
+  locks are transient and never asserted on).
+- **Runtime allowlist (COORD-299, conservative + tracked).** Two layers:
+  `RUNTIME_ALLOWLIST` (specific live paths — currently empty) and
+  `RUNTIME_ALLOWLIST_FILES` (test/worker files whose live-runtime writes are not yet
+  sandboxed). The latter currently holds the staged residual — `agent-commands`,
+  `board-rebuild`, `governance`, `journal` (real `.runtime` content / conformance
+  keys), `recall` + `memory-eval` (live `coord/memory` corpus pending `MEMORY_DIR`
+  wiring into the memory modules), `concurrent-burnin` (deliberately contends on the
+  LIVE coarse lock), and `gate-proc-registry` (child writes live gate-procs pidfiles).
+  Each is exempted from ENFORCEMENT only (the classifier still flags its paths); the
+  guard still fails-closed for every file OUTSIDE the list, so no NEW offender can
+  regress in. Draining this list (bespoke sandboxes + `MEMORY_DIR` wiring) is the
+  COORD-300 follow-up. `COORD_TEST_ISOLATION_RUNTIME=detect` re-enumerates all
+  offenders to a report file without failing.
+- **Gate-then-mutate; never run the suite concurrently with governed mutations.**
+  Run serially: `env -u COORD_SESSION_ID node --test --test-concurrency=1
+  coord/scripts/*.test.js coord/board/*.test.js` (or `coord/scripts/check-test-isolation.sh`
+  to run the same suite with the guard active). `COORD_SESSION_ID` must be unset
+  for the runner (it leaks into ownership tests).
 
 ## Governance Integration
 

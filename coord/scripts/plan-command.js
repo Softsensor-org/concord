@@ -25,6 +25,7 @@ module.exports = function createPlanCommand(deps = {}) {
     readPlanState,
     updateCanonicalPlanState,
     collectStartReadinessBlockers,
+    collectStartReadinessAdvisories,
     collectReviewPlanReadinessIssues,
     withGovernanceMutation,
     inferTicketStatus,
@@ -57,6 +58,8 @@ module.exports = function createPlanCommand(deps = {}) {
       "files",
       "dropFile",
       "security",
+      "adrRef",
+      "decisionRequired",
       "liveMcp",
       "startup",
       "traceability",
@@ -66,11 +69,13 @@ module.exports = function createPlanCommand(deps = {}) {
       "featureProof",
       "dropFeatureProof",
       "repoGate",
+      "adrRef",
       "rollback",
       "closeoutMethod",
       "closeoutBaseRef",
       "provenanceNote",
       "reviewProfile",
+      "contextPackAck",
       "reviewCycle",
       "replaceReviewCycle",
       "dropReviewCycle",
@@ -95,6 +100,7 @@ module.exports = function createPlanCommand(deps = {}) {
       "featureProof",
       "dropFeatureProof",
       "repoGate",
+      "adrRef",
       "rollback",
       "reviewCycle",
     ]) {
@@ -159,6 +165,9 @@ module.exports = function createPlanCommand(deps = {}) {
     }
     const planState = readPlanState(ticketId);
     const startBlockers = collectStartReadinessBlockers(ticketId, ref.row, board);
+    const startAdvisories = typeof collectStartReadinessAdvisories === "function"
+      ? collectStartReadinessAdvisories(ticketId, ref.row, board)
+      : [];
     const reviewIssues = collectReviewPlanReadinessIssues(ticketId, ref.row);
     return {
       ticket: ticketId,
@@ -167,6 +176,7 @@ module.exports = function createPlanCommand(deps = {}) {
       start_readiness: {
         ready: startBlockers.length === 0,
         blockers: startBlockers,
+        advisories: startAdvisories,
       },
       review_readiness: {
         ready: reviewIssues.length === 0,
@@ -278,6 +288,13 @@ module.exports = function createPlanCommand(deps = {}) {
       fail("set-requirement-closure requires --ticket-ask, --implemented, and --closeout-verdict.");
     }
     return updatePlanBlock(ticketId, {
+      // --supersede REPLACES the prior requirement_closure block instead of
+      // appending (COORD-198). requirement_closure is append-only by default, so a
+      // re-closure (e.g. partial -> complete after a takeover) otherwise leaves
+      // BOTH the old and new blocks in the ordered array. The derived verdict/debt
+      // read uses recency (last block wins) so the contradiction is harmless, but
+      // --supersede keeps the record clean for future re-closures.
+      ...(options.supersede ? { replaceClosure: true } : {}),
       closure: [
         `Ticket ask: ${options.ticketAsk}`,
         `Implemented: ${options.implemented}`,

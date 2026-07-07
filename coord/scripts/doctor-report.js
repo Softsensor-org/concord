@@ -25,6 +25,7 @@
 
 const { defaultFail, COORD_DIR, DEFAULT_PATHS } = require("./governance-context.js");
 const { STATUS } = require("./governance-constants.js");
+const treeMutationSafety = require("./tree-mutation-safety.js");
 
 const REPO_ROOTS = DEFAULT_PATHS.repoRoots;
 
@@ -58,7 +59,6 @@ module.exports = function createDoctorReport(deps = {}) {
     getRows,
     rowsById,
     runBoardValidate,
-    runBoardSync,
     // readiness / cycle formatters
     evaluateReadiness,
     formatDependencyCycleList,
@@ -83,6 +83,7 @@ module.exports = function createDoctorReport(deps = {}) {
     isRegisteredAgentHandle,
     canonicalizeOwnerOrFail,
     detectActiveSameOwnerOtherThread,
+    detectColocatedForeignSessions,
     // landing
     assertLandingIntegrity,
     ensureTestingInfrastructureLandingAudit,
@@ -90,16 +91,27 @@ module.exports = function createDoctorReport(deps = {}) {
     formatLandingAuditSummary,
     // provenance / drift / freshness
     appendGovernanceProvenanceIssues,
+    detectOutOfBandBoardMutation,
     detectRollbackDrift,
     computeSyncDelta,
     canonicalSyncablePaths,
+    gitTry,
     // questions / template feedback / event log
     readGovernanceEventLog,
     // ENT-002: tamper-evident journal hash-chain verifier (read-only). Injected
     // so doctor can surface a broken prev_event_hash link (tamper / reorder /
     // drop) as an error without owning the journal module.
     verifyGovernanceChain,
+    buildJournalHealthReport,
+    formatJournalHealthWarning,
     collectStaleTemplateFeedbackErrors,
+    // COORD-243: read-only, sub-second coverage-MATURITY staleness DETECT.
+    // Injected so doctor can surface a "TEST_MATURITY.md stale -> run Y" line
+    // WITHOUT running a tool or writing the artifact. Mirrors the
+    // collectStaleTemplateFeedbackErrors nag; routed to warnings (advisory) so a
+    // stale maturity file never wedges finalize. The DO verb (gov coverage-rollup)
+    // is what refreshes the file — doctor only detects.
+    detectMaturityStaleness,
     buildQuestionQueueReport,
     readActiveOrchestratorQuestionRows,
     formatBucketCounts,
@@ -141,6 +153,9 @@ module.exports = function createDoctorReport(deps = {}) {
   }
 
   function doctor(options = {}) {
+    if (options.repairAll) {
+      return doctorFix({ ...options, repairAll: true });
+    }
     if (options.fix) {
       return doctorFix(options);
     }
@@ -295,6 +310,53 @@ module.exports = function createDoctorReport(deps = {}) {
 
     if (!targetRef) {
       appendGovernanceProvenanceIssues(errors, warnings);
+      // COORD-222: surface co-located governed sessions — two or more
+      // heartbeat-fresh sessions bound to THIS runtime (coord/.runtime) on
+      // different threads. This is the condition `gov start` / `gov claim` now
+      // FAIL CLOSED on (unless --allow-shared-worktree). Doctor cannot know
+      // whether the operator opted into the shared-worktree topology, so it
+      // reports the co-located set as an informational warning, not a hard error.
+      if (typeof detectColocatedForeignSessions === "function") {
+        try {
+          // Compute the full fresh-session set on this runtime by treating "no
+          // current thread" as the vantage point, so every fresh session shows up.
+          const colocated = detectColocatedForeignSessions({ currentThreadId: null, sessions });
+          if (colocated.foreign_sessions.length >= 2) {
+            const others = colocated.foreign_sessions
+              .map((session) => `${session.session_id || "?"}(${session.handle || "?"})@thread:${session.thread_id}`)
+              .join(", ");
+            warnings.push(
+              `[identity/concurrency] ${colocated.foreign_sessions.length} heartbeat-fresh governed sessions are ` +
+              `co-located on this runtime (coord/.runtime) across different threads: ${others}. ` +
+              "Two governed writers sharing one checkout/runtime can interleave writes to the hash-chained journal " +
+              "(coord/docs/MULTI_AGENT_TOPOLOGIES.md:136). Each concurrent agent should use a SEPARATE git worktree " +
+              "with its own coord/.runtime, or this was an intentional --allow-shared-worktree session."
+            );
+          }
+        } catch {
+          // Session-read failures are already surfaced elsewhere; never wedge doctor on this advisory.
+        }
+      }
+      // COORD-220: surface out-of-band coordination-state mutations (a hand-edited
+      // tasks.json / stray plan / prompt / rendered file with no journaled
+      // transaction) as a dedicated bypass finding so the operator sees it named as
+      // a single-writer-protocol violation, not just generic drift. The governed
+      // writers FAIL CLOSED on the same condition; doctor reports it for diagnosis.
+      if (typeof detectOutOfBandBoardMutation === "function") {
+        try {
+          const outOfBand = detectOutOfBandBoardMutation();
+          if (outOfBand.detected) {
+            errors.push(
+              `Out-of-band board mutation detected (single-writer protocol bypass): ${outOfBand.paths.join(", ")} ` +
+              `changed with no journaled transaction since ${outOfBand.latestEvent?.ts || "unknown time"}. ` +
+              "These coordination-state files (board / plan records / prompts / rendered) must only be mutated through a governed transaction. " +
+              "Reconcile the manual edit (revert it, or re-apply it via gov open-followup / gov start / gov finalize) before continuing."
+            );
+          }
+        } catch {
+          // Provenance read failures are already surfaced by appendGovernanceProvenanceIssues.
+        }
+      }
     }
     // ENT-002: journal hash-chain integrity. Board-wide only (ticket-scoped runs
     // stay targeted). A broken prev_event_hash link means an event was tampered,
@@ -325,9 +387,40 @@ module.exports = function createDoctorReport(deps = {}) {
         warnings.push(`[journal-chain] chain verification did not complete: ${reason}`);
       }
     }
+    if (!targetRef && typeof buildJournalHealthReport === "function") {
+      try {
+        const report = buildJournalHealthReport();
+        const message = typeof formatJournalHealthWarning === "function"
+          ? formatJournalHealthWarning(report)
+          : null;
+        if (message) {
+          warnings.push(message);
+        }
+      } catch (error) {
+        const reason = error && error.message ? error.message : String(error);
+        warnings.push(`[journal-retention] health check did not complete: ${reason}`);
+      }
+    }
     const governanceEvents = readGovernanceEventLog();
     for (const message of collectStaleTemplateFeedbackErrors(board, governanceEvents, { rows })) {
       errors.push(message);
+    }
+    // COORD-243 DETECT: cheap, READ-ONLY coverage-maturity staleness. Board-wide
+    // only (ticket-scoped runs stay targeted/fast). It reads coord/TEST_MATURITY.md
+    // + the journal + recorded coverage gate signals and emits ONE actionable
+    // "X stale -> run Y" warning line when the maturity file is old (by time OR by
+    // tickets-landed-since) or a recorded coverage/mutation dimension is below its
+    // gate threshold. HARD RULE: this only DETECTS — it never runs a tool and never
+    // writes a file. The fix is the SEPARATE `gov coverage-rollup` verb.
+    if (!targetRef && typeof detectMaturityStaleness === "function") {
+      try {
+        for (const finding of detectMaturityStaleness()) {
+          warnings.push(`[coverage-maturity] ${finding}`);
+        }
+      } catch (error) {
+        const reason = error && error.message ? error.message : String(error);
+        warnings.push(`[coverage-maturity] staleness check did not complete: ${reason}`);
+      }
     }
     // Phase 4 (repair-path hardening): non-fatal freshness/rollback-drift
     // warnings. Board-wide only (skipped for ticket-scoped runs) and routed to
@@ -379,22 +472,35 @@ module.exports = function createDoctorReport(deps = {}) {
     // --no-sync), the next `gov doctor` surfaces the drift hard rather than
     // letting it accumulate.
     //
-    // Board-wide only (ticket-scoped runs stay targeted/fast). The regen
-    // before the delta check is idempotent on consistent state — writing
-    // the same content back leaves git status clean — so this is safe to
-    // run on every healthy invocation.
+    // Board-wide only (ticket-scoped runs stay targeted/fast). This is
+    // intentionally read-only: doctor only inspects current drift and recommends
+    // `gov sync`; it must never regenerate derived artifacts itself.
     if (!targetRef) {
       try {
-        runBoardSync({ ticketScopedValidation: false });
-        const driftPaths = computeSyncDelta(COORD_DIR, canonicalSyncablePaths());
-        const driftError = buildCanonicalDerivedDriftError(driftPaths);
+        const syncScope = canonicalSyncablePaths();
+        const driftPaths = computeSyncDelta(COORD_DIR, syncScope);
+        let driftError = buildCanonicalDerivedDriftError(driftPaths);
+        if (driftError && typeof gitTry === "function") {
+          const hazard = treeMutationSafety.buildTreeMutationSafetyHazard({
+            gitTry,
+            repoRoot: COORD_DIR,
+            allowedPaths: syncScope,
+            board,
+            getRows,
+            isDoingStatus,
+            findLockForTicket,
+            isStaleTicketLock,
+          });
+          if (hazard) {
+            driftError = `${driftError} ${treeMutationSafety.formatTreeMutationSafetyHazard(hazard)}`;
+          }
+        }
         if (driftError) {
           errors.push(driftError);
         }
       } catch (error) {
-        // If the check itself can't run (e.g., runBoardSync throws because
-        // tasks.json is malformed), report it as a non-fatal warning rather
-        // than masking the real underlying issue that other checks will
+        // If the check itself can't run, report it as a non-fatal warning
+        // rather than masking the real underlying issue that other checks may
         // already surface as errors.
         const reason = error && error.message ? error.message : String(error);
         warnings.push(`[canonical-derived-drift] drift check did not complete: ${reason}`);

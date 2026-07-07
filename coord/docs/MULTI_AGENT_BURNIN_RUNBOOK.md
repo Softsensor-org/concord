@@ -22,15 +22,20 @@ discipline; none of it changes governance semantics.
 > The hand-clustered recipe below is the **fallback** for when you are driving a
 > single ticket by hand or the orchestrator is unavailable.
 
-Run this once per agent, with a **distinct `COORD_SESSION_ID` per agent** so the
-fleet stays isolated (see the topologies doc for why this is authoritative):
+Run this once per agent, with a **distinct `COORD_SESSION_ID` per agent** and
+from that agent's governed worktree/runtime so the fleet stays isolated (see
+the topologies doc for why this is authoritative). Do not bind several agents
+to one shared checkout/runtime; the co-located-session guard refuses that by
+default. `--allow-shared-worktree` is only for deliberate single-agent/local or
+orchestrator-controlled exceptions where the operator accepts the risk.
 
 ```sh
 # 1. Bind this session to its agent and CONFIRM the binding took.
 COORD_SESSION_ID=<sid> coord/scripts/gov claim --owner <handle> --force
 COORD_SESSION_ID=<sid> coord/scripts/gov agentid     # must report <handle> — STOP if not
 
-# 2. Start the ticket. Repo-backed code gets an isolated worktree automatically.
+# 2. Start the ticket. Repo-backed code gets an isolated worktree automatically;
+#    repo-X coord work gets a real coord git worktree with its own coord/.runtime.
 COORD_SESSION_ID=<sid> coord/scripts/gov start <ID>
 
 # 3. DONE-CHECK FIRST (see §2), then implement to EVERY acceptance criterion.
@@ -95,12 +100,17 @@ automatically for repo-backed code repos (`.worktrees/<handle>/<ID>`). Each
 agent edits its own checkout on its own branch, so concurrent agents never step
 on each other's working tree.
 
-**Repo-`X` self-modification has no worktree isolation.** Tickets that edit the
-framework itself (the `coord/` tree — governance scripts, board, docs) operate
-directly on the shared donor tree. There is no per-ticket checkout to isolate
-them, so **repo-`X` tickets that touch the same files MUST run strictly
-sequentially**, each building on the prior commit. Do not fan them out
-concurrently; serialize the cluster and land one before starting the next.
+**Repo-`X` self-modification is split by surface.** Tickets that declare safe
+coord code/doc surfaces, such as `coord/scripts/`, `coord/docs/`,
+`coord/product/`, `coord/ui/`, or the root agent/governance guide files, may be
+scheduled in the same wave when those declared files are disjoint. This gives
+coord-owned framework work the same practical fan-out model product repos use.
+
+Global coordination state remains single-writer. Tickets that touch the board,
+journal/runtime state, locks, prompt registry files, rendered derived artifacts,
+or tickets with no declared file surface are still scheduled alone. Do not fan
+out those stateful repo-`X` changes; serialize the cluster and land one before
+starting the next.
 
 ## 5. Two-board reconciliation
 
@@ -215,6 +225,82 @@ coord/scripts/gov record-cost <ID> --agent <handle> --model <model-id> \
 is omitted, so you only need the token counts and the model id. It is an
 append-only `cost.observed` journal event — **evidence, not a gate** — and never
 mutates board or lifecycle state. Read it back with `gov cost [--by ticket|agent|model] [--json]`.
+
+## 7.5 Automated concurrency burn-in (the SEALED-protocol acceptance proof)
+
+Sections 1–7 are the *operating* runbook for driving a real fleet. This section
+is the **automated proof** that the single-writer board protocol actually holds
+under genuine concurrency — the acceptance gate for COORD-224. It is not a manual
+recipe; it is a test the runner executes.
+
+### What it proves
+
+The single-writer protocol is built from these sealed pieces:
+
+- **COORD-220** — `withBoardTransaction` / `reserveTicketId` reserve ticket IDs
+  INSIDE the governance runtime lock, plus the fail-closed out-of-band bypass seal.
+- **COORD-221** — `gov file-ticket` governed creator.
+- **COORD-222** — the co-located-session guard refuses a second fresh governed
+  writer bound to one runtime (`--allow-shared-worktree` override).
+- **COORD-223** — canonical nested-lock order, idempotency-on-retry, and audited
+  `collision-detected` events.
+- **COORD-246** — the seal is fail-closed AND self-baselining (a completed
+  mutation's own post-journal sync does not trip the next mutation).
+
+The burn-in (`coord/scripts/concurrent-burnin.test.js`, with the child-process
+mutator `coord/scripts/concurrent-burnin-worker.js`) spawns **N concurrent
+governed mutators as real OS child processes** (default `N=12`, in the 10–20
+target band) against **ONE shared sandbox runtime** — its own `.runtime` + board
+under `os.tmpdir()`, **never the live coord board/journal**. Every worker binds
+the SAME `GOVERNANCE_EVENT_LOCK_DIR`, so the mkdir-based cross-process mutex
+genuinely serializes them. It then asserts the five protocol guarantees:
+
+1. **Zero duplicate ticket IDs** — every concurrent reservation got a distinct ID
+   (`reserveTicketId`-under-lock).
+2. **Zero hash-chain breaks** — `verifyGovernanceChain` PASS on the resulting
+   journal (proves the runtime lock serialized appends — the original
+   COORD-115/123 chain-corruption failure mode).
+3. **Zero lost/clobbered board rows** — every successful create's row is present
+   (no last-writer-wins clobber).
+4. **Every mutation journaled exactly once** — no duplicate / missing events
+   (ties to COORD-223 idempotency).
+5. **Out-of-band edits rejected** — a hand-edit injected mid-burn-in trips the
+   seal and is refused with a `GovernanceError`, leaving the chain intact
+   (COORD-220/246 fail-closed).
+
+It covers **both** guard postures:
+
+- **(a) override-forced concurrency** — N concurrent governed mutators against one
+  runtime → guarantees 1–4 hold under real contention. This deliberately
+  exercises the LOWER protections (runtime-lock serialization, ID reservation,
+  chain integrity) — the safety net beneath the guard.
+- **(b) guard-refuses** — WITHOUT the override, a co-located fresh governed writer
+  is REFUSED by the COORD-222 guard (the first line of defense). The caller's own
+  session (same thread) is never a false-block.
+
+### Running it
+
+```sh
+# Part of the standard test gate (the runner globs coord/scripts/*.test.js):
+env -u COORD_SESSION_ID node --test coord/scripts/concurrent-burnin.test.js
+
+# Bound the agent count anywhere in the 10–20 band (default 12):
+env -u COORD_SESSION_ID COORD_BURNIN_N=16 node --test coord/scripts/concurrent-burnin.test.js
+```
+
+> The `env -u COORD_SESSION_ID` prefix matters: a `COORD_SESSION_ID` exported for
+> a governed session leaks into the test runner's child processes and perturbs
+> identity resolution. Strip it when running the gate.
+
+### Why it is CI-reliable (no flakes)
+
+The assertions are on the **deterministic invariants** — the distinct-id set, the
+chain-PASS verdict, all-rows-present, exactly-once events — which hold regardless
+of how the OS schedules the N processes. Scheduling varies run to run; the
+invariants do not. The burn-in is **bounded** (a ~12-agent, few-second run, not a
+1000-agent soak), so it is fast and stable in CI. A flaky burn-in would be worse
+than none, so it never asserts on timing or ordering — only on the protocol
+guarantees that must hold under ANY interleaving.
 
 ## 8. Pre-flight checklist
 

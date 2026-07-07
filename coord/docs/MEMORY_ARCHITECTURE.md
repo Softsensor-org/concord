@@ -6,6 +6,10 @@
 > document; it defines the architecture and registers the phased `[Memory]`
 > backlog (COORD-140..149). Authority for anything claimed here is the repo
 > itself — every factual claim below cites the real file/function it rests on.
+>
+> For the current-vs-incremental adoption boundary across memory, continuity,
+> ADRs, business discovery, identity, and teamwork, see
+> [`CONTINUITY_CAPABILITY_MATRIX.md`](../product/CONTINUITY_CAPABILITY_MATRIX.md).
 
 ---
 
@@ -34,6 +38,45 @@ This reframes the question-class Concord can answer:
 
 The second class is the **learning system**. It is built *on top of* the first,
 and — critically — it only ever **recommends**; it never decides (see §5).
+
+### Concord Knowledge Compiler umbrella
+
+The learning system is organized around the **Concord Knowledge Compiler**:
+
+- **Producers:** business discovery, ticket execution, requirements assurance,
+  ADR/decision records, and review feedback emit source-backed proposed claims.
+- **Gate:** `coord/scripts/coord knowledge-claim-compile --input claims.json
+  --json` deterministically classifies each proposed claim before it can be
+  treated as governed knowledge or ticket context.
+- **Consumers:** memory, recall, context packs, requirements, ADRs, and ticket
+  synthesis consume only compiled outcomes with source references and status.
+
+This separates **claim production** from **knowledge consumption**. Discovery
+and execution can observe or propose domain facts, behavioral patterns, and
+rules, but memory and context packs may only consume claims that passed the
+compiler's evidence, conflict, staleness, sensitivity, and authority checks.
+The compiler still does not decide what ships: memory recommends, governance
+decides, sources are cited, and execution remains gated.
+
+Domain knowledge and behavioral knowledge are **semantic-memory subtypes**:
+they describe what the repo/project means or how it behaves. They are not a new
+authority layer and they are not procedural memory. Procedural memory remains
+reserved for learned agent-operating rules that must go through governed
+submit/review/land before changing behavior.
+
+### Relationship to continuity
+
+The continuity profile (`coord/product/CONTINUITY_PROFILE.md`) is the
+cross-track discipline that keeps daily journal residue, warm-start/cold-finish
+handoffs, decisions, cadences/cursors, promotion candidates, and durability
+sweeps source-backed until they either expire or promote through a governed
+target path.
+
+Continuity is broader than memory: it also connects business discovery, ADRs,
+requirements, cadence work, repo gates, and closeout evidence. It does not add a
+new governance track, and it does not make `coord/memory/` authoritative.
+`coord/memory/` remains derived-only and rebuildable. The operating distinction
+is mandatory: **continuity is always owed; certification is earned**.
 
 ---
 
@@ -95,7 +138,7 @@ KMS / key-custody roadmap (tracked as COORD-146).
 |---|---|---|---|
 | **Operational** | *what happened* | Journal (`coord/scripts/journal.js`), board (`coord/board/tasks.json`), plan records — hash-chained, attributed, rendered. **Already strong.** | None for the substrate; this is the raw truth other layers derive from. |
 | **Decision** | *why it happened* | Plan records (`coord/scripts/plan-records.js`): `requirement_closure` (ticket-ask / implemented / not-implemented / **deferred-to** / verdict), `self_review_cycles` (each with `lens`, `risks`, `findings`, `verification`, `verdict`), `critical_invariants`; plus `QUESTIONS.md`. The *why* is **already captured as required fields**. | **Extract & index decision records.** This is **cheap** — a *transform of fields the validator already requires*, not model inference (COORD-140). |
-| **Semantic** | *what this means* | **Not built.** No retrieval/recall surface today. | `gov recall` (§7), hybrid retrieval (§6) — deterministic first (COORD-141), vector/graph later (COORD-143). |
+| **Semantic** | *what this means* | Business discovery and ticket execution can produce proposed domain/behavioral claims, but they are not active semantic memory until compiled/promoted. | `gov recall` (§7), hybrid retrieval (§6) — deterministic first (COORD-141), vector/graph retrieval views later (COORD-143). |
 | **Procedural** | *how agents should behave* | The 19 skills under `.claude/commands/` + `AGENTS.md` + `CLAUDE.md` + `GOVERNANCE.md` — already version-controlled and changed only via PRs. | Route **learned** rules through submit/review/land — never silently rewrite agent behavior (COORD-145). |
 
 ---
@@ -157,6 +200,110 @@ Concretely:
 **The risk to avoid:** becoming *"another opaque AI assistant"* — a black box
 that asserts conclusions you cannot trace. Concord's whole edge is the opposite.
 
+### Claim Compiler Gate
+
+Extractors may propose claims, but they do not promote truth. Proposed knowledge
+must pass through the claim compiler gate before it can be shown as active
+context or promoted into memory/requirements/ADRs:
+
+```bash
+coord/scripts/coord knowledge-claim-compile --input claims.json --json
+```
+
+The gate is deterministic and emits one outcome per claim:
+
+- `accepted` — reviewer-approved or deterministically verified;
+- `candidate` — enough evidence to show as advisory context, not truth;
+- `review-required` — enough evidence to justify human review, or reviewer
+  budget exceeded;
+- `rejected` — missing evidence, summary-only evidence, secret-tainted evidence,
+  prompt-injection/governance-override content, unauthoritative policy/rule
+  claims, or too weak for review;
+- `conflicted` — active unresolved conflict;
+- `superseded` — historical only.
+
+The output also states whether a claim may enter context packs. Secret-tainted,
+prompt-injection, governance-override, summary-only, conflicted, superseded,
+stale, unauthoritative policy/rule, and rejected claims cannot enter active
+context packs.
+
+The compiler artifact names its contract explicitly as **Concord Knowledge
+Compiler**. It records that business discovery and ticket execution are claim
+producers, while memory, recall, and context packs are consumers. That machine
+readable contract prevents later tools from treating vectors, summaries, or raw
+discovery output as authority.
+
+### Memory-Poisoning Red-Team Contract
+
+The claim compiler treats hostile source text as evidence, never as executable
+instructions. Synthetic red-team fixtures cover hostile docs, code comments,
+support notes, runtime receipts, web/MCP content, and daily-journal entries that
+attempt prompt injection, false business-rule promotion, secret smuggling, or
+governance override.
+
+The deterministic contract is:
+
+- Prompt-injection and governance-override content is rejected before confidence
+  scoring, reviewer budgets, or promotion logic can make it active.
+- Secret-like claim or evidence content is quarantined, using the memory
+  classification secret detector; no secret-tainted claim is eligible for a
+  context pack.
+- Policy, business-rule, governance-rule, and procedural-rule claims require
+  authoritative intent evidence (`approved_policy`, `accepted_decision`,
+  `requirement`, or `human_review_comment`). Comments, support notes, runtime
+  receipts, web pages, MCP resources, and daily journals may remain cited
+  evidence, but they cannot create or override rules by themselves.
+- Rejections carry audit-safe reason codes and source references. They do not
+  copy hostile evidence bodies into active context-pack fields; an eligible
+  context pack uses only `context_pack_statement` from claims that passed the
+  gate.
+
+### Context-Pack Use Acknowledgement
+
+Context packs are not self-executing authority. For context-sensitive behavior
+changes, ADR/high-impact decision work, tickets that cite a context pack, and
+live-MCP or bootstrap/backfill work, the plan record must include a
+`context_pack_ack` object before review/closeout. That acknowledgement records:
+
+- which active constraints, ADRs, business rules, conflicts, stale warnings, and
+  open questions were considered;
+- which confirmed/current claims are being used as implementation constraints;
+- which candidate, inferred, stale, private, rejected, conflicted,
+  contradicted, or superseded claims are advisory-only;
+- how closeout treats new learning: promote, demote, scratch-only, mixed, or
+  none.
+
+Plans may cite confirmed/current claims, accepted ADRs, requirements,
+schema/code contracts, or explicit waivers as constraints. They must not cite
+inferred, stale, private, rejected, conflicted, contradicted, superseded, or
+advisory-only claims as authority. If a generated pack contains conflicts,
+stale sources, or open questions, the acknowledgement must handle those sections
+explicitly rather than marking them `none`.
+
+Closeout must also state whether any new learning should be promoted into a
+governed memory/ADR/requirements path, demoted as invalid, or left
+scratch-only. Scratch-only learning can explain a ticket-local choice, but it is
+not reusable procedural or semantic memory until promoted through the governed
+path.
+
+Conflict, supersession, and staleness are enforced before recall:
+
+- **Superseded knowledge is history-only.** It must not appear as an active
+  constraint in a context pack. It may be shown only in a dedicated history
+  section so agents can understand why an older rule or decision changed.
+- **Accepted conflicts fail closed.** If two otherwise-active promoted claims
+  conflict, both are treated as `conflicted` until a reviewer resolves,
+  supersedes, approves, or waives the conflict. Context packs surface those
+  claims in a dedicated conflicts section instead of blending them into facts,
+  rules, or decisions.
+- **Stale source hashes invalidate dependent claims.** If a cited source hash no
+  longer matches the current source, dependent knowledge becomes `stale` and is
+  excluded from active context until revalidated.
+- **Risky behavior-changing tickets are blocked by conflicted or inferred
+  memory.** Observed-only implementation behavior and unresolved conflicts may
+  inform review, but they cannot govern a risky change unless the ticket carries
+  an explicit approval or waiver.
+
 ---
 
 ## 6. Design principles
@@ -165,13 +312,22 @@ that asserts conclusions you cannot trace. Concord's whole edge is the opposite.
    `decisions.ndjson`, `summaries/{tickets,epics,subsystems,repos}/`,
    `embeddings/`, `recall-cache/` — can be deleted and regenerated. **Raw truth
    stays** in the journal, board, plans, git, and attestations. Losing
-   `coord/memory/` loses no authority.
+   `coord/memory/` loses no authority. Continuity artifacts may feed derived
+   memory views only after the relevant source, sensitivity, conflict,
+   staleness, and promotion checks pass. A derived-memory rebuild rewrites only
+   derived indexes such as `coord/memory/decisions.ndjson` and
+   `coord/memory/graph/graph.json`; it never edits board rows, plan records,
+   journal events, ADRs, or product documents. Rebuilt indexes are deterministic
+   and expose `memory_generation`, `index_generation`, and `chain_head` so
+   callers can see which journal chain the derived view reflects.
 
 2. **Hybrid retrieval, not vector-only.** Retrieval is a pipeline:
    `exact id/path` → `BM25 / SQLite FTS` → `vector similarity` → `graph links`
    → `recency/status filters` → **source-trust weighting**. Vector-only
    retrieval returns plausible-but-wrong matches; Concord's edge is **structured
-   provenance**, so deterministic and provenance signals lead.
+   provenance**, so deterministic and provenance signals lead. Vectors are
+   retrieval views only: they may help find candidate citations, but they never
+   create, promote, or override knowledge.
 
 3. **Provenance-weighted recall (Concord-unique).** **Chained-and-attested**
    memory outranks **legacy-unverified pre-chain** memory. Every citation is
@@ -181,7 +337,36 @@ that asserts conclusions you cannot trace. Concord's whole edge is the opposite.
 4. **Permission classification.** Memory artifacts are classified
    `public | internal | sensitive | secret-prohibited` and enforced through the
    **existing ENT-012 RBAC redaction** (`coord/scripts/coord-ui-access-core.js`):
-   a viewer gets redacted summaries; operator/admin get full provenance.
+   a viewer gets redacted summaries; operator/admin get full provenance. The
+   implementation helper is `coord/scripts/memory-classification.js`.
+
+   COORD-337 adds a separate **memory scope** axis. Permission classification
+   answers "who may see this value?" Scope answers "where may this record govern
+   or be reused?"
+
+   | Scope | Meaning | Default examples | Governance boundary |
+   |---|---|---|---|
+   | `shared` | Project-shared continuity/memory that can be reused across agents when source-cited. | Tickets, plan records, accepted ADRs, confirmed business rules, cadence cursors, durable decisions. | May appear in project context packs and recall, subject to permission redaction and staleness/conflict checks. |
+   | `team` | Shared only inside a named team or project sub-boundary. | Team notes, team runbooks, team cadences, team decisions. | Requires `team_id` or equivalent boundary; must not leak into global project context without promotion. |
+   | `human-private` | Personal human or agent notes, preferences, and private observations. | Human-private notes, personal agent notes, private session reflections. | Cannot govern other agents or become active project context unless a human promotes a cited, redacted claim into a governed shared artifact. |
+   | `local-only` | Session, worktree, transcript, or scratch residue. | Daily journal scratch, unverified observations, local experiments, transcript notes. | Stays local/advisory; promotion requires citations plus governed approval. |
+   | `sensitive` | Reusable only with restricted handling; pointer/summary preferred. | Customer-specific detail, employee/vendor context, evidence bodies, cost or security-adjacent material. | Must carry redaction/retention guidance and may enter shared context only as a minimized pointer or redacted summary unless policy allows more. |
+   | `secret-prohibited` | Secrets, credentials, tokens, private keys, and secret-like values. | API keys, access tokens, private key material, high-entropy credentials. | Must be rejected from memory and context; cannot be promoted, even by admins. |
+
+   The two axes compose. A record may be project-shared but sensitive, meaning
+   its existence and citation can be shared while its body is redacted for
+   lower-privilege readers. A human-private note may contain only public-safe
+   text, but it still cannot govern another agent until promoted through a
+   governed shared artifact.
+
+   **Promotion boundary.** Scratch, local-only, and human-private observations
+   move into shared project memory only when a human or reviewer promotes a
+   bounded statement with source citations (`source_refs`, `evidence_refs`,
+   `citations`, or equivalent), classification/redaction review, and a target
+   governed artifact such as a memory claim, requirement, ADR, ticket, prompt,
+   policy, runbook, or cadence rule. Private notes are leads, not authority.
+   They must not silently rewrite context packs, requirements, ADRs, prompts,
+   governance docs, or other agents' warm-start constraints.
 
 5. **Summary tiers carry provenance.** Each summary carries `source_hashes`,
    `generated_at`, `chain_head`, and an **"invalid if source changed"** flag, so
@@ -207,6 +392,19 @@ that asserts conclusions you cannot trace. Concord's whole edge is the opposite.
       "verified": true
     }
   ],
+  "memory_generation": {
+    "schema_version": "memory-generation/v1",
+    "authority": false,
+    "chain_head": "..."
+  },
+  "index_generation": {
+    "schema_version": "memory-index-generation/v1",
+    "authority": false,
+    "chain_head": "...",
+    "decisions": { "valid": true },
+    "graph": { "valid": true }
+  },
+  "index_warnings": [],
   "confidence": "high|medium|low",
   "staleness": "fresh|stale"
 }
@@ -216,6 +414,35 @@ that asserts conclusions you cannot trace. Concord's whole edge is the opposite.
 entry in `sources`, each pinning an `event_hash` + `chain_head` and a `verified`
 flag. `staleness` reflects whether the cited sources still match their recorded
 hashes.
+
+Derived-index consistency is surfaced as readout metadata, not hidden. Missing
+or corrupt `decisions.ndjson` / graph indexes produce actionable
+`index_warnings` that tell the operator to rebuild derived memory rather than
+hand-edit caches. Portable memory export uses the same generation fields and
+emits a classified, source-cited bundle whose payload remains non-authoritative.
+
+### Business context-pack ranking
+
+Business context packs are a consumer of compiled business knowledge, so their
+ranking is deterministic and authority-aware. Included items are ordered by
+category before textual match strength:
+
+1. exact subject or source matches for otherwise eligible governed context;
+2. confirmed rules;
+3. active contradictions;
+4. authoritative decisions;
+5. schema or contract lineage;
+6. prior incidents;
+7. preservation tests;
+8. observed context;
+9. inferred context.
+
+Every included item carries `why_included`, `status`, `computed_confidence`,
+`conflict_state`, `staleness`, `source_authority`, and
+`can_govern_implementation`. Inferred, observed-only, conflicted, stale, and
+superseded items may inform investigation, but cannot govern implementation.
+Inferred or advisory items must not outrank confirmed constraints or active
+conflicts even when they have a stronger textual match.
 
 ---
 

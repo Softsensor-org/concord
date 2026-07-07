@@ -11,6 +11,16 @@ land-time rebase for same-repo conflicts) is identical and already concurrency-s
 > sequencing, the repo-`X` no-isolation rule, two-board reconciliation, and the
 > known sharp edges — see
 > [`MULTI_AGENT_BURNIN_RUNBOOK.md`](./MULTI_AGENT_BURNIN_RUNBOOK.md).
+>
+> For the adoption boundary between today's identity/teamwork substrate and the
+> future shared-continuity overlay, see
+> [`CONTINUITY_CAPABILITY_MATRIX.md`](../product/CONTINUITY_CAPABILITY_MATRIX.md).
+>
+> For a team-facing rollout guide that combines identity binding with
+> warm-start/cold-finish, shared-vs-private memory, daily journal, cadence
+> ownership, ADR links, question/decision handling, worktree/runtime isolation,
+> and serialization points, see
+> [`TEAM_CONTINUITY_ROLLOUT.md`](../product/TEAM_CONTINUITY_ROLLOUT.md).
 
 ## The two topologies
 
@@ -58,6 +68,10 @@ coord resolves "who am I" from a session anchor (see
   `.worktrees/<handle>/<ticket>` checkout and its own branch/PR. If two same-repo
   PRs touch overlapping lines, the later one rebases onto the base ref and re-lands
   (see `coord/GOVERNANCE.md` §10.1).
+- Linked worktrees are **ephemeral** authority contexts. They may read governance
+  state and run local tests, but canonical board/journal/plan/snapshot mutation
+  belongs to the integration tree and serialized merge-queue path. See
+  [`ADR 0002`](./decisions/0002-canonical-ephemeral-runtime-boundary.md).
 
 ## Worked example — one orchestrator, three Claude sub-agents
 
@@ -113,6 +127,42 @@ Recovery paths (all already supported):
 - **Identity collision / fresh rebind** — `coord/scripts/gov agent-rebind --fresh`.
 - **Human-admin foreign-owner takeover** — `coord/scripts/gov takeover <ticket>`.
 
+## Cold-start and warm-resume protocol
+
+Every topology uses the same boot contract. The only topology-specific
+difference is how each agent gets a distinct session identity; retrieval,
+planning, gates, and closeout evidence are shared.
+
+Cold start:
+1. Read the thin entry shim (`AGENTS.md`) and the tool shim for the active agent.
+2. Resolve `coord/GOVERNANCE.md` authority order before following lower-level
+   instructions.
+3. Bind identity with `coord/scripts/gov agentid --assign`; for sub-agents that
+   share provider identity, export a unique `COORD_SESSION_ID` on every `gov`
+   call.
+4. Claim, start, or resume through governance.
+5. Retrieve minimum context before planning: `coord/scripts/gov explain
+   <ticket>`, plan/prework or context-pack records, recall leads, accepted ADR
+   references, requirements, business-discovery packs, and repo-local guides.
+6. Plan from those artifacts, not from chat memory.
+7. Execute through repo gates, review cycles, feature proofs, and closeout.
+
+Warm resume:
+- run `coord/scripts/gov resume <ticket>` or the tool-native resume command;
+- rerun `coord/scripts/gov explain <ticket>`;
+- read the current plan record and linked gates/proofs/decisions;
+- continue only after the current owner, lock, worktree, and intended file scope
+  match the session.
+
+Durable handoff:
+- chat memory is non-authoritative and must not be the only place where a
+  decision, blocker, test result, ADR reference, or follow-up lives;
+- write durable learning into plan records, review cycles, feature proofs, repo
+  gates, ADR proposals or links, memory-claim proposals, and resolved
+  questions/decisions/reflections;
+- a cold-start agent tomorrow should be able to recover the ticket by reading
+  governed artifacts only, without access to today's conversation.
+
 ## Implement-locally / orchestrator-publishes
 
 Sub-agents frequently run in **sandboxed or policy-restricted** environments
@@ -143,3 +193,29 @@ writes to the hash-chained journal and corrupt the chain. The rule:
 
 If the chain is crossed (e.g. concurrent sub-agents in one runtime), recover with
 `coord/scripts/gov repair-chain`.
+
+## Team continuity overlay
+
+The topology rules above are the identity and isolation substrate for shared
+continuity. A team rollout should keep these extra boundaries visible:
+
+- identity binding names the executing session; continuity attribution also
+  records the human sponsor, team, project, ticket, and worktree scope;
+- ticket ownership remains one active owner at a time, even when several humans
+  or agents contribute review notes;
+- warm-start reads must come from governed artifacts, not transcript memory;
+- cold-finish evidence must leave enough changed-file, gate, decision, question,
+  ADR, and next-cursor context for a different actor to resume later;
+- shared memory must be source-backed, attributable, classified, and fresh
+  enough for its scope; private notes and sensitive customer context are not
+  shared authority until explicitly promoted through a governed path;
+- daily journal entries and decision objects are append-only continuity inputs,
+  not lifecycle or policy authority;
+- cadence cursor advancement, shared journal indexes, ADR acceptance, question
+  resolution, board lifecycle, and runtime/journal writes serialize through one
+  named owner;
+- parallel code work stays in separate repo-local worktrees and never shares one
+  live `coord/.runtime` among concurrently governed agents.
+
+The concrete Team 1 and Team 2 rollout examples live in the product guide:
+[`coord/product/TEAM_CONTINUITY_ROLLOUT.md`](../product/TEAM_CONTINUITY_ROLLOUT.md).

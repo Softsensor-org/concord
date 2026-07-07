@@ -38,6 +38,22 @@ The accepted lane vocabulary is `default | full | ci` — the same set validated
 [`TESTING_AND_GATES.md`](./TESTING_AND_GATES.md)), not an accepted `--lane`
 value — a project folds that coverage into its `ci`/`full` lanes.
 
+## Affected-Target Selection
+
+Projects with a maintained dependency map may run an affected-target planning
+step before invoking their gate runner:
+
+```bash
+coord affected-targets --files <changed-file-a,changed-file-b> \
+  --map <repo>/coord/affected-targets.json --json
+```
+
+The command returns `mode=slice` only when every changed file maps to known
+targets. If the map is missing, empty, stale for the changed file, or `--full`
+is passed, it returns `mode=full` with the full-gate command list. Gate runners
+may consume the selected commands, but they must record the selector output as
+evidence so reviewers can see what was run and what was skipped.
+
 ## Artifact Storage
 
 - Gate artifacts (reports, coverage, logs) should be stored under `coord/artifacts/gates/<repo>/`
@@ -74,6 +90,38 @@ particular, `/readyz`, "deploy succeeded", or "server started" is not sufficient
 feature proof for a background/bootstrap job. The ticket must record a
 job-specific receipt, marker/checkpoint evidence, rollback or disable path, and
 observability evidence.
+
+## Read-Before-Pull advisory checks (COORD-333)
+
+Cadence, data, analytics, marketing-ops, and external-validation automation
+should integrate the read-before-pull policy from
+[`CONTINUITY_PROFILE.md`](./CONTINUITY_PROFILE.md) before fetching external
+sources. In Phase 2 this is advisory and warning-first unless a track explicitly
+opts in to enforcement.
+
+An advisory check should read the flow's declared canonical store, prior output,
+freshness window, and cursor state before a pull. It should record one of:
+
+- `reused` when the prior output is still fresh and the cursor/source version
+  supports reuse;
+- `skipped` when the pull is intentionally avoided because the source is fresh,
+  out of scope, waived, or scratch-only;
+- `pulled` when the source is stale, unknown, expired, invalidated, explicitly
+  waived, or being used for scratch exploration.
+
+Gate and cadence readouts should include the evidence needed to audit the
+decision: source contract, canonical-store reference, prior output id/version or
+hash, freshness status, old and new cursor when applicable, actor/time, and
+waiver or scratch-mode reason. Durability-sweep readouts should warn on
+avoidable re-pulls, such as repeated external fetches with an unchanged cursor
+or a still-fresh canonical output.
+
+Local experimentation remains allowed. A local scratch run may pull or
+revalidate external sources without failing gates when it is labeled scratch,
+does not promote the result as durable evidence, and rechecks canonical store
+and freshness policy before any promotion. Blocking behavior requires an
+explicit track opt-in that names the covered flow, canonical store, freshness
+policy, waiver mechanism, and gate failure mode.
 
 ## Pre-push hook and `--no-verify` (COORD-055)
 

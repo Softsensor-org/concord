@@ -92,6 +92,33 @@ interface ReceiptEngine {
   latestReceipt: (kind: string, ticket: string, options?: { coordDir?: string }) => string | null;
   readReceipt: (filePath: string, fail?: (msg: string) => never) => Record<string, unknown>;
 }
+interface BootstrapRiskViewModelCore {
+  meaningful: (value: unknown) => value is string;
+  statusField: (value: unknown, redacted: boolean) => StatusField;
+  asBootstrapRisk: (planState: Record<string, unknown> | null) => Record<string, unknown> | null;
+  serverReadiness: (br: Record<string, unknown> | null) => ServerReadiness;
+  resourceEnvelope: (br: Record<string, unknown> | null, redacted: boolean) => ResourceEnvelope;
+  jobCompletion: (args: {
+    id: string;
+    engine: ReceiptEngine | null;
+    redacted: boolean;
+    coordDir: string;
+    projectRoot: string;
+  }) => JobCompletion;
+  queryScanText: (br: Record<string, unknown> | null) => string;
+  buildTicketView: (args: {
+    id: string;
+    row: BoardRow | undefined;
+    planState: Record<string, unknown> | null;
+    source: 'plan-field' | 'advisory-only';
+    advisory: BootstrapAdvisory;
+    queryEngine: QueryAdvisoryEngine | null;
+    receipts: ReceiptEngine | null;
+    redacted: boolean;
+    coordDir: string;
+    projectRoot: string;
+  }) => BootstrapRiskTicketView;
+}
 
 function loadAdvisoryEngine(): AdvisoryEngine | null {
   try {
@@ -118,6 +145,14 @@ function loadReceiptEngine(): ReceiptEngine | null {
     return null;
   }
 }
+
+function loadViewModelCore(): BootstrapRiskViewModelCore {
+  return requireExternal<BootstrapRiskViewModelCore>(
+    path.join(COORD_DIR, 'scripts', 'coord-ui-bootstrap-risk-view-model.js')
+  );
+}
+
+const viewModelCore = loadViewModelCore();
 
 // ---- Surfaced types ----
 
@@ -211,12 +246,11 @@ export interface BootstrapRiskView {
 // ---- helpers ----
 
 function meaningful(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
+  return viewModelCore.meaningful(value);
 }
 
 function statusField(value: unknown, redacted: boolean): StatusField {
-  if (!meaningful(value)) return { state: 'absent', detail: null };
-  return { state: 'present', detail: redacted ? null : value.trim() };
+  return viewModelCore.statusField(value, redacted);
 }
 
 function listPlanIds(): string[] {
@@ -264,30 +298,12 @@ function boardRows(): BoardRow[] {
 }
 
 function asBootstrapRisk(planState: Record<string, unknown> | null): Record<string, unknown> | null {
-  const v = planState && planState.bootstrap_risk;
-  if (v && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, unknown>;
-  return null;
+  return viewModelCore.asBootstrapRisk(planState);
 }
 
 /** Build the server-readiness posture from the declared design flags only. */
 function serverReadiness(br: Record<string, unknown> | null): ServerReadiness {
-  if (!br) {
-    return { workClass: null, runsAtBoot: null, sharesAppProcess: null, posture: 'undeclared' };
-  }
-  const workClass = meaningful(br.startup_work_class) ? br.startup_work_class.trim() : null;
-  const runsAtBoot = typeof br.runs_at_boot === 'boolean' ? br.runs_at_boot : null;
-  const sharesAppProcess = typeof br.shares_app_process === 'boolean' ? br.shares_app_process : null;
-  // Heavy work that runs at boot AND shares the API process is the contract's
-  // headline anti-pattern; flag it as declared-risky. A job that explicitly does
-  // NOT run at boot / does NOT share the process is declared-safe. Anything not
-  // declared stays undeclared (surfaced, not hidden).
-  let posture: ServerReadiness['posture'] = 'undeclared';
-  if (runsAtBoot === true && sharesAppProcess === true) {
-    posture = 'declared-risky';
-  } else if (runsAtBoot === false || sharesAppProcess === false) {
-    posture = 'declared-safe';
-  }
-  return { workClass, runsAtBoot, sharesAppProcess, posture };
+  return viewModelCore.serverReadiness(br);
 }
 
 /** Summarise the declared resource envelope (COORD-159), masked for viewer. */
@@ -295,60 +311,23 @@ function resourceEnvelope(
   br: Record<string, unknown> | null,
   redacted: boolean
 ): ResourceEnvelope {
-  const env = br && br.resource_envelope;
-  if (!env || typeof env !== 'object' || Array.isArray(env)) {
-    return { state: 'absent', summary: null };
-  }
-  const e = env as Record<string, unknown>;
-  const parts: string[] = [];
-  const push = (label: string, value: unknown, suffix = '') => {
-    if (value !== null && value !== undefined && String(value).trim() !== '') {
-      parts.push(`${label}=${String(value).trim()}${suffix}`);
-    }
-  };
-  push('memory', e.memory_mb, 'mb');
-  push('timeout', e.timeout_s, 's');
-  push('rows', e.expected_rows);
-  push('batch', e.batch_size);
-  push('db', e.db_pool_impact);
-  if (parts.length === 0) return { state: 'absent', summary: null };
-  return { state: 'present', summary: redacted ? null : parts.join(', ') };
+  return viewModelCore.resourceEnvelope(br, redacted);
 }
 
 /** Read the COORD-161 bootstrap receipt — the ONLY job-completion evidence. */
 function jobCompletion(id: string, engine: ReceiptEngine | null, redacted: boolean): JobCompletion {
-  if (!engine) return { state: 'unknown', result: null, path: null };
-  try {
-    const file = engine.latestReceipt('bootstrap', id, { coordDir: COORD_DIR });
-    if (!file || !fs.existsSync(file)) return { state: 'absent', result: null, path: null };
-    const receipt = engine.readReceipt(file, (msg: string) => {
-      throw new Error(msg);
-    });
-    const result = receipt.result;
-    const rel = path.relative(path.dirname(COORD_DIR), file).split(path.sep).join('/');
-    return {
-      state: 'present',
-      result: redacted ? null : meaningful(result) ? result : 'recorded',
-      path: redacted ? null : rel
-    };
-  } catch {
-    return { state: 'unknown', result: null, path: null };
-  }
+  return viewModelCore.jobCompletion({
+    id,
+    engine,
+    redacted,
+    coordDir: COORD_DIR,
+    projectRoot: path.dirname(COORD_DIR)
+  });
 }
 
 /** Text fed to the COORD-162 broad-query scan: the declared data-access shape. */
 function queryScanText(br: Record<string, unknown> | null): string {
-  if (!br) return '';
-  const parts: string[] = [];
-  for (const key of ['data_access_shape', 'checkpoint_strategy', 'idempotency_strategy']) {
-    if (meaningful(br[key])) parts.push(br[key] as string);
-  }
-  const env = br.resource_envelope;
-  if (env && typeof env === 'object' && !Array.isArray(env)) {
-    const dbImpact = (env as Record<string, unknown>).db_pool_impact;
-    if (meaningful(dbImpact)) parts.push(dbImpact);
-  }
-  return parts.join('\n');
+  return viewModelCore.queryScanText(br);
 }
 
 function buildTicketView(
@@ -361,34 +340,18 @@ function buildTicketView(
   receipts: ReceiptEngine | null,
   redacted: boolean
 ): BootstrapRiskTicketView {
-  const br = asBootstrapRisk(planState);
-  const obs = br && br.observability_requirements;
-  const obsItems = Array.isArray(obs) ? obs.filter((x): x is string => meaningful(x)) : [];
-  const scanText = queryScanText(br);
-  const queryWarnings =
-    queryEngine && scanText.trim() ? queryEngine.scanBackfillQueryText(scanText).findings : [];
-
-  return {
+  return viewModelCore.buildTicketView({
     id,
-    status: meaningful(row && row.Status) ? (row as BoardRow).Status!.trim() : 'unknown',
+    row,
+    planState,
     source,
-    serverReadiness: serverReadiness(br),
-    resourceEnvelope: resourceEnvelope(br, redacted),
-    idempotency: statusField(br && br.idempotency_strategy, redacted),
-    checkpoint: statusField(br && br.checkpoint_strategy, redacted),
-    verificationSignal: statusField(br && br.verification_signal, redacted),
-    rollbackOrDisable: statusField(br && br.rollback_or_disable, redacted),
-    observability: {
-      state: obsItems.length > 0 ? 'present' : 'absent',
-      items: obsItems.length === 0 ? null : redacted ? null : obsItems
-    },
-    dataAccessShape: statusField(br && br.data_access_shape, redacted),
-    jobCompletion: jobCompletion(id, receipts, redacted),
-    matchedSignals: Array.isArray(advisory.matched_signals) ? advisory.matched_signals : [],
-    missingEvidence: Array.isArray(advisory.missing_evidence) ? advisory.missing_evidence : [],
-    advisoryMessage: advisory.triggered ? advisory.message : null,
-    queryWarnings
-  };
+    advisory,
+    queryEngine,
+    receipts,
+    redacted,
+    coordDir: COORD_DIR,
+    projectRoot: path.dirname(COORD_DIR)
+  });
 }
 
 /**

@@ -1,227 +1,395 @@
 # Softsensor Concord
 
-**You've got Claude Code, Codex, and Cursor working across your repos — and they collide.** Branches stomped, half-finished work with no owner, flaky gates you can't trust, and no honest answer to *"which agent changed this, and was it reviewed?"*
+**The coordination and governance layer for multi-agent software development.**
 
-**Concord is the coordination + governance layer for multi-agent development.** A shared, audited board where a fleet of AI agents work *without* colliding: per-ticket worktrees + lifecycle locks, track-specific proof harnesses, evidence-gated review, and a tamper-evident journal of who did what.
+Claude Code, Codex, Cursor, and human engineers can all work on the same codebase in parallel — without stomping each other's branches, losing ownership context, or shipping ungated changes. Concord gives every unit of work a lifecycle: claim → plan → implement → gate → review → land, with a tamper-evident journal of who did what and why.
 
-**See it in 2 minutes:** `npm run demo` (in `frontend/apps/coord-ui`) → open `localhost:3002` — a live cockpit of agents coordinating on a real board, with the full audit trail.
+Apache-2.0 · [Quickstart](QUICKSTART.md) · [User Manual](USER_MANUAL.md) · [Known Issues](KNOWN_ISSUES.md) · [Changelog](CHANGELOG.md)
 
-Apache-2.0 · [Quickstart](QUICKSTART.md) · [Editions](#editions) · [Known issues](KNOWN_ISSUES.md) · [Demo walkthrough](DEMO.md)
+> **Names:** the product is **Concord**. It installs as the `coord/` directory and is driven by the `gov` CLI (`coord/scripts/gov`). This repository is the distributable template.
 
-> **Naming:** the product is **Concord**. It installs as the **`coord/`** scaffold
-> directory and is driven by the **`gov`** CLI (`coord/scripts/gov`). Those names
-> are unchanged — `coord`/`gov` are the on-disk and command surfaces; *Concord* is
-> the project. This repository is the distributable template. **New here?** Start
-> with [QUICKSTART.md](QUICKSTART.md). **Upgrading?** See [CHANGELOG.md](CHANGELOG.md).
-> **Contributing learnings?** See [CONTRIBUTING.md](CONTRIBUTING.md).
+---
 
-## Included Layout
+## The Problem It Solves
 
-```text
-coord-template/
-├── backend/      # placeholder sibling repo location
-├── frontend/     # placeholder sibling repo location
-└── coord/        # borrow this directory into a real project
+When multiple agents (or humans and agents) work in the same repo concurrently:
+
+- Branches get stomped or go stale
+- No one knows who owns what or whether work was reviewed
+- Quality gates get bypassed or forgotten
+- There's no audit trail when something breaks
+
+Concord solves this by adding a **governed execution layer** on top of your existing repos, CI, and ticketing system — without replacing any of them.
+
+---
+
+## Mental Model
+
+Three things to internalize before you start:
+
+```
+Board (tasks.json)  ←→  gov CLI  ←→  Agent Skills (slash commands)
 ```
 
-## Borrowing
+- **The board** (`coord/board/tasks.json`) is the single source of truth for ticket state. Never hand-edit ticket status — `gov` owns those fields.
+- **The `gov` CLI** (`coord/scripts/gov`) drives every lifecycle transition: claiming a ticket, starting an isolated worktree/runtime, submitting for review, landing, etc.
+- **Skills** (`.claude/commands/`) are the high-level slash commands your agents run. Skills call `gov` internally — they're the ergonomic layer, not a bypass.
 
-If you already have a project root with sibling repos, copy the `coord/` folder:
+### Ticket Lifecycle
+
+```
+todo → doing (gov start) → review (gov submit) → done (gov land)
+```
+
+Each transition is gated: `gov start` cuts a per-agent worktree and locks the ticket; `gov submit` requires passing gates and a plan record; `gov land` requires a completed review cycle. The journal records every event.
+
+Fleet rule: do not run multiple governed agents from one shared checkout. `gov start` creates a ticket worktree by default, and repo `X` worktrees include their own gitignored `coord/.runtime/` scaffold. If a second heartbeat-fresh session is already bound to the same checkout/runtime, governance refuses the mutation and tells the operator to use a separate worktree. `--allow-shared-worktree` is an explicit local/single-agent escape hatch, not the fleet path.
+
+For the operator runbook, see [Fleet Golden Path](coord/docs/FLEET_GOLDEN_PATH.md) or run:
 
 ```bash
-cp -R coord-template/coord /path/to/project/coord
+coord/scripts/gov fleet-golden-path <ticket-id>
 ```
 
-Then update:
-- `AGENTS.md` files if you want project-specific agent rules
-- `coord/project.config.js` to set the canonical repo map
-- `coord/product/REPOS.md`
-- `coord/board/tasks.json`
-- specification stubs in `coord/` (requirements, architecture, domain model, etc.)
-- any project-specific prompts or integration notes
+For first-time teams, use the guided adoption helpers before hand-wiring the
+template:
 
-After tailoring it, run:
+```bash
+coord/scripts/coord onboard . --dry-run     # adoption plan, no writes
+coord/scripts/coord track-presets           # web/data/content/infra presets
+coord/scripts/gov guided-closeout <ticket>  # exact closeout gaps + fixes
+coord/scripts/gov publishability-check <ticket>
+```
+
+---
+
+## Quickstart (5 minutes)
+
+### 1. See it first
+
+```bash
+npm --prefix frontend/apps/coord-ui install && npm --prefix frontend/apps/coord-ui run demo
+```
+
+This launches the bundled read-only cockpit at <http://localhost:3002> against
+the demo coord workspace. You'll see a real board: evidenced tickets, review
+cycles, gate results, and the event timeline. Read the [demo walkthrough](DEMO.md)
+for what to look at.
+
+### 2. Install Concord
+
+**One command — vendors the engine in-tree, no global install:**
+
+```bash
+# New project (fresh governed board):
+npx create-concord my-project && cd my-project
+
+# OR overlay onto an EXISTING repo — detects the repo shape, proposes a
+# governance tier + track preset, and writes a tailored config + starter tickets:
+cd my-existing-repo && npx create-concord . --from-existing
+```
+
+No Node on the box (devcontainer, WSL, CI, minimal image)? Use the standalone
+**Linux binary** from the GitHub Release — same result, no runtime required:
+
+```bash
+./concord-linux-x86_64 init .
+```
+
+`create-concord` vendors `coord/`, pins the engine in `coord/.coord-engine.json`,
+writes the commit-vs-gitignore split + the `coord/WORKSPACE.md` runtime guide, and
+wires `npm run gov` / `npm run concord` / `npm run coord-ui`. Upgrade later with
+`npm run gov -- upgrade`.
+Prefer a manual copy? See the [User Manual](USER_MANUAL.md#fallback--manual-copy).
+
+After scaffolding an app, launch that app's own cockpit from the app root:
+
+```bash
+npm run coord-ui
+```
+
+### 3. Map your repos
+
+`npx create-concord . --from-existing` already wrote a tailored config — just
+review it. Otherwise edit `coord/project.config.js` to match your project, then
+update `coord/product/REPOS.md`. The full checklist is in
+`coord/SCAFFOLD_TAILORING_CHECKLIST.md`.
+
+```js
+// coord/project.config.js (minimal example — repos is an object keyed by code)
+module.exports = {
+  coordTicketPrefix: "COORD",
+  repos: {
+    B: { path: "backend",  integrationBranch: "main" },
+    F: { path: "frontend", integrationBranch: "main" },
+  },
+};
+```
+
+### 4. Sync the board
 
 ```bash
 node coord/board/board.js sync
 ```
 
-## Specification Stubs
+### 5. Start your first governed session
 
-The `coord/` directory includes stub templates for product, architecture, and domain specifications. Populate the ones relevant to your project before starting feature work. See `coord/README.md` for the full list.
-
-## Agent Skills (`.claude/commands/`)
-
-The template includes 27 slash-command skills for Claude Code (and adaptable for other agents):
-
-### Governance & Workflow
-| Skill | Command | Purpose |
-|-------|---------|---------|
-| Initiate | `/initiate` | Cold-start session, claim agent, health check |
-| Orchestrator | `/orchestrator <action>` | Board status, pick, plan, unblock, decompose, check, takeover |
-| Planner | `/planner <ticket>` | Pre-implementation design and plan seeding |
-| Code Writer | `/code-writer <ticket>` | Full governed implementation (start → code → submit → land) |
-| Code Reviewer | `/code-reviewer <ticket>` | Governed code review |
-| Gate | `/gate <repo-name>` | Standalone quality gate execution |
-| Recover | `/recover <ticket>` | Governance state repair |
-
-### Quality & Analysis
-| Skill | Command | Purpose |
-|-------|---------|---------|
-| Manual Tester | `/manual-tester [scope]` | Quick targeted defect discovery |
-| QA Review | `/qa-review [scope]` | Full 5-perspective audit (defects, requirements, risk, regression, release) |
-| Business Analyst | `/business-analyst [scope]` | Requirement traceability, acceptance criteria gaps, undocumented business rules |
-| Designer | `/designer [scope]` | Design system adherence, accessibility (WCAG 2.1 AA), interaction patterns |
-
-### Operator Verbs (high-level pipeline shortcuts)
-| Skill | Command | Purpose |
-|-------|---------|---------|
-| Next | `/next` | Board health, active work, recommended next ticket — start here |
-| Do | `/do <ticket>` | Full plan → build → ship pipeline for one ticket |
-| Check | `/check` | Governance health diagnostics |
-| Test | `/test` | Test gate + maturity check |
-| Test Strategy | `/test-strategy` | Coverage evolution audit |
-| Review | `/review <ticket>` | Self or cross-agent review (`--codex`, `--gemini`) |
-| Land | `/land <ticket>` | Merge after a separate review |
-| Resume | `/resume <ticket>` | Same-owner session handoff for an in-progress ticket |
-
-### Track Skills (multi-track governance)
-
-Beyond code, Concord uses **track-specific governed harnesses**: each work type
-gets the right setup, proof artifact, gate-proc, review policy, and closeout
-contract. Code work proves tests/contracts; content proves links/SEO/preview;
-infra proves deployment safety; live-MCP work proves scoped, redacted receipts;
-bootstrap/backfill work proves resource, idempotency, and runtime-success
-evidence; data products prove data contracts, row-count reconciliation, and
-lineage. The lifecycle and audit journal stay common. See the track profiles
-under `coord/product/` (e.g. `CONTENT_SITE_GOVERNANCE_PROFILE.md`,
-`MULTI_TRACK_GOVERNANCE_PROFILE.md`, `DATA_ANALYTICS_TRACK.md`,
-`PRODUCT_ENGINEERING_TRACK.md`).
-
-| Skill | Command | Track | Purpose |
-|-------|---------|-------|---------|
-| Content Edit | `/content-edit <page>` | Marketing | Plain-English content change, gated by the content gate-proc |
-| SEO Check | `/seo-check [scope]` | Marketing | Run the content gate locally (HTML validity, broken links, SEO) |
-| Publish | `/publish <change>` | Marketing | Gate, submit, and ship a content change |
-| Data Pipeline | `/data-pipeline run\|certify` | Data & analytics | Run and certify a pipeline against its data contract |
-| Data Contract | `/data-contract <output>` | Data & analytics | Author or check a per-output data contract (DQ gates) |
-| Analytics Query | `/analytics-query` | Product-eng | Bounded production-MCP read with a governed receipt |
-| Insight Analyst | `/insight-analyst [scope]` | Product-eng | Interpret receipted findings and route fixes |
-| Live-MCP Policy | `/live-mcp-policy` | Product-eng | Show a live operation's class, scope, and approval requirement |
-
-### Skill Workflow
-
-```
-/business-analyst <ticket>  → validate scope against requirements
-/planner <ticket>           → create implementation plan
-/code-writer <ticket>       → implement + submit + land
-/qa-review <scope>          → full QA audit
-/designer <surface>         → UX/a11y sweep
+```bash
+# In Claude Code
+/initiate
 ```
 
-## Governance Enhancements
+This claims an agent identity, runs health checks, and shows the board summary with a recommended next ticket.
 
-The governance system includes these learned improvements from production use:
+---
 
-### Code Writer Skill
-- Reads planner output from `coord/active/<ticket>.md` to avoid redundant context gathering
-- Rebases worktree onto `origin/dev` after `gov start` to avoid stale base branch
-- Uses batch `set-review-cycles` instead of individual `add-review-cycle` calls (avoids silent dedup trap)
+## Working on Tickets
 
-### Orchestrator Skill
-- Includes `takeover <ticket>` action for claiming and inspecting another agent's in-progress work
-- Force-claims, inspects worktree state, reads plan, reports progress and remaining work
+### The Standard Flow
 
-### Known issues
+```bash
+/planner TICKET-001      # Understand the ticket, write a plan
+/code-writer TICKET-001  # Implement → gate → submit → land
+```
 
-Known CLI issues, their status, and workarounds are tracked in
-**[KNOWN_ISSUES.md](./KNOWN_ISSUES.md)** — including the multi-agent topology fix
-(COORD-015), `gov start` fresh-base resolution (COORD-125), baseline-aware
-"ratchet" gating (COORD-126), and the concurrent-agent journal recovery path
-(`gov repair-chain`, COORD-124).
+`/code-writer` handles the full lifecycle: `gov start` (cut worktree + lock), implement, run gates, `gov submit` (move to review), complete a review cycle, `gov land` (merge + close). You can also drive each step manually via `gov`:
 
-## Operations Skills (`.claude/skills/`)
+```bash
+coord/scripts/gov start  TICKET-001   # claim + cut worktree
+coord/scripts/gov submit TICKET-001   # move to review (gates must pass)
+coord/scripts/gov land   TICKET-001   # merge + close
+```
 
-The template includes 5 operations skills for day-to-day development:
+### Creating a Ticket
 
-| Skill | Command | Purpose |
-|-------|---------|---------|
-| Deploy | `/deploy <service> --env staging` | Build, gate, and deploy services |
-| Migrate | `/migrate run\|create\|status` | Database migration management |
-| Seed Data | `/seed-data <repo-name>` | Seed development data |
-| DB Status | `/db-status` | Database health and migration state |
-| Health Check | `/health-check` | Check all services across the stack |
+Hand-edit `coord/board/tasks.json` to add a row with `"Status": "todo"` and `"Owner": "unassigned"`. That is the one allowed hand-edit. Then sync:
 
-## MCP Integrations (`.mcp.json`)
+```bash
+node coord/board/board.js sync
+```
 
-Pre-configured with codeTree, Sentry, and Datadog:
+Example row:
 
-| Server | Purpose | Config needed? |
-|--------|---------|----------------|
-| **governance** | typed governance tools — ticket lifecycle + runtime-evidence receipts, without shelling out (receipt-writing tools are mutation-gated; read-only checks stay open) | No — works out of the box |
-| **codeTree** | AST-level codebase exploration — 25x token reduction for navigation | No — works out of the box |
-| **Sentry** | Error tracking, issue search, release monitoring | Yes — auth token + org + project |
-| **Datadog** | Metrics, logs, APM, dashboard queries | Yes — API key + app key |
+```json
+{
+  "ID": "MYAPP-001",
+  "Repo": "B",
+  "Type": "feature",
+  "Pri": "P1",
+  "Status": "todo",
+  "Owner": "unassigned",
+  "Description": "Add user authentication endpoint."
+}
+```
 
-Edit `.mcp.json` and set the environment variables. Restart Claude Code after editing. Add more MCP servers as needed (GitHub, Linear, Slack, PostgreSQL, etc.).
+`Repo` codes: `B` = backend, `F` = frontend, `X` = coord/cross-repo. Define yours in `coord/project.config.js`.
 
-## Developer Note
+---
 
-See `DEVELOPER_NOTE.md` for a comprehensive guide to the AI-assisted development methodology — covers the full workflow, governance model, multi-agent coordination, test infrastructure, CI/CD, onboarding, incident handling, cost management, and practical tips.
+## Key Commands
 
-## Editions
+### Board & Session
 
-Concord comes in two editions:
+| Command | What it does |
+|---------|-------------|
+| `coord/scripts/gov list` | Show all tickets and their status |
+| `coord/scripts/gov explain <ticket>` | Full ticket state: status, owner, plan, gates, blockers |
+| `coord/scripts/gov doctor` | Diagnose governance health (stale locks, drift, missing gates) |
+| `coord/scripts/gov context-pack <ticket>` | Build an agent context pack for a ticket (used by skills) |
 
-- **Community (this repository)** — free and open under the Apache License 2.0.
-  The full per-team governed workflow: a shared board, per-ticket worktrees,
-  lifecycle locks, evidence-gated review, and a read-only local cockpit. A single
-  team can run Concord this way for free, indefinitely. The Community edition
-  stays Apache-2.0 — see [GOVERNANCE.md](./GOVERNANCE.md).
-- **Enterprise** — for organizations adopting multi-agent development across many
-  teams and repositories. Softsensor helps enterprises adopt multi-agent
-  development at scale, with org-wide governance and support. If that's you, get
-  in touch with the Softsensor team.
+### Ticket Lifecycle
 
-## Contributing
+| Command | What it does |
+|---------|-------------|
+| `gov start <ticket>` | Claim + lock + cut worktree |
+| `gov submit <ticket>` | Move to review (gates must pass) |
+| `gov land <ticket>` | Merge + close (review must be complete) |
+| `gov unstart <ticket>` | Return to todo (same owner, no work committed) |
+| `gov block <ticket> --reason "..."` | Mark blocked |
+| `gov heartbeat <ticket>` | Refresh a doing lock (keep-alive for long-running work) |
 
-Contributions are welcome and entirely voluntary — you are never obligated to
-send your changes upstream. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the
-fork-and-pull-request flow and the DCO sign-off, [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
-for community expectations, [GOVERNANCE.md](./GOVERNANCE.md) for how decisions
-are made, and [TRADEMARK.md](./TRADEMARK.md) for use of the Concord name and logo.
+### Code Index (token-efficient codebase exploration)
 
-## Status and scope
+The code index stores compact symbol summaries so agents read API signatures (~200 tokens) instead of full source (~3,000 tokens):
 
-Concord ships the repo-local governed workflow that exists today, including the
-packaged `coord` CLI:
+| Command | What it does |
+|---------|-------------|
+| `gov code-index` | Build or refresh the symbol index (400+ files, incremental) |
+| `gov code-index --git` | Fast refresh — only re-indexes git-modified files (<200ms; runs automatically as a PostToolUse hook) |
+| `gov code-index --force` | Force full rebuild |
+| `gov code-search "<query>"` | BM25 search over the index — returns ranked file symbol views |
+| `gov code-search "<query>" --top 5` | Limit results |
+| `gov code-context <file> [file...]` | Compact symbol view for specific files |
+| `gov code-diff [<base-ref>]` | Symbol views for files changed vs a git ref (default: HEAD) |
 
-- **Packaged product CLI (`coord`)** — `coord init` (idempotent, no-clobber
-  bootstrap into a governed-board layout), `coord conformance` (one-shot,
-  fail-closed conformance / attestation check), and `coord upgrade` (managed
-  engine-upgrade automation that re-pins, verifies, and rolls back on failure)
-  all ship today. The packaged-installer / managed-upgrade gap is closed; see
-  [QUICKSTART.md](./QUICKSTART.md) to get started.
-- **Runtime evidence (`gov` receipts)** — governed, journaled receipts for
-  *live/runtime* operations: production-MCP reads, bootstrap/backfill jobs, and
-  deployments, with `gov verify` / `gov falsify` and deploy-identity checks.
-  Receipt-writing is mutation-gated and real receipts are gitignored
-  (`coord/evidence/**`), so they never ship. This extends the tamper-evident
-  audit trail from code work to deploy/production operations.
+The index is stored at `coord/memory/code-index.ndjson` (gitignored, rebuildable). Context packs automatically include file symbols when the index is built.
 
-A few things remain intentionally out of scope for the Community edition:
+### Memory & Insights
 
-- **Hosted / multi-tenant UI** — the `coord-ui` cockpit is a read-only **local**
-  surface, not a hosted service.
-- **Live enterprise deployment** — standing the central server up inside a
-  customer's boundary (behind their SSO, against a production datastore) is the
-  explicit config / runtime boundary; it is not a turnkey live deployment.
+| Command | What it does |
+|---------|-------------|
+| `gov recall "<query>"` | Search governed memory (journal + plan records) |
+| `gov insights` | Strategic execution-insight report |
+| `gov prework <ticket>` | Pre-work context pack: prior attempts, failed approaches, recommended decomposition |
+| `gov closeout-summary <ticket>` | Evidence-backed summary of a closed ticket |
 
+---
 
-## Notes
+## Agent Skills Reference
 
-- The `backend/` and `frontend/` folders here are starter defaults. The canonical repo map lives in `coord/project.config.js` and `coord/product/REPOS.md`.
-- The `coord/` scaffold is designed to be reusable across projects — point `coord/project.config.js` at your repos and replace the specification stubs under `coord/product/`.
+Skills are slash commands that run multi-step governed workflows. They live in `.claude/commands/`.
+
+### Start Here
+
+| Skill | When to use |
+|-------|-------------|
+| `/initiate` | Start of every session — claims identity, health check, board summary |
+| `/next` | "What should I work on?" — board health + recommended ticket |
+| `/do <ticket>` | Full plan → build → ship pipeline for one ticket |
+
+### Core Workflow
+
+| Skill | When to use |
+|-------|-------------|
+| `/planner <ticket>` | Before implementing — validates scope, writes the plan |
+| `/code-writer <ticket>` | Implement + self-review + submit + land |
+| `/code-reviewer <ticket>` | Review another agent's submission |
+| `/resume <ticket>` | Handoff — pick up an in-progress ticket in a new session |
+
+### Quality
+
+| Skill | When to use |
+|-------|-------------|
+| `/gate <repo-name>` | Run quality gates for a repo |
+| `/manual-tester [scope]` | Targeted defect discovery |
+| `/qa-review [scope]` | Full 5-perspective audit (defects, requirements, risk, regression, release) |
+| `/business-analyst [scope]` | Requirement traceability, acceptance-criteria gaps |
+| `/designer [scope]` | Design system adherence, WCAG 2.1 AA, interaction patterns |
+
+### Governance
+
+| Skill | When to use |
+|-------|-------------|
+| `/orchestrator status` | Board overview — active work, blockers, queue |
+| `/orchestrator next` | Recommend next highest-priority unblocked ticket |
+| `/check` | Governance health diagnostics |
+| `/recover <ticket>` | Repair stuck governance state |
+| `/review <ticket>` | Self or cross-agent review (`--codex`, `--gemini`) |
+| `/land <ticket>` | Merge after a separate review completes |
+
+### Track Skills
+
+Concord supports multi-track work beyond code. Each track has its own proof harness and gate policy:
+
+| Skill | Track | When to use |
+|-------|-------|-------------|
+| `/content-edit <page>` | Marketing | Plain-English content change, gated by the content gate-proc |
+| `/seo-check [scope]` | Marketing | HTML validity, broken links, SEO checks |
+| `/publish <change>` | Marketing | Gate, submit, and ship a content change |
+| `/data-pipeline run\|certify` | Data & Analytics | Run and certify a pipeline against its data contract |
+| `/data-contract <output>` | Data & Analytics | Author or check a per-output data contract |
+| `/analytics-query` | Product-Eng | Bounded production-MCP read with a governed receipt |
+| `/insight-analyst [scope]` | Product-Eng | Interpret receipted findings and route fixes |
+| `/live-mcp-policy` | Product-Eng | Show a live operation's class, scope, and approval requirement |
+
+### Operations
+
+| Skill | When to use |
+|-------|-------------|
+| `/deploy <service> --env staging` | Build, gate, and deploy a service |
+| `/migrate run\|create\|status` | Database migration management |
+| `/seed-data <repo-name>` | Seed development data |
+| `/db-status` | Database health and connection pool |
+| `/health-check` | Check all services across the stack |
+
+---
+
+## Adopting Into an Existing Project
+
+Concord is an overlay — your repos, CI, tickets, and PRD/URS artifacts stay exactly where they are. The fastest overlay is one command:
+
+```bash
+cd my-existing-repo && npx create-concord . --from-existing
+```
+
+This detects your repo shape, proposes a governance tier + track preset, and
+writes a tailored `coord/project.config.js` + `setup.decisions.json` + starter
+tickets. Review those, then continue below.
+
+### What to configure
+
+| File | What to do |
+|------|-----------|
+| `coord/project.config.js` | Set repo codes, paths, and integration branches |
+| `coord/product/REPOS.md` | Update repo descriptions to match |
+| `coord/product/REQUIREMENTS.md` | Link or paste your PRD/URS (or leave as a pointer) |
+| `coord/product/ARCHITECTURE.md` | Link or paste your architecture doc |
+| `coord/board/tasks.json` | Replace seed backlog with your first tickets |
+| `CLAUDE.md` | Keep thin — just point at `coord/GOVERNANCE.md` |
+
+### What NOT to do
+
+- Do not hand-edit `Status`, `Owner`, or lock fields in `tasks.json` after the initial setup — `gov` owns those.
+- Do not edit files under `coord/rendered/` — they're auto-generated.
+- Do not edit `.runtime/` files — those are live governance state.
+
+### MCP integrations (optional)
+
+The template ships `.mcp.json` pre-wired for Sentry and Datadog. Fill in credentials and restart Claude Code:
+
+```bash
+# .mcp.json — set these env vars:
+# SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT
+# DD_API_KEY, DD_APP_KEY
+```
+
+The built-in `governance` MCP server works out of the box — it exposes typed governance tools without shelling out.
+
+---
+
+## Directory Layout
+
+```
+your-project/
+├── .claude/
+│   ├── commands/           ← 27 governance + specialist skills
+│   └── skills/             ← 5 operations skills
+├── .mcp.json               ← MCP config (Sentry, Datadog, governance)
+├── backend/                ← Your backend repo (mapped in project.config.js)
+├── frontend/               ← Your frontend repo
+└── coord/
+    ├── board/
+    │   └── tasks.json      ← Canonical ticket board (the only board source of truth)
+    ├── memory/
+    │   └── code-index.ndjson  ← Symbol index (gitignored, rebuilt by gov code-index)
+    ├── scripts/
+    │   └── gov             ← Governance CLI entry point
+    ├── prompts/            ← Ticket-role prompts (auto-loaded by skills)
+    ├── active/             ← Ticket-local plan notes (one .md per in-progress ticket)
+    ├── rendered/           ← Auto-generated board views (do not edit)
+    ├── .runtime/           ← Locks, sessions, journal (gitignored)
+    ├── product/            ← Spec stubs: requirements, architecture, domain model, etc.
+    ├── project.config.js   ← Repo map (the one file you edit to bind Concord to your repos)
+    └── GOVERNANCE.md       ← The canonical governance policy
+```
+
+---
+
+## Further Reading
+
+| Document | When to read it |
+|----------|----------------|
+| [QUICKSTART.md](QUICKSTART.md) | Step-by-step first-time setup with more detail |
+| [USER_MANUAL.md](USER_MANUAL.md) | The end-to-end reference: install channels, config, lifecycle, upgrade, Community→Enterprise, org rollup, troubleshooting |
+| [DEVELOPER_NOTE.md](DEVELOPER_NOTE.md) | AI-assisted development methodology, workflow patterns, cost management |
+| [coord/GOVERNANCE.md](coord/GOVERNANCE.md) | The canonical policy — authority order, lifecycle rules, canonical files |
+| [coord/AGENTS.md](coord/AGENTS.md) | Agent-specific rules and constraints |
+| [coord/VERB_CONTRACT.md](coord/VERB_CONTRACT.md) | Full `gov` CLI verb reference |
+| [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Current issues, status, and workarounds |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each release |
+| [DEMO.md](DEMO.md) | Walkthrough of the bundled demo |
+
+---
 
 ## License
 

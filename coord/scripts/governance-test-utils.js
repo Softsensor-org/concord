@@ -8,6 +8,91 @@ const governanceModule = require("./governance.js");
 const { GovernanceError, executeCommand, __testing } = governanceModule;
 const { STATUS } = require("./governance-constants.js");
 
+// COORD-299: relocate THIS test worker's ephemeral coarse directory locks
+// (coord/.coord-state.lock, coord/.agent-state.lock) and memory corpus to a
+// per-process os.tmpdir() sandbox. Call ONCE at the top of a test file whose
+// governed calls would otherwise acquire the live shared-worktree locks as an
+// incidental side effect (no test asserts on the lock-dir location — they are
+// transient coordination primitives). Process-scoped, NO restore: node --test runs
+// each file in its own worker, so the redirect is naturally file-scoped, and the
+// worker exits when the file finishes. RUNTIME_DIR / the journal are intentionally
+// NOT touched here, so per-test journal sandboxes (withJournalSandbox etc.) still
+// layer on top. Idempotent.
+let processRuntimeLocksSandboxDir = null;
+function sandboxProcessRuntimeLocks() {
+  if (processRuntimeLocksSandboxDir) return processRuntimeLocksSandboxDir;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "coord299-runtime-locks-"));
+  __testing.paths.COORD_STATE_LOCK_DIR = path.join(dir, ".coord-state.lock");
+  __testing.paths.AGENT_STATE_LOCK_DIR = path.join(dir, ".agent-state.lock");
+  __testing.paths.MEMORY_DIR = path.join(dir, "memory");
+  processRuntimeLocksSandboxDir = dir;
+  return dir;
+}
+
+// COORD-300 / COORD-390: stronger sibling of sandboxProcessRuntimeLocks().
+// Relocates THIS worker's live write surfaces to a per-process os.tmpdir()
+// sandbox:
+//   - runtime state (RUNTIME_DIR + journal / snapshot / event-lock / locks /
+//     plan-records / agent registry + sessions),
+//   - the two coarse directory locks,
+//   - the memory corpus,
+//   - seal-sensitive generated surfaces (PROMPTS_DIR + RENDERED_DIR).
+// Call ONCE at the top of a governed-flow test file whose stray mutations (those
+// not already wrapped in withGovernedSurfaceSandbox / withJournalSandbox) would
+// otherwise write the live coord/.runtime tree or transient prompt/render files.
+// Per-test sandboxes layer ON TOP:
+// they capture the current (sandboxed) value as their "original" and restore back
+// to it, so nothing leaks to the live tree between or around tests. Process-scoped,
+// idempotent, NO restore — node --test runs each file in its own worker, so the
+// redirect is naturally file-scoped and dies with the worker. Empty agents.json /
+// agent_sessions.json are seeded so registry READS resolve instead of ENOENT.
+let processRuntimeSandboxDir = null;
+function sandboxProcessRuntime() {
+  if (processRuntimeSandboxDir) return processRuntimeSandboxDir;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "coord300-runtime-"));
+  const runtimeDir = path.join(dir, ".runtime");
+  const promptsDir = path.join(dir, "prompts");
+  const renderedDir = path.join(dir, "rendered");
+  fs.mkdirSync(path.join(runtimeDir, "locks"), { recursive: true });
+  fs.mkdirSync(path.join(runtimeDir, "plans"), { recursive: true });
+  fs.mkdirSync(path.join(promptsDir, "tickets"), { recursive: true });
+  fs.mkdirSync(renderedDir, { recursive: true });
+  const agentsPath = path.join(runtimeDir, "agents.json");
+  const sessionsPath = path.join(runtimeDir, "agent_sessions.json");
+  // Seed the sandbox registry by COPYING the live tracked registry (coord/agents.json,
+  // the 178-handle seed list) so governed flows that look up a real handle (e.g.
+  // claudea11) still resolve — while every WRITE lands in the sandbox copy, not the
+  // live tree. readAgentsRegistry resolves AGENTS_PATH (.runtime/agents.json) and a
+  // compat path (its parent dir's agents.json), so seed BOTH. Sessions start empty
+  // (purely runtime; tests that need a session create it). Fall back to [] if absent.
+  let seedRegistry = "[]";
+  try {
+    const liveRegistry = path.resolve(__dirname, "..", "agents.json");
+    if (fs.existsSync(liveRegistry)) seedRegistry = fs.readFileSync(liveRegistry, "utf8");
+  } catch {
+    /* keep [] */
+  }
+  fs.writeFileSync(agentsPath, seedRegistry, "utf8");
+  fs.writeFileSync(path.join(dir, "agents.json"), seedRegistry, "utf8");
+  fs.writeFileSync(sessionsPath, JSON.stringify([], null, 2), "utf8");
+  __testing.paths.RUNTIME_DIR = runtimeDir;
+  __testing.paths.LOCKS_DIR = path.join(runtimeDir, "locks");
+  __testing.paths.PLAN_RECORDS_DIR = path.join(runtimeDir, "plans");
+  __testing.paths.AGENTS_PATH = agentsPath;
+  __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
+  __testing.paths.GOVERNANCE_EVENT_LOG_PATH = path.join(runtimeDir, "governance-events.ndjson");
+  __testing.paths.GOVERNANCE_SNAPSHOT_PATH = path.join(runtimeDir, "governance-latest-snapshot.json");
+  __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = path.join(runtimeDir, "governance-snapshots");
+  __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = path.join(runtimeDir, "governance.lock");
+  __testing.paths.COORD_STATE_LOCK_DIR = path.join(dir, ".coord-state.lock");
+  __testing.paths.AGENT_STATE_LOCK_DIR = path.join(dir, ".agent-state.lock");
+  __testing.paths.MEMORY_DIR = path.join(dir, "memory");
+  __testing.paths.PROMPTS_DIR = promptsDir;
+  __testing.paths.RENDERED_DIR = renderedDir;
+  processRuntimeSandboxDir = dir;
+  return dir;
+}
+
 function runGit(cwd, args) {
   const result = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
   assert.equal(
@@ -54,11 +139,30 @@ function withJournalSandbox(fn) {
     GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
     GOVERNANCE_SNAPSHOT_PATH: __testing.paths.GOVERNANCE_SNAPSHOT_PATH,
     GOVERNANCE_SNAPSHOTS_DIR: __testing.paths.GOVERNANCE_SNAPSHOTS_DIR,
+    // COORD-251: GOVERNANCE_EVENT_LOCK_DIR defaults to an ABSOLUTE path that is
+    // independent of RUNTIME_DIR, so rebinding only RUNTIME_DIR left every test
+    // layered on this sandbox (via withGovernedSurfaceSandbox) acquiring the
+    // LIVE coord/.runtime/governance.lock inside withGovernanceMutation. Under
+    // parallel `node --test` that cross-test contention intermittently timed
+    // out (30s). Rebind the runtime lock dir into the sandbox too.
+    GOVERNANCE_EVENT_LOCK_DIR: __testing.paths.GOVERNANCE_EVENT_LOCK_DIR,
+    // COORD-299: the two coarse directory locks + the memory corpus default to
+    // the LIVE coord/ tree independent of RUNTIME_DIR, so rebinding only the
+    // journal left every governed mutation under test acquiring
+    // coord/.coord-state.lock / coord/.agent-state.lock (and any memory write)
+    // against the LIVE runtime. Rebind them into the sandbox too.
+    COORD_STATE_LOCK_DIR: __testing.paths.COORD_STATE_LOCK_DIR,
+    AGENT_STATE_LOCK_DIR: __testing.paths.AGENT_STATE_LOCK_DIR,
+    MEMORY_DIR: __testing.paths.MEMORY_DIR,
   };
   __testing.paths.RUNTIME_DIR = runtimeDir;
   __testing.paths.GOVERNANCE_EVENT_LOG_PATH = path.join(runtimeDir, "governance-events.ndjson");
   __testing.paths.GOVERNANCE_SNAPSHOT_PATH = path.join(runtimeDir, "governance-latest-snapshot.json");
   __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = path.join(runtimeDir, "governance-snapshots");
+  __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = path.join(runtimeDir, "governance.lock");
+  __testing.paths.COORD_STATE_LOCK_DIR = path.join(runtimeDir, ".coord-state.lock");
+  __testing.paths.AGENT_STATE_LOCK_DIR = path.join(runtimeDir, ".agent-state.lock");
+  __testing.paths.MEMORY_DIR = path.join(tempDir, "memory");
   try {
     return fn({ tempDir, runtimeDir, logPath: __testing.paths.GOVERNANCE_EVENT_LOG_PATH });
   } finally {
@@ -66,6 +170,10 @@ function withJournalSandbox(fn) {
     __testing.paths.GOVERNANCE_EVENT_LOG_PATH = original.GOVERNANCE_EVENT_LOG_PATH;
     __testing.paths.GOVERNANCE_SNAPSHOT_PATH = original.GOVERNANCE_SNAPSHOT_PATH;
     __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = original.GOVERNANCE_SNAPSHOTS_DIR;
+    __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = original.GOVERNANCE_EVENT_LOCK_DIR;
+    __testing.paths.COORD_STATE_LOCK_DIR = original.COORD_STATE_LOCK_DIR;
+    __testing.paths.AGENT_STATE_LOCK_DIR = original.AGENT_STATE_LOCK_DIR;
+    __testing.paths.MEMORY_DIR = original.MEMORY_DIR;
   }
 }
 
@@ -98,10 +206,17 @@ function withCleanRuntimeFixture(run) {
     RUNTIME_DIR: __testing.paths.RUNTIME_DIR,
     GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
     BOARD_PATH: __testing.paths.BOARD_PATH,
+    // COORD-299: sandbox the coarse locks + memory alongside the journal.
+    COORD_STATE_LOCK_DIR: __testing.paths.COORD_STATE_LOCK_DIR,
+    AGENT_STATE_LOCK_DIR: __testing.paths.AGENT_STATE_LOCK_DIR,
+    MEMORY_DIR: __testing.paths.MEMORY_DIR,
   };
   __testing.paths.RUNTIME_DIR = runtimeDir;
   __testing.paths.GOVERNANCE_EVENT_LOG_PATH = eventLogPath;
   __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.COORD_STATE_LOCK_DIR = path.join(runtimeDir, ".coord-state.lock");
+  __testing.paths.AGENT_STATE_LOCK_DIR = path.join(runtimeDir, ".agent-state.lock");
+  __testing.paths.MEMORY_DIR = path.join(tmpRoot, "memory");
 
   const logs = [];
   const originalLog = console.log;
@@ -114,6 +229,9 @@ function withCleanRuntimeFixture(run) {
     __testing.paths.RUNTIME_DIR = original.RUNTIME_DIR;
     __testing.paths.GOVERNANCE_EVENT_LOG_PATH = original.GOVERNANCE_EVENT_LOG_PATH;
     __testing.paths.BOARD_PATH = original.BOARD_PATH;
+    __testing.paths.COORD_STATE_LOCK_DIR = original.COORD_STATE_LOCK_DIR;
+    __testing.paths.AGENT_STATE_LOCK_DIR = original.AGENT_STATE_LOCK_DIR;
+    __testing.paths.MEMORY_DIR = original.MEMORY_DIR;
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
 }
@@ -323,6 +441,14 @@ function setupCoord003Workspace(prefix, ticketId, owner, {
     AGENT_SESSIONS_PATH: __testing.paths.AGENT_SESSIONS_PATH,
     PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
     LEGACY_PLAN_RECORDS_DIR: __testing.paths.LEGACY_PLAN_RECORDS_DIR,
+    // COORD-290: redirect the prompt + rendered coordination surfaces too.
+    // Governed commands under test (start/unstart/block/render) write prompt
+    // scaffolds + rendered board artifacts; without these overrides those
+    // writes landed under the LIVE coord/prompts + coord/rendered tree, an
+    // out-of-band mutation that trips the COORD-220 seal for the next governed
+    // command during concurrent runs. Sandbox them with everything else.
+    PROMPTS_DIR: __testing.paths.PROMPTS_DIR,
+    RENDERED_DIR: __testing.paths.RENDERED_DIR,
     LOCKS_DIR: __testing.paths.LOCKS_DIR,
     LEGACY_LOCKS_DIR: __testing.paths.LEGACY_LOCKS_DIR,
     RUNTIME_DIR: __testing.paths.RUNTIME_DIR,
@@ -330,6 +456,10 @@ function setupCoord003Workspace(prefix, ticketId, owner, {
     GOVERNANCE_SNAPSHOT_PATH: __testing.paths.GOVERNANCE_SNAPSHOT_PATH,
     GOVERNANCE_SNAPSHOTS_DIR: __testing.paths.GOVERNANCE_SNAPSHOTS_DIR,
     GOVERNANCE_EVENT_LOCK_DIR: __testing.paths.GOVERNANCE_EVENT_LOCK_DIR,
+    // COORD-299: sandbox the coarse directory locks + memory corpus too.
+    COORD_STATE_LOCK_DIR: __testing.paths.COORD_STATE_LOCK_DIR,
+    AGENT_STATE_LOCK_DIR: __testing.paths.AGENT_STATE_LOCK_DIR,
+    MEMORY_DIR: __testing.paths.MEMORY_DIR,
     REPO_ROOTS: { ...__testing.paths.REPO_ROOTS },
     REPO_INTEGRATION_BRANCHES: { ...__testing.paths.REPO_INTEGRATION_BRANCHES },
     CODEX_THREAD_ID: process.env.CODEX_THREAD_ID,
@@ -354,6 +484,11 @@ function setupCoord003Workspace(prefix, ticketId, owner, {
   __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
   __testing.paths.PLAN_RECORDS_DIR = planRecordsDir;
   __testing.paths.LEGACY_PLAN_RECORDS_DIR = path.join(coordRoot, "board", "plans");
+  // COORD-290: point prompt + rendered surfaces at the sandbox coordRoot.
+  fs.mkdirSync(path.join(coordRoot, "prompts", "tickets"), { recursive: true });
+  fs.mkdirSync(path.join(coordRoot, "rendered"), { recursive: true });
+  __testing.paths.PROMPTS_DIR = path.join(coordRoot, "prompts");
+  __testing.paths.RENDERED_DIR = path.join(coordRoot, "rendered");
   __testing.paths.LOCKS_DIR = path.join(coordRoot, ".runtime", "locks");
   __testing.paths.LEGACY_LOCKS_DIR = path.join(coordRoot, "locks");
   __testing.paths.RUNTIME_DIR = runtimeDir;
@@ -361,6 +496,9 @@ function setupCoord003Workspace(prefix, ticketId, owner, {
   __testing.paths.GOVERNANCE_SNAPSHOT_PATH = path.join(runtimeDir, "governance-latest-snapshot.json");
   __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = path.join(runtimeDir, "governance-snapshots");
   __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = path.join(runtimeDir, "governance.lock");
+  __testing.paths.COORD_STATE_LOCK_DIR = path.join(runtimeDir, ".coord-state.lock");
+  __testing.paths.AGENT_STATE_LOCK_DIR = path.join(runtimeDir, ".agent-state.lock");
+  __testing.paths.MEMORY_DIR = path.join(coordRoot, "memory");
   // Stay on the legacy session-token identity channel (no v2 env).
   delete process.env.COORD_PROVIDER;
   delete process.env.COORD_INSTANCE_ID;
@@ -384,6 +522,13 @@ function setupCoord003Workspace(prefix, ticketId, owner, {
     "utf8"
   );
 
+  // COORD-273: this workspace seeds live coordination state (board row + plan
+  // record + prompt). Anchor a journal baseline now — all governed paths are
+  // redirected and the on-disk state is in place — so the governed commands under
+  // test run over an INITIALIZED journal (a healthy repo). Without it the new
+  // journal-loss-over-existing-state guard refuses to auto-baseline on first use.
+  __testing.ensureGovernanceJournalBaseline("coord003-harness-seed");
+
   function restore() {
     __testing.paths.REPO_ROOTS = original.REPO_ROOTS;
     __testing.paths.REPO_INTEGRATION_BRANCHES = original.REPO_INTEGRATION_BRANCHES;
@@ -394,6 +539,8 @@ function setupCoord003Workspace(prefix, ticketId, owner, {
     __testing.paths.AGENT_SESSIONS_PATH = original.AGENT_SESSIONS_PATH;
     __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;
     __testing.paths.LEGACY_PLAN_RECORDS_DIR = original.LEGACY_PLAN_RECORDS_DIR;
+    __testing.paths.PROMPTS_DIR = original.PROMPTS_DIR;
+    __testing.paths.RENDERED_DIR = original.RENDERED_DIR;
     __testing.paths.LOCKS_DIR = original.LOCKS_DIR;
     __testing.paths.LEGACY_LOCKS_DIR = original.LEGACY_LOCKS_DIR;
     __testing.paths.RUNTIME_DIR = original.RUNTIME_DIR;
@@ -401,6 +548,9 @@ function setupCoord003Workspace(prefix, ticketId, owner, {
     __testing.paths.GOVERNANCE_SNAPSHOT_PATH = original.GOVERNANCE_SNAPSHOT_PATH;
     __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = original.GOVERNANCE_SNAPSHOTS_DIR;
     __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = original.GOVERNANCE_EVENT_LOCK_DIR;
+    __testing.paths.COORD_STATE_LOCK_DIR = original.COORD_STATE_LOCK_DIR;
+    __testing.paths.AGENT_STATE_LOCK_DIR = original.AGENT_STATE_LOCK_DIR;
+    __testing.paths.MEMORY_DIR = original.MEMORY_DIR;
     for (const key of ["CODEX_THREAD_ID", "CLAUDE_SESSION_ID", "AGENT_THREAD_ID", "COORD_PROVIDER", "COORD_INSTANCE_ID"]) {
       if (original[key] === undefined) {
         delete process.env[key];
@@ -431,6 +581,8 @@ function withGovernedSurfaceSandbox(fn) {
     const questionsPath = path.join(tempDir, "QUESTIONS.md");
     const agentsPath = path.join(tempDir, "agents.json");
     const sessionsPath = path.join(runtimeDir, "agent_sessions.json");
+    const promptsDir = path.join(tempDir, "prompts");
+    const renderedDir = path.join(tempDir, "rendered");
     const original = {
       BOARD_PATH: __testing.paths.BOARD_PATH,
       PLAN_PATH: __testing.paths.PLAN_PATH,
@@ -438,11 +590,15 @@ function withGovernedSurfaceSandbox(fn) {
       AGENTS_PATH: __testing.paths.AGENTS_PATH,
       AGENT_SESSIONS_PATH: __testing.paths.AGENT_SESSIONS_PATH,
       PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+      PROMPTS_DIR: __testing.paths.PROMPTS_DIR,
+      RENDERED_DIR: __testing.paths.RENDERED_DIR,
       LOCKS_DIR: __testing.paths.LOCKS_DIR,
       LEGACY_LOCKS_DIR: __testing.paths.LEGACY_LOCKS_DIR,
     };
     fs.mkdirSync(recordsDir, { recursive: true });
     fs.mkdirSync(locksDir, { recursive: true });
+    fs.mkdirSync(path.join(promptsDir, "tickets"), { recursive: true });
+    fs.mkdirSync(renderedDir, { recursive: true });
     fs.writeFileSync(boardPath, JSON.stringify({ sections: [] }, null, 2), "utf8");
     fs.writeFileSync(planPath, "plan\n", "utf8");
     fs.writeFileSync(questionsPath, "# Questions\n", "utf8");
@@ -454,10 +610,12 @@ function withGovernedSurfaceSandbox(fn) {
     __testing.paths.AGENTS_PATH = agentsPath;
     __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
     __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+    __testing.paths.PROMPTS_DIR = promptsDir;
+    __testing.paths.RENDERED_DIR = renderedDir;
     __testing.paths.LOCKS_DIR = locksDir;
     __testing.paths.LEGACY_LOCKS_DIR = path.join(tempDir, "locks");
     try {
-      return fn({ tempDir, boardPath, logPath });
+      return fn({ tempDir, boardPath, logPath, promptsDir, renderedDir });
     } finally {
       __testing.paths.BOARD_PATH = original.BOARD_PATH;
       __testing.paths.PLAN_PATH = original.PLAN_PATH;
@@ -465,6 +623,8 @@ function withGovernedSurfaceSandbox(fn) {
       __testing.paths.AGENTS_PATH = original.AGENTS_PATH;
       __testing.paths.AGENT_SESSIONS_PATH = original.AGENT_SESSIONS_PATH;
       __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;
+      __testing.paths.PROMPTS_DIR = original.PROMPTS_DIR;
+      __testing.paths.RENDERED_DIR = original.RENDERED_DIR;
       __testing.paths.LOCKS_DIR = original.LOCKS_DIR;
       __testing.paths.LEGACY_LOCKS_DIR = original.LEGACY_LOCKS_DIR;
     }
@@ -556,19 +716,30 @@ function withCanonicalTicketPrompt(ticketId, content, fn) {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const promptsDir = path.join(repoRoot, "coord", "prompts", "tickets");
   const promptPath = path.join(promptsDir, `${ticketId}.md`);
+  const activePromptsDir = path.join(__testing.paths.PROMPTS_DIR, "tickets");
+  const activePromptPath = path.join(activePromptsDir, `${ticketId}.md`);
   const createdFile = !fs.existsSync(promptPath);
   const createdDir = !fs.existsSync(promptsDir);
+  const activeDiffers = path.resolve(activePromptPath) !== path.resolve(promptPath);
+  const createdActiveFile = activeDiffers && !fs.existsSync(activePromptPath);
   if (createdDir) {
     fs.mkdirSync(promptsDir, { recursive: true });
   }
   if (createdFile) {
     fs.writeFileSync(promptPath, content, "utf8");
   }
+  if (activeDiffers) {
+    fs.mkdirSync(activePromptsDir, { recursive: true });
+    fs.writeFileSync(activePromptPath, content, "utf8");
+  }
   try {
     return fn();
   } finally {
     if (createdFile) {
       try { fs.rmSync(promptPath, { force: true }); } catch { /* best-effort */ }
+    }
+    if (createdActiveFile) {
+      try { fs.rmSync(activePromptPath, { force: true }); } catch { /* best-effort */ }
     }
   }
 }
@@ -611,14 +782,28 @@ function withRegisterPromptHarness(prefix, { ticketId = "IMP-700", promptRegiste
   const runtimeDir = path.join(tempDir, ".runtime");
   fs.mkdirSync(path.join(runtimeDir, "locks"), { recursive: true });
   fs.mkdirSync(path.join(runtimeDir, "plans"), { recursive: true });
+  const agentsPath = path.join(runtimeDir, "agents.json");
+  const sessionsPath = path.join(runtimeDir, "agent_sessions.json");
+  fs.writeFileSync(
+    agentsPath,
+    `${JSON.stringify([
+      { id: "a11", handle: "claudea11", provider: "anthropic", status: "active", aliases: [] },
+    ], null, 2)}\n`,
+    "utf8"
+  );
+  fs.writeFileSync(sessionsPath, "[]\n", "utf8");
 
   // Rebind every path withGovernanceMutation / withCoordStateLock could touch
-  // so journal entries, locks, and plan records stay inside the temp dir and
-  // do not trigger spurious rollback-drift against the live journal.
+  // so journal entries, locks, plan records, and identity writes stay inside the
+  // temp dir and do not trigger spurious rollback-drift against the live journal.
   const originalPaths = {
     BOARD_PATH: __testing.paths.BOARD_PATH,
     PLAN_PATH: __testing.paths.PLAN_PATH,
+    AGENTS_PATH: __testing.paths.AGENTS_PATH,
+    AGENT_SESSIONS_PATH: __testing.paths.AGENT_SESSIONS_PATH,
     PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+    PROMPTS_DIR: __testing.paths.PROMPTS_DIR,
+    RENDERED_DIR: __testing.paths.RENDERED_DIR,
     LOCKS_DIR: __testing.paths.LOCKS_DIR,
     LEGACY_LOCKS_DIR: __testing.paths.LEGACY_LOCKS_DIR,
     GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
@@ -626,18 +811,25 @@ function withRegisterPromptHarness(prefix, { ticketId = "IMP-700", promptRegiste
     GOVERNANCE_SNAPSHOTS_DIR: __testing.paths.GOVERNANCE_SNAPSHOTS_DIR,
     GOVERNANCE_EVENT_LOCK_DIR: __testing.paths.GOVERNANCE_EVENT_LOCK_DIR,
     RUNTIME_DIR: __testing.paths.RUNTIME_DIR,
+    // COORD-299: sandbox the coarse directory locks + memory corpus too.
+    COORD_STATE_LOCK_DIR: __testing.paths.COORD_STATE_LOCK_DIR,
+    AGENT_STATE_LOCK_DIR: __testing.paths.AGENT_STATE_LOCK_DIR,
+    MEMORY_DIR: __testing.paths.MEMORY_DIR,
   };
-  // Snapshot real rendered artifacts so the temp-board sync does not leak.
-  const realTasks = "coord/rendered/TASKS.md";
-  const realPromptIdx = "coord/rendered/PROMPT_INDEX.md";
-  const realPlan = "coord/PLAN.md";
-  const snap = {};
-  for (const p of [realTasks, realPromptIdx, realPlan]) {
-    try { snap[p] = fs.readFileSync(p, "utf8"); } catch { snap[p] = null; }
-  }
+  // COORD-290: sandbox the prompt + rendered surfaces so runBoardSync regenerates
+  // artifacts inside tempDir. Previously this harness rendered into the LIVE
+  // coord/rendered + coord/PLAN.md and restored a snapshot afterward — a transient
+  // out-of-band write that tripped the COORD-220 seal under concurrent governed
+  // mutations. Redirecting the output dirs removes the live write entirely.
+  fs.mkdirSync(path.join(tempDir, "prompts", "tickets"), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, "rendered"), { recursive: true });
 
   __testing.paths.BOARD_PATH = boardPath;
   __testing.paths.PLAN_PATH = path.join(tempDir, "PLAN.md");
+  __testing.paths.AGENTS_PATH = agentsPath;
+  __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
+  __testing.paths.PROMPTS_DIR = path.join(tempDir, "prompts");
+  __testing.paths.RENDERED_DIR = path.join(tempDir, "rendered");
   __testing.paths.PLAN_RECORDS_DIR = path.join(runtimeDir, "plans");
   __testing.paths.LOCKS_DIR = path.join(runtimeDir, "locks");
   __testing.paths.LEGACY_LOCKS_DIR = path.join(tempDir, "locks");
@@ -646,14 +838,20 @@ function withRegisterPromptHarness(prefix, { ticketId = "IMP-700", promptRegiste
   __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = path.join(runtimeDir, "governance-snapshots");
   __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = path.join(runtimeDir, "governance.lock");
   __testing.paths.RUNTIME_DIR = runtimeDir;
+  __testing.paths.COORD_STATE_LOCK_DIR = path.join(runtimeDir, ".coord-state.lock");
+  __testing.paths.AGENT_STATE_LOCK_DIR = path.join(runtimeDir, ".agent-state.lock");
+  __testing.paths.MEMORY_DIR = path.join(tempDir, "memory");
+  // COORD-273: this harness seeds a board WITH ticket rows (live coordination
+  // state). Anchor a journal baseline up front so the governed command under test
+  // runs over an INITIALIZED journal — i.e. a healthy repo. Without it the new
+  // journal-loss-over-existing-state guard would (correctly) refuse to silently
+  // auto-baseline existing board state on the first mutation.
+  __testing.ensureGovernanceJournalBaseline("rp-harness-seed");
   try {
     return body({ tempDir, boardPath, promptOnDisk, ticketId, readBoard: () => JSON.parse(fs.readFileSync(boardPath, "utf8")) });
   } finally {
     for (const [k, v] of Object.entries(originalPaths)) {
       __testing.paths[k] = v;
-    }
-    for (const [p, content] of Object.entries(snap)) {
-      if (content !== null) fs.writeFileSync(p, content, "utf8");
     }
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -671,6 +869,8 @@ module.exports = {
   withJournalSandbox,
   withGovernedSurfaceSandbox,
   withCleanRuntimeFixture,
+  sandboxProcessRuntimeLocks,
+  sandboxProcessRuntime,
   runGit,
   writeRepoFile,
   createTempGitRepo,
@@ -679,4 +879,3 @@ module.exports = {
   setupCoord003Workspace,
   readBoardRow,
 };
-

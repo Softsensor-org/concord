@@ -42,6 +42,8 @@ const CHECKS = Object.freeze([
   "imports",     // disallowed cross-module imports (declared boundary policy)
   "duplication", // repeated N-line blocks across files (normalized-hash)
   "monolith",    // no-new-monolith: file over budget (alias of size at a higher budget)
+  "prodloc",     // coord/scripts production-module LOC budget with high-water hotspots
+  "compositionRoot", // fail newly-added non-wiring logic in composition roots
   "hardcoding",  // magic literals that should be config/constants (config-seam leaks)
   "deadcode",    // functions/consts defined but never referenced (dispatch/facade-aware)
 ]);
@@ -74,18 +76,16 @@ const DEFAULT_CONFIG = Object.freeze({
     // COORD-094: the 1750 budget was set against an UNDER-counted LOC. countLoc
     // had a literal-blind comment stripper: an unbalanced `/*` inside a string
     // (e.g. `endsWith("/*")`, `coord/.runtime/plans/*.json`, `${id}/*`) opened a
-    // phantom block comment that swallowed ~1600 real lines, so lifecycle.js
-    // reported ~1682 LOC when its honest size is ~4837. With countLoc now
-    // literal-aware the count is trustworthy, so the budget is set HONESTLY to
-    // 5000 — just above the true composition-root size (4837) and at the
-    // monolith hard ceiling — so genuine growth still trips a signal (the
-    // monolith ceiling is NOT per-file negotiable and fires the moment this file
-    // crosses 5000) while the composition root no longer raises a false size
-    // alarm. This is a documented, justified residual, not a silenced monolith.
+    // phantom block comment that swallowed ~1600 real lines, so lifecycle.js was
+    // once grandfathered at the old monolith ceiling. COORD-397 extracted the
+    // remaining command/helper clusters and ratcheted lifecycle.js to a measured
+    // residual composition-root budget of 2600 logical LOC. The fail-closed
+    // prodloc high-water below is the real growth guard; this size override is
+    // the matching generic analyzer threshold.
     size: Object.freeze({
       maxLoc: 1500,
       severity: "warn",
-      perFile: Object.freeze({ "lifecycle.js": 5000 }),
+      perFile: Object.freeze({ "lifecycle.js": 2600 }),
     }),
     // Per-function cyclomatic complexity budget (decision-point count + 1).
     complexity: Object.freeze({ maxComplexity: 15, severity: "warn" }),
@@ -142,6 +142,38 @@ const DEFAULT_CONFIG = Object.freeze({
     // Absolute-budget form; growth-over-baseline is layered on top when a
     // baseline map is supplied to runChecks (optional).
     monolith: Object.freeze({ maxLoc: 5000, severity: "warn" }),
+    // COORD-378 / COORD-395: production coord/scripts module LOC budget. Unlike
+    // the generic size/monolith signals, this is fail-closed by default: new
+    // production engine modules under coord/scripts/** must stay <= 1200 logical
+    // LOC. Existing decomposition hotspots carry explicit high-water budgets at
+    // their current measured size. These are growth caps, not grandfather
+    // exemptions: any increase fails, and shrink-only decomposition can lower
+    // the cap through deriveProductionModuleLocBudgets().
+    prodloc: Object.freeze({
+      maxLoc: 1200,
+      severity: "fail",
+      include: Object.freeze(["coord/scripts/"]),
+      highWater: Object.freeze({
+        "coord/scripts/lifecycle.js": 2599,
+        "coord/scripts/governance-validation.js": 1310,
+        "coord/scripts/journal.js": 1710,
+        "coord/scripts/plan-records.js": 1871,
+        "coord/scripts/governance-context.js": 1785,
+        "coord/scripts/token-economics.js": 1515,
+      }),
+    }),
+    // COORD-396: append-free composition roots. These files may receive narrow
+    // wiring edits (imports, registry entries, exports), but newly-added
+    // business/control-flow logic belongs in self-registering modules. This
+    // check is DI-friendly and diff-aware: it only evaluates supplied
+    // `addedLines`, so existing root contents do not become retroactive debt.
+    compositionRoot: Object.freeze({
+      severity: "fail",
+      roots: Object.freeze([
+        "coord/scripts/lifecycle.js",
+        "coord/scripts/governance-validation.js",
+      ]),
+    }),
     // Hardcoding (config-seam leak, COORD-071). WARNING-FIRST, conservative.
     // Three sub-signals, each independently gateable but reported under one
     // check id:
@@ -190,6 +222,16 @@ const DEFAULT_CONFIG = Object.freeze({
   // flag. The base ref is the repo's configured integration branch (resolved by
   // the caller) unless overridden with --baseline <ref>.
   archGate: "absolute",
+  // COORD-284: arch-debt PREVENTION ratchet. In ratchet mode, a finding whose
+  // `check` is listed here is treated as a HARD FAIL when it is NEW relative to
+  // the baseline — even though its own configured severity stays "warn". This is
+  // the seam that escalates monolith/size to fail-on-NEW at the submit gate while
+  // keeping plain (absolute, non-ratchet) `classify` warning-first: existing
+  // over-budget files are GRANDFATHERED (pre-existing, never fail) and only a
+  // change that grows a file PAST budget vs the baseline turns the gate RED.
+  // EMPTY by default so a bare `--ratchet` does not silently start failing; the
+  // gate opts in via GATE_ARCH_CONFIG (archGate:"ratchet" + this list).
+  ratchetFailOnNew: Object.freeze([]),
 });
 
 // Deep-ish merge of a partial override onto DEFAULT_CONFIG. Per-check overrides
@@ -206,6 +248,9 @@ function mergeConfig(override = {}) {
     ignore: Array.isArray(o.ignore) ? o.ignore : base.ignore.slice(),
     extensions: Array.isArray(o.extensions) ? o.extensions : base.extensions.slice(),
     archGate: o.archGate === "ratchet" ? "ratchet" : base.archGate,
+    ratchetFailOnNew: Array.isArray(o.ratchetFailOnNew)
+      ? o.ratchetFailOnNew.slice()
+      : base.ratchetFailOnNew.slice(),
   };
 }
 
@@ -333,6 +378,112 @@ function checkFileSize({ file, source, maxLoc, severity, checkName = "size", per
       threshold: effectiveMaxLoc,
       severity,
       message: `${checkName === "monolith" ? "monolith" : "file"} ${file} is ${loc} LOC, over budget ${effectiveMaxLoc}`,
+    }));
+  }
+  return findings;
+}
+
+function shouldCheckProductionModuleLoc(file, config = {}) {
+  const norm = normalizeFindingFilePath(file);
+  if (!norm.endsWith(".js") && !norm.endsWith(".mjs") && !norm.endsWith(".cjs")) return false;
+  if (norm.endsWith(".test.js")) return false;
+  if (norm.includes("/__fixtures__/")) return false;
+  const include = Array.isArray(config.include) && config.include.length
+    ? config.include
+    : ["coord/scripts/"];
+  return include.some((prefix) => norm.startsWith(normalizeFindingFilePath(prefix)));
+}
+
+function checkProductionModuleLocBudget({ file, source, config, severity }) {
+  const cfg = config && typeof config === "object" ? config : {};
+  if (!shouldCheckProductionModuleLoc(file, cfg)) return [];
+  const norm = normalizeFindingFilePath(file);
+  const highWater = cfg.highWater && typeof cfg.highWater === "object" ? cfg.highWater : {};
+  const maxLoc = Number.isFinite(Number(cfg.maxLoc)) ? Number(cfg.maxLoc) : 1200;
+  const threshold = Object.prototype.hasOwnProperty.call(highWater, norm)
+    ? Number(highWater[norm])
+    : maxLoc;
+  const { loc } = countLoc(source);
+  if (loc <= threshold) return [];
+  return [makeFinding({
+    check: "prodloc",
+    file,
+    value: loc,
+    threshold,
+    severity,
+    message: `${norm} grew past its production-module high-water LOC budget ${threshold} (now ${loc}) — attribute the growth to the ticket and split before adding more engine surface`,
+  })];
+}
+
+function deriveProductionModuleLocBudgets({ files = [], config } = {}) {
+  const cfg = config && typeof config === "object" ? config : {};
+  const maxLoc = Number.isFinite(Number(cfg.maxLoc)) ? Number(cfg.maxLoc) : 1200;
+  const highWater = cfg.highWater && typeof cfg.highWater === "object" ? cfg.highWater : {};
+  const next = {};
+  for (const entry of Array.isArray(files) ? files : []) {
+    const file = entry && entry.file;
+    const source = entry && entry.source;
+    if (!shouldCheckProductionModuleLoc(file, cfg)) continue;
+    const norm = normalizeFindingFilePath(file);
+    const currentCap = Object.prototype.hasOwnProperty.call(highWater, norm)
+      ? Number(highWater[norm])
+      : maxLoc;
+    const { loc } = countLoc(source || "");
+    next[norm] = Math.min(currentCap, Math.max(loc, maxLoc));
+  }
+  return next;
+}
+
+function isCompositionRootFile(file, config = {}) {
+  const norm = normalizeFindingFilePath(file);
+  const roots = Array.isArray(config.roots) && config.roots.length
+    ? config.roots
+    : ["coord/scripts/lifecycle.js", "coord/scripts/governance-validation.js"];
+  return roots.map(normalizeFindingFilePath).includes(norm);
+}
+
+function normalizeAddedLineEntry(entry) {
+  if (entry && typeof entry === "object") {
+    return {
+      text: String(entry.text == null ? entry.line || "" : entry.text),
+      line: entry.lineNumber || entry.line || null,
+    };
+  }
+  return { text: String(entry == null ? "" : entry), line: null };
+}
+
+function isAllowedCompositionRootWiringLine(line) {
+  const t = String(line || "").trim();
+  if (!t) return true;
+  if (t === '"use strict";' || t === "'use strict';") return true;
+  if (t.startsWith("//") || t.startsWith("/*") || t.startsWith("*") || t.startsWith("*/")) return true;
+  if (/^[{}()[\],;]+$/.test(t)) return true;
+  if (/^(const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*require\([^)]*\);?$/.test(t)) return true;
+  if (/^(const|let|var)\s+\{/.test(t)) return true;
+  if (/^\}\s*=\s*require\([^)]*\);?$/.test(t)) return true;
+  if (/^module\.exports\s*=\s*\{?$/.test(t)) return true;
+  if (/^exports\.[A-Za-z_$][\w$]*\s*=\s*[A-Za-z_$][\w$]*;?$/.test(t)) return true;
+  if (/^[A-Za-z_$][\w$]*,?$/.test(t)) return true;
+  if (/^[A-Za-z_$][\w$]*:\s*[A-Za-z_$][\w$]*,?$/.test(t)) return true;
+  if (/^["'][^"']+["']:\s*[A-Za-z_$][\w$]*,?$/.test(t)) return true;
+  return false;
+}
+
+function checkCompositionRootAddedLogic({ file, addedLines = [], config, severity }) {
+  const cfg = config && typeof config === "object" ? config : {};
+  if (!isCompositionRootFile(file, cfg)) return [];
+  const findings = [];
+  for (const raw of Array.isArray(addedLines) ? addedLines : []) {
+    const entry = normalizeAddedLineEntry(raw);
+    if (isAllowedCompositionRootWiringLine(entry.text)) continue;
+    findings.push(makeFinding({
+      check: "compositionRoot",
+      file,
+      value: String(entry.text || "").trim().slice(0, 120),
+      threshold: "wiring-only",
+      severity,
+      line: entry.line || undefined,
+      message: `${normalizeFindingFilePath(file)} added non-wiring logic to a composition root; create a self-registering module instead`,
     }));
   }
   return findings;
@@ -1016,7 +1167,10 @@ function stableFindingDetail(finding) {
   switch (finding.check) {
     case "size":
     case "monolith":
+    case "prodloc":
       return "loc";
+    case "compositionRoot":
+      return `added:${crypto.createHash("sha1").update(String(finding.value || "")).digest("hex").slice(0, 12)}`;
     case "complexity": {
       const m = /function\s+(\S+)\s+in/.exec(String(finding.message || ""));
       const fn = m ? m[1] : `line${finding.line || 0}`;
@@ -1080,10 +1234,15 @@ function summarizeRatchet(currentFindings, cfg, fileCount, baseFindings) {
     baseFindings,
   );
   const base = summarizeFindings(currentFindings, cfg, fileCount);
+  // COORD-284: checks listed in cfg.ratchetFailOnNew are escalated to a HARD FAIL
+  // when NEW vs the baseline, regardless of their own (warn) severity. This is
+  // how monolith/size become fail-on-NEW under the ratchet without flipping their
+  // absolute-mode severity (plain classify + the no-baseline fallback stay warn).
+  const failOnNew = Array.isArray(cfg && cfg.ratchetFailOnNew) ? cfg.ratchetFailOnNew : [];
   let newFailCount = 0;
   let newWarnCount = 0;
   for (const f of newFindings) {
-    if (f.severity === "fail") newFailCount += 1;
+    if (f.severity === "fail" || failOnNew.includes(f.check)) newFailCount += 1;
     else if (f.severity === "warn") newWarnCount += 1;
   }
   let result;
@@ -1124,6 +1283,19 @@ function runChecks({ files = [], config, baseline, referenceFiles, baselineFindi
     if (c.monolith.severity !== "off") {
       findings.push(...checkFileSize({
         file, source, maxLoc: c.monolith.maxLoc, severity: c.monolith.severity, checkName: "monolith",
+      }));
+    }
+    if (c.prodloc && c.prodloc.severity !== "off") {
+      findings.push(...checkProductionModuleLocBudget({
+        file, source, config: c.prodloc, severity: c.prodloc.severity,
+      }));
+    }
+    if (c.compositionRoot && c.compositionRoot.severity !== "off") {
+      findings.push(...checkCompositionRootAddedLogic({
+        file,
+        addedLines: entry.addedLines || [],
+        config: c.compositionRoot,
+        severity: c.compositionRoot.severity,
       }));
     }
     if (c.complexity.severity !== "off") {
@@ -1237,8 +1409,8 @@ function summarizeFindings(findings, cfg, fileCount) {
 function formatArchSummary(summary) {
   const b = summary.byCheck || {};
   const body = `size=${b.size || 0} complexity=${b.complexity || 0} ` +
-    `imports=${b.imports || 0} dup=${b.duplication || 0} monolith=${b.monolith || 0} ` +
-    `hardcoding=${b.hardcoding || 0} deadcode=${b.deadcode || 0}`;
+    `imports=${b.imports || 0} dup=${b.duplication || 0} monolith=${b.monolith || 0} prodloc=${b.prodloc || 0} ` +
+    `compositionRoot=${b.compositionRoot || 0} hardcoding=${b.hardcoding || 0} deadcode=${b.deadcode || 0}`;
   // COORD-126: ratchet runs append the new/pre-existing split so the verdict is
   // self-explaining ("failed on 1 NEW finding; 3 pre-existing reported only").
   const ratchet = summary.mode === "ratchet"
@@ -1283,7 +1455,7 @@ function collectFiles(root, cfg) {
 
 // Scan a repo root and run all checks. Returns the same { findings, summary }
 // shape as runChecks. Findings carry repo-relative file paths.
-function scanRepo({ root, config, baseline, referenceRoot, baselineFindings } = {}) {
+function scanRepo({ root, config, baseline, referenceRoot, baselineFindings, diffAddedLinesByFile } = {}) {
   const cfg = mergeConfig(config);
   const absRoot = path.resolve(root || ".");
   const readEntry = (absBase) => (abs) => ({
@@ -1295,6 +1467,7 @@ function scanRepo({ root, config, baseline, referenceRoot, baselineFindings } = 
         return "";
       }
     })(),
+    addedLines: (diffAddedLinesByFile && diffAddedLinesByFile[normalizeFindingFilePath(path.relative(absBase, abs))]) || [],
   });
   const files = collectFiles(absRoot, cfg).map(readEntry(absRoot));
   // referenceRoot (optional): a BROADER tree used only to build the dead-code
@@ -1311,6 +1484,50 @@ function scanRepo({ root, config, baseline, referenceRoot, baselineFindings } = 
     referenceFiles = collectFiles(absRef, cfg).map(readEntry(absRoot));
   }
   return runChecks({ files, config, baseline, referenceFiles, baselineFindings });
+}
+
+function parseUnifiedDiffAddedLines(diffText) {
+  const byFile = {};
+  let file = null;
+  let newLine = null;
+  for (const line of String(diffText || "").split(/\r?\n/)) {
+    if (line.startsWith("+++ ")) {
+      const target = line.slice(4).trim();
+      file = target === "/dev/null" ? null : normalizeFindingFilePath(target.replace(/^b\//, ""));
+      if (file && !byFile[file]) byFile[file] = [];
+      newLine = null;
+      continue;
+    }
+    if (line.startsWith("@@")) {
+      const m = /\+(\d+)(?:,(\d+))?/.exec(line);
+      newLine = m ? Number(m[1]) : null;
+      continue;
+    }
+    if (!file || newLine == null) continue;
+    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (line.startsWith("+")) {
+      byFile[file].push({ text: line.slice(1), lineNumber: newLine });
+      newLine += 1;
+    } else if (line.startsWith("-")) {
+      // deletion: current-file line number does not advance
+    } else {
+      newLine += 1;
+    }
+  }
+  return byFile;
+}
+
+function computeDiffAddedLines({ repoRoot, baseRef, timeoutMs = 60_000 } = {}) {
+  const root = path.resolve(repoRoot || ".");
+  const diff = spawnSyncForGit("git", ["diff", "--unified=0", "--no-ext-diff", baseRef, "--"], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: timeoutMs,
+  });
+  if (!diff || diff.status !== 0) {
+    return { ok: false, reason: (diff && (diff.stderr || diff.error && diff.error.message)) || "git diff failed" };
+  }
+  return { ok: true, addedLinesByFile: parseUnifiedDiffAddedLines(diff.stdout || "") };
 }
 
 // COORD-126: compute the BASE finding set on a git ref WITHOUT mutating the
@@ -1340,7 +1557,22 @@ function computeBaselineFindings({ repoRoot, baseRef, config, timeoutMs = 60_000
     return { ok: false, reason: `could not create baseline worktree for ${baseRef}: ${(added && (added.stderr || added.error && added.error.message)) || "unknown"}` };
   }
   try {
-    const { findings } = scanRepo({ root: tmp, config });
+    // Scan the SAME relative subtree the live scan covers so finding keys line
+    // up. When --root is a SUBDIR of the repo (e.g. backend/ in this monorepo),
+    // the worktree is a FULL repo checkout at `tmp`; comparing the subdir scan
+    // against the whole-repo baseline would mis-key every file as NEW. Resolve
+    // the subdir's path relative to the repo top and scan the matching subtree of
+    // the worktree. Falls back to the worktree root when root IS the repo top (rel
+    // == "") or the relative path can't be determined / escapes the tree.
+    let scanRoot = tmp;
+    const top = git(["rev-parse", "--show-toplevel"]);
+    if (top && top.status === 0 && String(top.stdout || "").trim()) {
+      const rel = path.relative(String(top.stdout).trim(), root);
+      if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) {
+        scanRoot = path.join(tmp, rel);
+      }
+    }
+    const { findings } = scanRepo({ root: scanRoot, config });
     return { ok: true, findings, commit };
   } catch (e) {
     return { ok: false, reason: `baseline scan failed: ${e && e.message ? e.message : e}` };
@@ -1348,6 +1580,30 @@ function computeBaselineFindings({ repoRoot, baseRef, config, timeoutMs = 60_000
     // Always remove the throwaway worktree (force: it is detached + dirty-free).
     git(["worktree", "remove", "--force", tmp]);
   }
+}
+
+// COORD-284: resolve a DEFAULT baseline ref for ratchet mode when the caller did
+// not pass an explicit --baseline. Tries, in order: the GATE_ARCH_BASELINE env
+// override, then "origin/main", then "main" — returning the FIRST that resolves
+// to a commit in `repoRoot`. Returns null when none resolve (offline, detached,
+// no integration branch) so the caller can fall back to a NON-failing absolute
+// pass with a logged note (the gate must never brick on a missing ref). NEVER
+// throws (spawnSyncForGit swallows a missing/hung git into a non-zero status).
+function resolveDefaultBaselineRef({ repoRoot, candidates, timeoutMs = 15_000 } = {}) {
+  const root = path.resolve(repoRoot || ".");
+  const refs = (Array.isArray(candidates) && candidates.length
+    ? candidates
+    : [process.env.GATE_ARCH_BASELINE, "origin/main", "main"]
+  ).filter((r) => typeof r === "string" && r.length > 0);
+  for (const ref of refs) {
+    const r = spawnSyncForGit("git", ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: timeoutMs,
+    });
+    if (r && r.status === 0 && String(r.stdout || "").trim()) return ref;
+  }
+  return null;
 }
 
 // Thin spawnSync wrapper kept as a named function so the worktree git calls are
@@ -1419,14 +1675,33 @@ function runCli(argv, { stdout, stderr } = {}) {
   const effectiveConfig = ratchetMode ? Object.assign({}, config, { archGate: "ratchet" }) : config;
 
   let baselineFindings;
+  let diffAddedLinesByFile;
   if (ratchetMode) {
-    const baseRef = baselineRef || "HEAD";
-    const base = computeBaselineFindings({ repoRoot: root, baseRef, config: effectiveConfig });
-    if (base.ok) {
-      baselineFindings = base.findings;
+    // COORD-284: with no explicit --baseline, auto-resolve a default integration
+    // ref (GATE_ARCH_BASELINE | origin/main | main) instead of comparing against
+    // HEAD (which would make NOTHING ever "new"). If none resolve, fall back to a
+    // NON-failing absolute pass with a logged note so the gate never bricks.
+    let baseRef = baselineRef;
+    if (!baseRef) {
+      baseRef = resolveDefaultBaselineRef({ repoRoot: root });
+      if (baseRef) err.write(`arch: NOTE ratchet baseline auto-resolved to "${baseRef}"\n`);
+    }
+    if (!baseRef) {
+      err.write("arch: WARNING ratchet requested but no baseline ref (GATE_ARCH_BASELINE, origin/main, main) is resolvable; falling back to absolute mode\n");
     } else {
-      // Offline / no-base / shallow → fall back to ABSOLUTE with a clear warning.
-      err.write(`arch: WARNING ratchet requested but ${base.reason}; falling back to absolute mode\n`);
+      const base = computeBaselineFindings({ repoRoot: root, baseRef, config: effectiveConfig });
+      if (base.ok) {
+        baselineFindings = base.findings;
+        const diff = computeDiffAddedLines({ repoRoot: root, baseRef });
+        if (diff.ok) {
+          diffAddedLinesByFile = diff.addedLinesByFile;
+        } else {
+          err.write(`arch: WARNING composition-root diff guard disabled: ${diff.reason}\n`);
+        }
+      } else {
+        // Offline / no-base / shallow → fall back to ABSOLUTE with a clear warning.
+        err.write(`arch: WARNING ratchet requested but ${base.reason}; falling back to absolute mode\n`);
+      }
     }
   }
 
@@ -1434,6 +1709,7 @@ function runCli(argv, { stdout, stderr } = {}) {
     root,
     config: baselineFindings ? effectiveConfig : config,
     baselineFindings,
+    diffAddedLinesByFile,
   });
   out.write(formatArchSummary(summary) + "\n");
   return summary.result === "fail" ? 1 : 0;
@@ -1449,6 +1725,12 @@ module.exports = {
   countLoc,
   // pure checks (DI-friendly):
   checkFileSize,
+  shouldCheckProductionModuleLoc,
+  checkProductionModuleLocBudget,
+  deriveProductionModuleLocBudgets,
+  isCompositionRootFile,
+  isAllowedCompositionRootWiringLine,
+  checkCompositionRootAddedLogic,
   estimateComplexity,
   extractFunctions,
   ownComplexity,
@@ -1477,7 +1759,10 @@ module.exports = {
   stableFindingKey,
   classifyFindingsAgainstBaseline,
   summarizeRatchet,
+  parseUnifiedDiffAddedLines,
+  computeDiffAddedLines,
   computeBaselineFindings,
+  resolveDefaultBaselineRef,
   // fs scan helpers:
   collectFiles,
   scanRepo,

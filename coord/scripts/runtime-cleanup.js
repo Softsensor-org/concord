@@ -7,6 +7,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const { gitTry } = require("./git-ops.js");
 const {
   defaultFail,
@@ -28,10 +29,13 @@ module.exports = function createRuntimeCleanup(deps = {}) {
     const exists = fs.existsSync(state.GOVERNANCE_EVENT_LOCK_DIR);
     const holder = exists ? readDirectoryLockMetadata(state.GOVERNANCE_EVENT_LOCK_DIR) : null;
     const ageMs = exists ? readLockAgeMs(state.GOVERNANCE_EVENT_LOCK_DIR) : null;
+    const liveLocalHolder = holderHasLiveLocalProcess(holder);
+    const foreignHost = holderHasForeignHost(holder);
+    const knownDeadHolder = Number.isInteger(holder?.pid) && !liveLocalHolder;
     const reclaimableNow = exists
       ? (
-        (Number.isFinite(ageMs) && ageMs > GOVERNANCE_EVENT_LOCK_STALE_MS) ||
-        (Number.isInteger(holder?.pid) && !isProcessAlive(holder.pid))
+        foreignHost ||
+        knownDeadHolder
       )
       : false;
     console.log(JSON.stringify({
@@ -39,6 +43,7 @@ module.exports = function createRuntimeCleanup(deps = {}) {
       exists,
       holder,
       description: exists ? describeDirectoryLockHolder(state.GOVERNANCE_EVENT_LOCK_DIR) : "",
+      live_local_holder: liveLocalHolder,
       reclaimable_now: reclaimableNow,
     }, null, 2));
   }
@@ -51,6 +56,14 @@ module.exports = function createRuntimeCleanup(deps = {}) {
       console.log(`No governance runtime lock exists at ${state.GOVERNANCE_EVENT_LOCK_DIR}.`);
       return;
     }
+    const metadata = readDirectoryLockMetadata(state.GOVERNANCE_EVENT_LOCK_DIR);
+    if (holderHasLiveLocalProcess(metadata) && !options.forceLive) {
+      fail(
+        `break-runtime-lock refuses to remove a live local holder at ${state.GOVERNANCE_EVENT_LOCK_DIR}. ` +
+        `Run runtime-lock-status to inspect it, wait for the operation to finish, or rerun with ` +
+        `--force-live only after human-admin confirmation that the holder must be displaced.`
+      );
+    }
     const holder = describeDirectoryLockHolder(state.GOVERNANCE_EVENT_LOCK_DIR);
     fs.rmSync(state.GOVERNANCE_EVENT_LOCK_DIR, { recursive: true, force: true });
     console.log(JSON.stringify({
@@ -58,6 +71,18 @@ module.exports = function createRuntimeCleanup(deps = {}) {
       removed: true,
       holder: holder || null,
     }, null, 2));
+  }
+
+  function holderHasForeignHost(holder) {
+    const host = typeof holder?.host === "string" && holder.host.length > 0 ? holder.host : null;
+    return host !== null && host !== os.hostname();
+  }
+
+  function holderHasLiveLocalProcess(holder) {
+    const pid = Number.isInteger(holder?.pid) ? holder.pid : null;
+    if (pid === null) return false;
+    if (holderHasForeignHost(holder)) return false;
+    return isProcessAlive(pid);
   }
   
   function detectRollbackDrift() {

@@ -1,3 +1,5 @@
+// COORD-299 / COORD-390: relocate this worker's full runtime + seal surfaces to an os.tmpdir() sandbox
+require("./governance-test-utils.js").sandboxProcessRuntime();
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -11,6 +13,16 @@ const {
   runGit,
   createTempGitRepo,
 } = require("./governance-test-utils.js");
+const createGovernanceSession = require("./governance-session.js");
+const memoryClassification = require("./memory-classification.js");
+
+const sessionTesting = createGovernanceSession({
+  AGENT_SESSION_IDLE_MS: 60 * 60 * 1000,
+  COORD_DIR: process.cwd(),
+  GovernanceError,
+  SESSION_FINGERPRINT_ENV_VARS: [],
+  state: __testing.paths,
+});
 
 // COORD-097 (governance.test residual split, slice 2): lower-level
 // session / identity / lock-authority ENGINE behavior. Every subject here is
@@ -51,7 +63,7 @@ test("isCompleteLockPayload rejects partial lock records that are missing govern
       repo: __testing.repoNameForCode("F"),
       branch: "agent/claudea11-fe-096-fix",
       head: "39770ce0d590bf7afcabcf154589040366b473e9",
-      worktree: "/tmp/frontend/.worktrees/claudea11/FE-096",
+      worktree: `/tmp/${__testing.repoNameForCode("F")}/.worktrees/claudea11/FE-096`,
       session_id: "a11-session",
       started_at_utc: "2026-04-04T12:56:27.896Z",
       heartbeat_utc: "2026-04-04T12:56:27.896Z",
@@ -543,6 +555,111 @@ test("resolveEffectiveThreadId: COORD_SESSION_ID overrides the harness provider 
       else process.env[key] = value;
     }
   }
+});
+
+test("buildContinuityAttribution records human sponsor and executing agent/session", () => {
+  const snap = {
+    COORD_SESSION_ID: process.env.COORD_SESSION_ID,
+    CODEX_THREAD_ID: process.env.CODEX_THREAD_ID,
+    CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID,
+    CLAUDE_SESSION_ID: process.env.CLAUDE_SESSION_ID,
+    GEMINI_THREAD_ID: process.env.GEMINI_THREAD_ID,
+    GROK_THREAD_ID: process.env.GROK_THREAD_ID,
+    AGENT_THREAD_ID: process.env.AGENT_THREAD_ID,
+  };
+  try {
+    process.env.CODEX_THREAD_ID = "provider-codex-thread-1";
+    process.env.COORD_SESSION_ID = "coord-subagent-1";
+    delete process.env.CLAUDE_CODE_SESSION_ID;
+    delete process.env.CLAUDE_SESSION_ID;
+    delete process.env.GEMINI_THREAD_ID;
+    delete process.env.GROK_THREAD_ID;
+    delete process.env.AGENT_THREAD_ID;
+
+    const attribution = sessionTesting.buildContinuityAttribution({
+      identity: {
+        agent: { handle: "codexa42", provider: "openai" },
+        session: {
+          handle: "codexa42",
+          thread_id: "stored-thread",
+          cwd: "/tmp/project/.worktrees/codexa42/COORD-339",
+        },
+      },
+      human_id: "human-a",
+      acting_for: "platform-team",
+      team_id: "platform",
+      project_id: "coord-template",
+      ticket_id: "COORD-339",
+    });
+
+    assert.deepEqual(attribution, {
+      human_id: "human-a",
+      agent_handle: "codexa42",
+      provider_session_id: "provider-codex-thread-1",
+      coord_session_id: "coord-subagent-1",
+      acting_for: "platform-team",
+      team_id: "platform",
+      project_id: "coord-template",
+      source_worktree: "/tmp/project/.worktrees/codexa42/COORD-339",
+      ticket_id: "COORD-339",
+    });
+  } finally {
+    for (const [key, value] of Object.entries(snap)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test("buildContinuityAttribution keeps provider and coord sessions distinct for native sessions", () => {
+  const snap = {
+    COORD_SESSION_ID: process.env.COORD_SESSION_ID,
+    CODEX_THREAD_ID: process.env.CODEX_THREAD_ID,
+  };
+  try {
+    delete process.env.COORD_SESSION_ID;
+    process.env.CODEX_THREAD_ID = "codex-native-session";
+    const attribution = sessionTesting.buildContinuityAttribution({
+      agent: { handle: "codexa01", provider: "openai" },
+      source_worktree: " /tmp/wt ",
+    });
+    assert.equal(attribution.provider_session_id, "codex-native-session");
+    assert.equal(attribution.coord_session_id, "codex-native-session");
+    assert.equal(attribution.agent_handle, "codexa01");
+    assert.equal(attribution.source_worktree, "/tmp/wt");
+    assert.equal(attribution.human_id, null);
+  } finally {
+    for (const [key, value] of Object.entries(snap)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test("validateSharedAttribution refuses another human's private note as shared authority", () => {
+  const privateNote = {
+    artifact_type: "human_private_note",
+    attribution: {
+      human_id: "human-a",
+      agent_handle: "codexa01",
+      coord_session_id: "coord-session-a",
+      project_id: "coord-template",
+      ticket_id: "COORD-339",
+    },
+    source_refs: [{ path: "coord/product/CONTINUITY_PROFILE.md", section: "5.2" }],
+    promoted_by: "reviewer",
+    promoted_by_human_id: "human-b",
+  };
+
+  assert.equal(
+    memoryClassification.validateSharedAttribution(privateNote, { human_id: "human-a" }).ok,
+    true
+  );
+  assert.deepEqual(
+    memoryClassification.validateSharedAttribution(privateNote, { human_id: "human-b" }).errors,
+    ["human-private notes cannot be claimed as another human's shared authority"]
+  );
+  assert.equal(memoryClassification.validateSharedPromotion(privateNote).ok, false);
 });
 
 test("resolveEffectiveThreadId refuses to adopt a foreign active session when no stable env exists", () => {
@@ -1460,4 +1577,104 @@ test("GCV-1 Phase-6: rebindTicketLock under v2 channel preserves owner-authority
     if (saved.i === undefined) delete process.env.COORD_INSTANCE_ID;
     else process.env.COORD_INSTANCE_ID = saved.i;
   }
+});
+
+// COORD-222: enforce "one governed writer per checkout/runtime". These unit
+// tests exercise the detection primitive directly (deterministic clock +
+// injected sessions) so the start/claim gates and the doctor surfacing all rest
+// on a single, well-characterized freshness check that REUSES the existing
+// heartbeat/idle model (no new freshness notion).
+const COLOCATED_IDLE_MS = 4 * 60 * 60 * 1000;
+
+function colocatedSession(overrides = {}) {
+  return {
+    session_id: "live-1",
+    handle: "claudea11",
+    thread_id: "thread-foreign",
+    board_path: __testing.paths.BOARD_PATH,
+    status: "active",
+    last_seen_at: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+test("COORD-222: a fresh foreign session co-located on the same runtime is detected", () => {
+  const now = Date.now();
+  const sessions = [
+    colocatedSession({ session_id: "foreign-1", thread_id: "thread-foreign", last_seen_at: new Date(now).toISOString() }),
+  ];
+  const result = __testing.detectColocatedForeignSessions({ currentThreadId: "thread-mine", sessions, now });
+  assert.equal(result.present, true);
+  assert.equal(result.foreign_sessions.length, 1);
+  assert.equal(result.foreign_sessions[0].thread_id, "thread-foreign");
+});
+
+test("COORD-222: the caller's OWN session (same thread) is never a co-located conflict (resume/lone-safe)", () => {
+  const now = Date.now();
+  const sessions = [
+    colocatedSession({ session_id: "mine", thread_id: "thread-mine", last_seen_at: new Date(now).toISOString() }),
+  ];
+  const result = __testing.detectColocatedForeignSessions({ currentThreadId: "thread-mine", sessions, now });
+  assert.equal(result.present, false, "same-thread session must not false-block the lone/resume case");
+  assert.equal(result.foreign_sessions.length, 0);
+});
+
+test("COORD-222: a lone session (only the caller present) does not trip the gate", () => {
+  const now = Date.now();
+  const sessions = [
+    colocatedSession({ session_id: "mine", thread_id: "thread-mine", last_seen_at: new Date(now).toISOString() }),
+  ];
+  // From the caller's own vantage there is no OTHER fresh session.
+  const result = __testing.detectColocatedForeignSessions({ currentThreadId: "thread-mine", sessions, now });
+  assert.equal(result.present, false);
+});
+
+test("COORD-222: a STALE foreign session (heartbeat older than idle window) does NOT block", () => {
+  const now = Date.now();
+  const staleSeen = new Date(now - (COLOCATED_IDLE_MS + 60 * 1000)).toISOString();
+  const sessions = [
+    colocatedSession({ session_id: "old", thread_id: "thread-foreign", last_seen_at: staleSeen }),
+  ];
+  const result = __testing.detectColocatedForeignSessions({ currentThreadId: "thread-mine", sessions, now });
+  assert.equal(result.present, false, "stale sessions are ignored exactly as elsewhere");
+});
+
+test("COORD-222: a released/inactive foreign session does NOT block (only active liveness contends)", () => {
+  const now = Date.now();
+  const sessions = [
+    colocatedSession({ session_id: "released", thread_id: "thread-foreign", status: "released", last_seen_at: new Date(now).toISOString() }),
+  ];
+  const result = __testing.detectColocatedForeignSessions({ currentThreadId: "thread-mine", sessions, now });
+  assert.equal(result.present, false);
+});
+
+test("COORD-222: a foreign session bound to a DIFFERENT runtime/board does NOT block", () => {
+  const now = Date.now();
+  const sessions = [
+    colocatedSession({ session_id: "other-runtime", thread_id: "thread-foreign", board_path: "/some/other/coord/board/tasks.json", last_seen_at: new Date(now).toISOString() }),
+  ];
+  const result = __testing.detectColocatedForeignSessions({ currentThreadId: "thread-mine", sessions, now });
+  assert.equal(result.present, false, "co-location is scoped to THIS runtime only");
+});
+
+test("COORD-222: a session with no parseable heartbeat is treated as not-fresh (does not block)", () => {
+  const now = Date.now();
+  const sessions = [
+    colocatedSession({ session_id: "no-hb", thread_id: "thread-foreign", last_seen_at: null, claimed_at: null }),
+  ];
+  const result = __testing.detectColocatedForeignSessions({ currentThreadId: "thread-mine", sessions, now });
+  assert.equal(result.present, false);
+});
+
+test("COORD-222: the refusal message names the override and the topology doc", () => {
+  const detection = {
+    present: true,
+    current_thread_id: "thread-mine",
+    foreign_sessions: [{ session_id: "foreign-1", handle: "claudea11", thread_id: "thread-foreign" }],
+  };
+  const message = __testing.buildColocatedForeignSessionMessage("start", detection);
+  assert.match(message, /--allow-shared-worktree/);
+  assert.match(message, /MULTI_AGENT_TOPOLOGIES\.md:136/);
+  assert.match(message, /separate git worktree/i);
+  assert.match(message, /foreign-1/);
 });

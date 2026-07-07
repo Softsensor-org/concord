@@ -1,3 +1,5 @@
+// COORD-299 / COORD-390: relocate this worker's full runtime + seal surfaces to an os.tmpdir() sandbox
+require("./governance-test-utils.js").sandboxProcessRuntime();
 // Behavior tests for coord/scripts/token-economics.js — the cost-ledger,
 // precheck, context-pack, tier-policy, plan-waves, and dispatch-plan levers
 // (TOKEN_ECONOMICS.md). Relocated verbatim from governance.test.js by COORD-096
@@ -249,18 +251,21 @@ test("COORD-027: runPrecheckProbe handles grep/file-exists/test and never throws
 });
 
 function withTicketPrecheckSidecar(ticketId, board, probesJson, fn) {
-  // precheck reads probes from the real coord/prompts/tickets dir and the live
-  // board; provision a temp board + a sidecar probe file, then clean up.
-  const sidecarPath = path.join("coord", "prompts", "tickets", `${ticketId}.precheck.json`);
-  const hadSidecar = fs.existsSync(sidecarPath);
-  const prior = hadSidecar ? fs.readFileSync(sidecarPath, "utf8") : null;
-  fs.writeFileSync(sidecarPath, probesJson, "utf8");
-
+  // COORD-290: precheck resolves probes from state.PROMPTS_DIR/tickets and the
+  // board; provision a sandbox prompts dir + temp board so nothing touches the
+  // live coord/prompts/tickets tree, then restore.
   const tempBoard = fs.mkdtempSync(path.join(os.tmpdir(), "precheck-board-"));
   const boardPath = path.join(tempBoard, "tasks.json");
   fs.writeFileSync(boardPath, JSON.stringify(board, null, 2), "utf8");
+  const promptsDir = path.join(tempBoard, "prompts");
+  const ticketsDir = path.join(promptsDir, "tickets");
+  fs.mkdirSync(ticketsDir, { recursive: true });
+  const sidecarPath = path.join(ticketsDir, `${ticketId}.precheck.json`);
+  fs.writeFileSync(sidecarPath, probesJson, "utf8");
+
   const original = {
     BOARD_PATH: __testing.paths.BOARD_PATH,
+    PROMPTS_DIR: __testing.paths.PROMPTS_DIR,
     RUNTIME_DIR: __testing.paths.RUNTIME_DIR,
     GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
     GOVERNANCE_SNAPSHOT_PATH: __testing.paths.GOVERNANCE_SNAPSHOT_PATH,
@@ -270,6 +275,7 @@ function withTicketPrecheckSidecar(ticketId, board, probesJson, fn) {
   const runtimeDir = path.join(tempBoard, ".runtime");
   fs.mkdirSync(runtimeDir, { recursive: true });
   __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.PROMPTS_DIR = promptsDir;
   __testing.paths.RUNTIME_DIR = runtimeDir;
   __testing.paths.GOVERNANCE_EVENT_LOG_PATH = path.join(runtimeDir, "governance-events.ndjson");
   __testing.paths.GOVERNANCE_SNAPSHOT_PATH = path.join(runtimeDir, "governance-latest-snapshot.json");
@@ -282,11 +288,6 @@ function withTicketPrecheckSidecar(ticketId, board, probesJson, fn) {
     process.exitCode = priorExitCode;
     for (const key of Object.keys(original)) {
       __testing.paths[key] = original[key];
-    }
-    if (hadSidecar) {
-      fs.writeFileSync(sidecarPath, prior, "utf8");
-    } else {
-      fs.rmSync(sidecarPath, { force: true });
     }
   }
 }
@@ -436,18 +437,18 @@ function withContextPackPlanRecords(prefix, fn) {
 }
 
 function withTempTicketPrompt(ticketId, promptText, fn) {
-  const promptPath = path.join("coord", "prompts", "tickets", `${ticketId}.md`);
-  const had = fs.existsSync(promptPath);
-  const prior = had ? fs.readFileSync(promptPath, "utf8") : null;
-  fs.writeFileSync(promptPath, promptText, "utf8");
+  // COORD-290: write the prompt into a sandbox PROMPTS_DIR (production resolves
+  // prompts via state.PROMPTS_DIR) instead of the live coord/prompts tree.
+  const tempPrompts = fs.mkdtempSync(path.join(os.tmpdir(), "temp-prompt-"));
+  const ticketsDir = path.join(tempPrompts, "tickets");
+  fs.mkdirSync(ticketsDir, { recursive: true });
+  fs.writeFileSync(path.join(ticketsDir, `${ticketId}.md`), promptText, "utf8");
+  const originalPromptsDir = __testing.paths.PROMPTS_DIR;
+  __testing.paths.PROMPTS_DIR = tempPrompts;
   try {
     return fn();
   } finally {
-    if (had) {
-      fs.writeFileSync(promptPath, prior, "utf8");
-    } else {
-      fs.rmSync(promptPath, { force: true });
-    }
+    __testing.paths.PROMPTS_DIR = originalPromptsDir;
   }
 }
 
@@ -738,27 +739,25 @@ function promptWithFiles(ticketId, files) {
 }
 
 function withPlanWavesScenario(board, promptsByTicket, fn) {
+  // COORD-290: seed prompts into a sandbox PROMPTS_DIR instead of the live tree.
   const tempBoard = fs.mkdtempSync(path.join(os.tmpdir(), "planwaves-"));
   const boardPath = path.join(tempBoard, "tasks.json");
   fs.writeFileSync(boardPath, JSON.stringify(board, null, 2), "utf8");
-  const written = [];
+  const promptsDir = path.join(tempBoard, "prompts");
+  const ticketsDir = path.join(promptsDir, "tickets");
+  fs.mkdirSync(ticketsDir, { recursive: true });
   for (const [ticketId, files] of Object.entries(promptsByTicket)) {
-    const promptPath = path.join("coord", "prompts", "tickets", `${ticketId}.md`);
-    if (fs.existsSync(promptPath)) {
-      throw new Error(`refusing to clobber existing prompt ${promptPath}`);
-    }
-    fs.writeFileSync(promptPath, promptWithFiles(ticketId, files), "utf8");
-    written.push(promptPath);
+    fs.writeFileSync(path.join(ticketsDir, `${ticketId}.md`), promptWithFiles(ticketId, files), "utf8");
   }
   const originalBoard = __testing.paths.BOARD_PATH;
+  const originalPromptsDir = __testing.paths.PROMPTS_DIR;
   __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.PROMPTS_DIR = promptsDir;
   try {
     return fn();
   } finally {
     __testing.paths.BOARD_PATH = originalBoard;
-    for (const p of written) {
-      fs.rmSync(p, { force: true });
-    }
+    __testing.paths.PROMPTS_DIR = originalPromptsDir;
   }
 }
 
@@ -808,21 +807,103 @@ test("COORD-030: a dependsOn forces ordering across waves", () => {
   });
 });
 
-test("COORD-030: a repo-X ticket is scheduled alone (not parallelizable)", () => {
+test("COORD-351: safe repo-X tickets can share waves when declared files are disjoint", () => {
   const board = {
     metadata: { title: "B" },
     sections: [{ rows: [
-      { ID: "XSEQ-001", Repo: "X", Pri: "P2", Status: "todo", Owner: "u", Description: "coord change", "Depends On": "" },
-      { ID: "XSEQ-002", Repo: "B", Pri: "P2", Status: "todo", Owner: "u", Description: "product", "Depends On": "" },
+      { ID: "XSAFE-001", Repo: "X", Pri: "P2", Status: "todo", Owner: "u", Description: "coord script", "Depends On": "" },
+      { ID: "XSAFE-002", Repo: "X", Pri: "P2", Status: "todo", Owner: "u", Description: "coord doc", "Depends On": "" },
+      { ID: "XSAFE-003", Repo: "X", Pri: "P2", Status: "todo", Owner: "u", Description: "coord overlap", "Depends On": "" },
     ] }],
   };
-  const prompts = { "XSEQ-001": ["coord/scripts/governance.js"], "XSEQ-002": ["src/p.js"] };
+  const prompts = {
+    "XSAFE-001": ["coord/scripts/governance.js"],
+    "XSAFE-002": ["coord/docs/MULTI_AGENT_TOPOLOGIES.md"],
+    "XSAFE-003": ["coord/scripts/governance.js"],
+  };
   withPlanWavesScenario(board, prompts, () => {
     const payload = executeCommand(["plan-waves", "--json"]).value;
-    const xWave = payload.waves.find((w) => w.tickets.some((t) => t.ticket === "XSEQ-001"));
-    assert.equal(xWave.tickets.length, 1, "the repo-X ticket must be alone in its wave");
-    assert.equal(xWave.tickets[0].parallelizable, false);
-    assert.match(xWave.tickets[0].note, /not parallelizable/);
+    assert.equal(findWaveOf(payload, "XSAFE-001"), 1);
+    assert.equal(findWaveOf(payload, "XSAFE-002"), 1, "safe disjoint repo-X ticket joins wave 1");
+    assert.equal(findWaveOf(payload, "XSAFE-003"), 2, "overlapping safe repo-X ticket moves later");
+    const safe = payload.waves[0].tickets.find((t) => t.ticket === "XSAFE-001");
+    assert.equal(safe.parallelizable, true);
+    assert.match(safe.note, /safe declared coord code\/doc surfaces/);
+  });
+});
+
+test("COORD-355: board Declared Files unlock safe repo-X plan-waves without prompt prose", () => {
+  const board = {
+    metadata: { title: "B" },
+    sections: [{ rows: [
+      {
+        ID: "XBOARD-001",
+        Repo: "X",
+        Pri: "P2",
+        Status: "todo",
+        Owner: "u",
+        Description: "coord script",
+        "Depends On": "",
+        "Declared Files": "coord/scripts/token-economics.js",
+      },
+      {
+        ID: "XBOARD-002",
+        Repo: "X",
+        Pri: "P2",
+        Status: "todo",
+        Owner: "u",
+        Description: "coord doc",
+        "Depends On": "",
+        "Declared Files": "- `coord/docs/MULTI_AGENT_TOPOLOGIES.md`",
+      },
+      {
+        ID: "XBOARD-003",
+        Repo: "X",
+        Pri: "P2",
+        Status: "todo",
+        Owner: "u",
+        Description: "coord overlap",
+        "Depends On": "",
+        declared_files: ["coord/scripts/token-economics.js"],
+      },
+    ] }],
+  };
+  withPlanWavesScenario(board, {}, () => {
+    const payload = executeCommand(["plan-waves", "--json"]).value;
+    assert.equal(findWaveOf(payload, "XBOARD-001"), 1);
+    assert.equal(findWaveOf(payload, "XBOARD-002"), 1, "board-declared disjoint repo-X ticket joins wave 1");
+    assert.equal(findWaveOf(payload, "XBOARD-003"), 2, "board-declared overlapping repo-X ticket moves later");
+    const safe = payload.waves[0].tickets.find((t) => t.ticket === "XBOARD-001");
+    assert.deepEqual(safe.files, ["coord/scripts/token-economics.js"]);
+    assert.equal(safe.parallelizable, true);
+  });
+});
+
+test("COORD-351: repo-X global-state and missing-file tickets still serialize", () => {
+  const board = {
+    metadata: { title: "B" },
+    sections: [{ rows: [
+      { ID: "XSTATE-001", Repo: "X", Pri: "P2", Status: "todo", Owner: "u", Description: "board", "Depends On": "" },
+      { ID: "XSTATE-002", Repo: "X", Pri: "P2", Status: "todo", Owner: "u", Description: "no files", "Depends On": "" },
+      { ID: "XSTATE-003", Repo: "B", Pri: "P2", Status: "todo", Owner: "u", Description: "product", "Depends On": "" },
+    ] }],
+  };
+  const prompts = {
+    "XSTATE-001": ["coord/board/tasks.json"],
+    "XSTATE-003": ["src/product.js"],
+  };
+  withPlanWavesScenario(board, prompts, () => {
+    const payload = executeCommand(["plan-waves", "--json"]).value;
+    const stateWave = payload.waves.find((w) => w.tickets.some((t) => t.ticket === "XSTATE-001"));
+    const noFilesWave = payload.waves.find((w) => w.tickets.some((t) => t.ticket === "XSTATE-002"));
+    const state = stateWave.tickets.find((t) => t.ticket === "XSTATE-001");
+    const noFiles = noFilesWave.tickets.find((t) => t.ticket === "XSTATE-002");
+    assert.equal(stateWave.tickets.length, 1, "global-state repo-X ticket remains alone");
+    assert.equal(noFilesWave.tickets.length, 1, "missing-file repo-X ticket remains alone");
+    assert.equal(state.parallelizable, false);
+    assert.equal(noFiles.parallelizable, false);
+    assert.match(state.note, /global coordination state/);
+    assert.match(noFiles.note, /no declared files/);
   });
 });
 
@@ -867,45 +948,173 @@ test("COORD-030: an unsatisfiable dependency is excluded, never silently dropped
   });
 });
 
+test("COORD-357: sequencer-plan groups overlapping active tickets and omits disjoint tickets", () => {
+  const board = {
+    metadata: { title: "B" },
+    sections: [{ rows: [
+      { ID: "SEQ-001", Repo: "B", Pri: "P1", Status: "review", Owner: "u", Description: "a", "Depends On": "" },
+      { ID: "SEQ-002", Repo: "B", Pri: "P2", Status: "doing", Owner: "u", Description: "b", "Depends On": "" },
+      { ID: "SEQ-003", Repo: "B", Pri: "P2", Status: "review", Owner: "u", Description: "c", "Depends On": "" },
+    ] }],
+  };
+  const prompts = {
+    "SEQ-001": ["src/shared.js"],
+    "SEQ-002": ["src/shared.js"],
+    "SEQ-003": ["src/other.js"],
+  };
+  withPlanWavesScenario(board, prompts, () => {
+    const payload = executeCommand(["sequencer-plan", "--json"]).value;
+    assert.equal(payload.group_count, 1);
+    assert.equal(payload.groups[0].gate_mode, "slice");
+    assert.deepEqual(payload.groups[0].tickets.map((ticket) => ticket.ticket), ["SEQ-001", "SEQ-002"]);
+    assert.ok(!JSON.stringify(payload).includes("SEQ-003"), "disjoint active ticket stays outside sequencer");
+  });
+});
+
+test("COORD-357: sequencer-plan full-fallbacks missing and repo-X global-state surfaces", () => {
+  const board = {
+    metadata: { title: "B" },
+    sections: [{ rows: [
+      { ID: "SEQ-MISS", Repo: "B", Pri: "P2", Status: "review", Owner: "u", Description: "missing", "Depends On": "" },
+      { ID: "SEQ-XSTATE", Repo: "X", Pri: "P2", Status: "review", Owner: "u", Description: "board", "Depends On": "" },
+    ] }],
+  };
+  const prompts = {
+    "SEQ-XSTATE": ["coord/board/tasks.json"],
+  };
+  withPlanWavesScenario(board, prompts, () => {
+    const payload = executeCommand(["sequencer-plan", "--json"]).value;
+    assert.equal(payload.group_count, 2);
+    const missing = payload.groups.find((group) => group.tickets.some((ticket) => ticket.ticket === "SEQ-MISS"));
+    const globalState = payload.groups.find((group) => group.tickets.some((ticket) => ticket.ticket === "SEQ-XSTATE"));
+    assert.equal(missing.gate_mode, "full");
+    assert.equal(globalState.gate_mode, "full");
+    assert.match(missing.tickets[0].reasons[0].code, /missing_declared_files/);
+    assert.match(globalState.tickets[0].reasons[0].code, /repo_x_sequential_surface/);
+  });
+});
+
+test("COORD-357: sequencer-plan uses active dependency edges for deterministic order", () => {
+  const board = {
+    metadata: { title: "B" },
+    sections: [{ rows: [
+      { ID: "SDEP-001", Repo: "B", Pri: "P2", Status: "review", Owner: "u", Description: "dep", "Depends On": "" },
+      { ID: "SDEP-002", Repo: "B", Pri: "P1", Status: "review", Owner: "u", Description: "child", "Depends On": "SDEP-001" },
+    ] }],
+  };
+  const prompts = {
+    "SDEP-001": ["src/a.js"],
+    "SDEP-002": ["src/b.js"],
+  };
+  withPlanWavesScenario(board, prompts, () => {
+    const payload = executeCommand(["sequencer-plan", "--json"]).value;
+    assert.equal(payload.group_count, 1);
+    assert.deepEqual(payload.groups[0].tickets.map((ticket) => ticket.ticket), ["SDEP-001", "SDEP-002"]);
+    assert.equal(payload.groups[0].gate_mode, "slice");
+    assert.ok(payload.groups[0].tickets[1].reasons.some((reason) => reason.code === "dependency_edge"));
+  });
+});
+
+test("COORD-388: merge-queue materializes sequencer groups with deterministic order and depth", () => {
+  const board = {
+    metadata: { title: "B" },
+    sections: [{ rows: [
+      { ID: "MQ-001", Repo: "B", Pri: "P1", Status: "review", Owner: "alice", Description: "a", "Depends On": "" },
+      { ID: "MQ-002", Repo: "B", Pri: "P2", Status: "review", Owner: "bob", Description: "b", "Depends On": "" },
+      { ID: "MQ-003", Repo: "B", Pri: "P2", Status: "review", Owner: "cara", Description: "c", "Depends On": "" },
+    ] }],
+  };
+  const prompts = {
+    "MQ-001": ["src/shared.js"],
+    "MQ-002": ["src/shared.js"],
+    "MQ-003": ["src/other.js"],
+  };
+  withPlanWavesScenario(board, prompts, () => {
+    const payload = executeCommand(["merge-queue", "--json"]).value;
+    assert.equal(payload.mode, "contention_queue");
+    assert.equal(payload.depth, 2);
+    assert.equal(payload.group_count, 1);
+    assert.equal(payload.groups[0].state, "queued");
+    assert.deepEqual(payload.groups[0].tickets.map((ticket) => ticket.ticket), ["MQ-001", "MQ-002"]);
+    assert.ok(!JSON.stringify(payload).includes("MQ-003"), "disjoint ticket stays on the normal land path");
+  });
+});
+
+test("COORD-388: merge-queue records inspectable runtime state only with --record", () => {
+  const board = {
+    metadata: { title: "B" },
+    sections: [{ rows: [
+      { ID: "MQREC-001", Repo: "X", Pri: "P2", Status: "review", Owner: "alice", Description: "state", "Depends On": "" },
+    ] }],
+  };
+  const prompts = { "MQREC-001": ["coord/board/tasks.json"] };
+  const statePath = path.join(__testing.paths.RUNTIME_DIR, "merge-queue.json");
+  try { fs.rmSync(statePath, { force: true }); } catch { /* best effort */ }
+  withPlanWavesScenario(board, prompts, () => {
+    const dry = executeCommand(["merge-queue", "--json"]).value;
+    assert.equal(dry.depth, 1);
+    assert.equal(fs.existsSync(statePath), false, "read-only inspect must not write queue state");
+    const recorded = executeCommand(["merge-queue", "--record", "--json"]).value;
+    assert.equal(recorded.depth, 1);
+    assert.equal(fs.existsSync(statePath), true, "--record writes queue state");
+    const persisted = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    assert.equal(persisted.groups[0].tickets[0].ticket, "MQREC-001");
+  });
+});
+
+test("COORD-388: merge-queue blocks ambiguous dependency cycles instead of picking an order", () => {
+  const board = {
+    metadata: { title: "B" },
+    sections: [{ rows: [
+      { ID: "MQCYC-001", Repo: "B", Pri: "P1", Status: "review", Owner: "alice", Description: "a", "Depends On": "MQCYC-002" },
+      { ID: "MQCYC-002", Repo: "B", Pri: "P1", Status: "review", Owner: "bob", Description: "b", "Depends On": "MQCYC-001" },
+    ] }],
+  };
+  const prompts = {
+    "MQCYC-001": ["src/a.js"],
+    "MQCYC-002": ["src/b.js"],
+  };
+  withPlanWavesScenario(board, prompts, () => {
+    const payload = executeCommand(["merge-queue", "--json"]).value;
+    assert.equal(payload.blocked_group_count, 1);
+    assert.equal(payload.groups[0].state, "blocked");
+    assert.equal(payload.groups[0].ambiguous_ordering, true);
+    assert.equal(payload.groups[0].ambiguities[0].code, "ambiguous_dependency_cycle");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // COORD-031: gov dispatch-plan (TOKEN_ECONOMICS.md — wires levers #2/#3/#4/#5).
 // ---------------------------------------------------------------------------
 
 function withDispatchPlanScenario(board, prompts, probesByTicket, fn) {
   // prompts: { ID: [files] }; probesByTicket: { ID: [probe,...] }.
+  // COORD-290: seed prompts + precheck sidecars into a sandbox PROMPTS_DIR.
   const tempBoard = fs.mkdtempSync(path.join(os.tmpdir(), "dispatchplan-"));
   const boardPath = path.join(tempBoard, "tasks.json");
   fs.writeFileSync(boardPath, JSON.stringify(board, null, 2), "utf8");
-  const written = [];
+  const promptsDir = path.join(tempBoard, "prompts");
+  const ticketsDir = path.join(promptsDir, "tickets");
+  fs.mkdirSync(ticketsDir, { recursive: true });
   for (const [ticketId, files] of Object.entries(prompts || {})) {
-    const promptPath = path.join("coord", "prompts", "tickets", `${ticketId}.md`);
-    if (fs.existsSync(promptPath)) {
-      throw new Error(`refusing to clobber existing prompt ${promptPath}`);
-    }
     const lines = [`# ${ticketId}: sample`, "", "## Likely Files"];
     for (const f of files) {
       lines.push(`- \`${f}\` (a file)`);
     }
-    fs.writeFileSync(promptPath, lines.join("\n"), "utf8");
-    written.push(promptPath);
+    fs.writeFileSync(path.join(ticketsDir, `${ticketId}.md`), lines.join("\n"), "utf8");
   }
   for (const [ticketId, probes] of Object.entries(probesByTicket || {})) {
-    const sidecar = path.join("coord", "prompts", "tickets", `${ticketId}.precheck.json`);
-    if (fs.existsSync(sidecar)) {
-      throw new Error(`refusing to clobber existing precheck sidecar ${sidecar}`);
-    }
-    fs.writeFileSync(sidecar, JSON.stringify({ probes }, null, 2), "utf8");
-    written.push(sidecar);
+    fs.writeFileSync(path.join(ticketsDir, `${ticketId}.precheck.json`), JSON.stringify({ probes }, null, 2), "utf8");
   }
   const originalBoard = __testing.paths.BOARD_PATH;
+  const originalPromptsDir = __testing.paths.PROMPTS_DIR;
   __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.PROMPTS_DIR = promptsDir;
   try {
     return fn();
   } finally {
     __testing.paths.BOARD_PATH = originalBoard;
-    for (const p of written) {
-      fs.rmSync(p, { force: true });
-    }
+    __testing.paths.PROMPTS_DIR = originalPromptsDir;
   }
 }
 
@@ -992,9 +1201,10 @@ test("COORD-031: dispatch-plan is deterministic + hash-stable across two runs (n
     const b = executeCommand(["dispatch-plan", "--json"]).stdout;
     assert.equal(a, b, "identical board state must produce a byte-identical manifest");
     const payload = JSON.parse(a);
-    // repo-X ticket is scheduled alone (inherited from plan-waves).
+    // Safe declared repo-X code/doc surfaces may parallelize (inherited from plan-waves).
     const x = dispatchFindTicket(payload, "DPH-002");
-    assert.equal(x.entry.parallelizable, false);
+    assert.equal(x.entry.parallelizable, true);
+    assert.match(x.entry.wave_note, /safe declared coord code\/doc surfaces/);
     // dependency ordering preserved: DPH-003 after DPH-001.
     const lead = dispatchFindTicket(payload, "DPH-001");
     const follower = dispatchFindTicket(payload, "DPH-003");

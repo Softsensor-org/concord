@@ -2,6 +2,8 @@ import { loadUrs } from '../../lib/urs';
 import { loadTraceability } from '../../lib/traceability';
 import Link from 'next/link';
 
+export const dynamic = 'force-dynamic';
+
 export default function UrsPage() {
   const urs = loadUrs();
   const trace = loadTraceability();

@@ -28,6 +28,7 @@ const {
   GOVERNANCE_EVENT_LOCK_STALE_MS,
 } = require("./governance-context.js");
 const { STATUS } = require("./governance-constants.js");
+const treeMutationSafety = require("./tree-mutation-safety.js");
 
 module.exports = function createDoctorRecovery(deps = {}) {
   const fail = deps.fail || defaultFail;
@@ -95,9 +96,74 @@ module.exports = function createDoctorRecovery(deps = {}) {
     repoNameForCode,
     isRepoBackedCode,
     isDoingStatus,
+    gitTry,
+    canonicalSyncablePaths,
     slugify,
     identityV2,
   } = deps;
+
+  function doctorFixAllowedPaths() {
+    const paths = typeof canonicalSyncablePaths === "function"
+      ? canonicalSyncablePaths().slice()
+      : [];
+    for (const entry of [
+      "board/tasks.json",
+      "QUESTIONS.md",
+      ".runtime/locks",
+      ".runtime/agent_sessions.json",
+      ".runtime/agents.json",
+      ".runtime/gate-procs",
+    ]) {
+      if (!paths.includes(entry)) {
+        paths.push(entry);
+      }
+    }
+    return paths;
+  }
+
+  function assertDoctorFixSafety(options = {}) {
+    if (options.ticket) {
+      return;
+    }
+    const board = readBoard();
+    treeMutationSafety.assertNoUnsafeTreeMutation({
+      gitTry,
+      repoRoot: COORD_DIR,
+      allowedPaths: doctorFixAllowedPaths(),
+      board,
+      getRows: (candidateBoard) => resolveDoctorScope(candidateBoard, null).rows,
+      isDoingStatus,
+      findLockForTicket,
+      isStaleTicketLock,
+      currentTicketId: options.ticket || null,
+      fail,
+    });
+  }
+
+  function printRepairAllDryRun(options = {}) {
+    const scope = options.ticket ? `ticket ${options.ticket}` : "board-wide";
+    const steps = [
+      "Run read-only doctor diagnostics first.",
+      "Apply existing deterministic doctor --fix repairs for drift, stale locks, malformed locks, orphan coord worktrees, missing governed plan stubs, gate-proc orphans, and stale drift-note retirement.",
+      "Refuse unsafe tree-wide mutation if non-derived working-tree changes or foreign live ticket locks make repair ambiguous.",
+      "Leave journal hash-chain repair explicit: run gov repair-chain --confirm --reason \"...\" only when conform reports a broken chain.",
+      "Run gov recover <ticket> for ticket-specific lock/ownership repair when a scoped ticket remains unhealthy after the deterministic pass.",
+    ];
+    const payload = {
+      command: "doctor --repair-all",
+      mode: "dry-run",
+      scope,
+      status: "planned",
+      planned_steps: steps,
+      apply_command: options.ticket
+        ? `coord/scripts/gov doctor --repair-all --confirm --ticket ${options.ticket}`
+        : "coord/scripts/gov doctor --repair-all --confirm",
+      destructive_actions: "none in dry-run",
+      confirmation_required: true,
+    };
+    console.log(JSON.stringify(payload, null, 2));
+    return payload;
+  }
 
   function repairSessionMirrorFromCanonicalLock({ row, lock, canonicalOwner, agent, sessionRepair, sessions }) {
     if (!lock?.session_id || !sessionRepair || !canonicalOwner) {
@@ -169,8 +235,12 @@ module.exports = function createDoctorRecovery(deps = {}) {
   }
 
   function doctorFix(options = {}) {
+    if (options.repairAll && !options.confirm && !options.yes) {
+      return printRepairAllDryRun(options);
+    }
+    assertDoctorFixSafety(options);
     const mutation = {
-      command: "doctor-fix",
+      command: options.repairAll ? "doctor-repair-all" : "doctor-fix",
       ticket: options.ticket || null,
       allowProvenanceDrift: true,
     };
@@ -241,7 +311,15 @@ module.exports = function createDoctorRecovery(deps = {}) {
       }
 
       for (const row of targetRows) {
-        const planRecord = readPlanRecord(row.ID, { allowMissing: true });
+        // COORD-371: this read is ONLY an existence check for shouldSeedPlanStub
+        // below; the record contents are never used. readPlanRecord performs a
+        // normalizing repair-WRITE by default (plan-records.js), so without
+        // skipRepairWrite a board-wide `doctor --fix` rewrote every plan record
+        // whose normalized form differed (observed: 229 records re-stamped,
+        // current-schema fields stripped) — violating the §11.1 non-destructive
+        // doctor-repair scope. Skip the repair-write: doctor --fix must never
+        // rewrite an existing plan record it is not explicitly repairing.
+        const planRecord = readPlanRecord(row.ID, { allowMissing: true, skipRepairWrite: true });
         const shouldSeedPlanStub =
           (!planRecord && (isDoingStatus(row.Status) || row.Status === STATUS.REVIEW)) ||
           (options.ticket === row.ID && !planRecord);

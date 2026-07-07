@@ -1,3 +1,5 @@
+// COORD-299: relocate this worker's ephemeral coarse state-locks + memory corpus to an os.tmpdir() sandbox
+require("./governance-test-utils.js").sandboxProcessRuntimeLocks();
 "use strict";
 
 // Wave 2 (COORD-059): questions tests relocated out of governance.test.js into a

@@ -142,6 +142,7 @@ export const PLAN_RECORDS_DIR = resolvePlanRecordsDir();
 // Derived screen/requirement index artifact (runtime; written by the
 // generator, read by the dashboard — never written from the web tier).
 export const SCREEN_INDEX_PATH = path.join(RUNTIME_DIR, 'screen-index.json');
+export const READINESS_REPORT_PATH = path.join(RUNTIME_DIR, 'readiness-report.json');
 
 function resolveFromCoord(value: string): string {
   return path.isAbsolute(value) ? path.resolve(value) : path.resolve(COORD_DIR, value);

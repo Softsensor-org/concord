@@ -21,6 +21,12 @@ const {
   stripComments,
   countLoc,
   checkFileSize,
+  shouldCheckProductionModuleLoc,
+  checkProductionModuleLocBudget,
+  deriveProductionModuleLocBudgets,
+  isCompositionRootFile,
+  isAllowedCompositionRootWiringLine,
+  checkCompositionRootAddedLogic,
   estimateComplexity,
   extractFunctions,
   ownComplexity,
@@ -81,14 +87,17 @@ function mkLines(n, makeLine = (i) => `const v${i} = fn(${i});`) {
 // --- config / constants ----------------------------------------------------
 
 test("CHECKS and SEVERITIES expose the documented vocabulary", () => {
-  assert.deepEqual(CHECKS, ["size", "complexity", "imports", "duplication", "monolith", "hardcoding", "deadcode"]);
+  assert.deepEqual(CHECKS, ["size", "complexity", "imports", "duplication", "monolith", "prodloc", "compositionRoot", "hardcoding", "deadcode"]);
   assert.deepEqual(SEVERITIES, ["off", "warn", "fail"]);
 });
 
-test("DEFAULT_CONFIG is WARNING-FIRST: every check defaults to warn", () => {
+test("DEFAULT_CONFIG is warning-first except strict engine-architecture checks", () => {
   for (const name of CHECKS) {
+    if (name === "prodloc" || name === "compositionRoot") continue;
     assert.equal(DEFAULT_CONFIG.checks[name].severity, "warn", `${name} should default to warn`);
   }
+  assert.equal(DEFAULT_CONFIG.checks.prodloc.severity, "fail");
+  assert.equal(DEFAULT_CONFIG.checks.compositionRoot.severity, "fail");
 });
 
 test("mergeConfig overrides per-check fields without dropping defaults", () => {
@@ -206,14 +215,164 @@ test("size check honors a justified per-file budget override (COORD-091)", () =>
 
 test("DEFAULT_CONFIG carries the lifecycle.js composition-root size override (COORD-091)", () => {
   assert.ok(DEFAULT_CONFIG.checks.size.perFile, "size check exposes a perFile override map");
-  // COORD-094: bumped from 1750 -> 5000 after fixing countLoc's literal-blind
-  // comment stripper revealed lifecycle.js's honest size (~4837 LOC, was being
-  // under-counted to ~1682). 5000 sits just above the true size and at the
-  // monolith hard ceiling, so genuine growth still trips a signal.
-  assert.equal(DEFAULT_CONFIG.checks.size.perFile["lifecycle.js"], 5000);
+  // COORD-397: after extracting the residual lifecycle command/helper clusters,
+  // the composition-root override is ratcheted down from the old 5000 grandfather
+  // to the measured residual budget.
+  assert.equal(DEFAULT_CONFIG.checks.size.perFile["lifecycle.js"], 2600);
   // mergeConfig preserves the default perFile map when an unrelated field is overridden.
   const merged = mergeConfig({ checks: { size: { severity: "fail" } } });
-  assert.equal(merged.checks.size.perFile["lifecycle.js"], 5000);
+  assert.equal(merged.checks.size.perFile["lifecycle.js"], 2600);
+});
+
+test("production-module LOC check is scoped to non-test coord/scripts modules", () => {
+  assert.equal(shouldCheckProductionModuleLoc("coord/scripts/foo.js", DEFAULT_CONFIG.checks.prodloc), true);
+  assert.equal(shouldCheckProductionModuleLoc("coord/scripts/enterprise/foo.js", DEFAULT_CONFIG.checks.prodloc), true);
+  assert.equal(shouldCheckProductionModuleLoc("coord/scripts/foo.test.js", DEFAULT_CONFIG.checks.prodloc), false);
+  assert.equal(shouldCheckProductionModuleLoc("coord/scripts/__fixtures__/foo.js", DEFAULT_CONFIG.checks.prodloc), false);
+  assert.equal(shouldCheckProductionModuleLoc("backend/src/foo.js", DEFAULT_CONFIG.checks.prodloc), false);
+});
+
+test("production-module LOC check fails new modules above 1200 and ignores tests", () => {
+  const hit = checkProductionModuleLocBudget({
+    file: "coord/scripts/new-monolith.js",
+    source: mkLines(1201),
+    config: DEFAULT_CONFIG.checks.prodloc,
+    severity: DEFAULT_CONFIG.checks.prodloc.severity,
+  });
+  assert.equal(hit.length, 1);
+  assert.equal(hit[0].check, "prodloc");
+  assert.equal(hit[0].severity, "fail");
+  assert.equal(hit[0].threshold, 1200);
+  assert.match(hit[0].message, /production-module high-water LOC budget/);
+
+  const ignoredTest = checkProductionModuleLocBudget({
+    file: "coord/scripts/new-monolith.test.js",
+    source: mkLines(5000),
+    config: DEFAULT_CONFIG.checks.prodloc,
+    severity: "fail",
+  });
+  assert.deepEqual(ignoredTest, []);
+});
+
+test("production-module LOC check honors high-water budgets as growth caps", () => {
+  const cfg = {
+    maxLoc: 1200,
+    severity: "fail",
+    include: ["coord/scripts/"],
+    highWater: { "coord/scripts/legacy.js": 10 },
+  };
+  assert.deepEqual(
+    checkProductionModuleLocBudget({
+      file: "coord/scripts/legacy.js",
+      source: mkLines(10),
+      config: cfg,
+      severity: "fail",
+    }),
+    [],
+    "a tracked module at its high-water budget passes",
+  );
+  const grown = checkProductionModuleLocBudget({
+    file: "coord/scripts/legacy.js",
+    source: mkLines(11),
+    config: cfg,
+    severity: "fail",
+  });
+  assert.equal(grown.length, 1);
+  assert.equal(grown[0].threshold, 10);
+  assert.match(grown[0].message, /high-water LOC budget/);
+  assert.doesNotMatch(grown[0].message, /grandfather/i);
+});
+
+test("production-module LOC budgets derive a downward high-water mark after shrink", () => {
+  const cfg = {
+    maxLoc: 1200,
+    include: ["coord/scripts/"],
+    highWater: {
+      "coord/scripts/legacy.js": 2000,
+      "coord/scripts/small.js": 1300,
+    },
+  };
+  const budgets = deriveProductionModuleLocBudgets({
+    config: cfg,
+    files: [
+      { file: "coord/scripts/legacy.js", source: mkLines(1500) },
+      { file: "coord/scripts/small.js", source: mkLines(800) },
+      { file: "coord/scripts/new.js", source: mkLines(300) },
+      { file: "coord/scripts/new.test.js", source: mkLines(5000) },
+    ],
+  });
+  assert.equal(budgets["coord/scripts/legacy.js"], 1500, "shrinking a tracked hotspot lowers its cap");
+  assert.equal(budgets["coord/scripts/small.js"], 1200, "tracked modules below the global cap lower to the global cap");
+  assert.equal(budgets["coord/scripts/new.js"], 1200, "new modules keep the global cap");
+  assert.equal(budgets["coord/scripts/new.test.js"], undefined, "tests are not budgeted");
+});
+
+test("DEFAULT_CONFIG prodloc high-water budgets are current and do not use grandfather exemptions", () => {
+  assert.ok(DEFAULT_CONFIG.checks.prodloc.highWater, "prodloc exposes highWater budgets");
+  assert.equal(DEFAULT_CONFIG.checks.prodloc.grandfather, undefined, "grandfather exemptions are not part of the default policy");
+  for (const [file, budget] of Object.entries(DEFAULT_CONFIG.checks.prodloc.highWater)) {
+    const source = fs.readFileSync(path.join(__dirname, "..", "..", file), "utf8");
+    const { loc } = countLoc(source);
+    assert.ok(loc <= budget, `${file} current LOC ${loc} must be within its high-water budget ${budget}`);
+  }
+});
+
+test("composition-root guard is scoped to lifecycle and governance-validation", () => {
+  assert.equal(isCompositionRootFile("coord/scripts/lifecycle.js", DEFAULT_CONFIG.checks.compositionRoot), true);
+  assert.equal(isCompositionRootFile("coord/scripts/governance-validation.js", DEFAULT_CONFIG.checks.compositionRoot), true);
+  assert.equal(isCompositionRootFile("coord/scripts/new-command.js", DEFAULT_CONFIG.checks.compositionRoot), false);
+});
+
+test("composition-root guard allows wiring-only added lines", () => {
+  const allowed = [
+    'const createFoo = require("./foo.js");',
+    "const {",
+    "  fooCommand,",
+    '} = require("./foo-command.js");',
+    "fooCommand,",
+    "module.exports = {",
+    "foo: fooCommand,",
+    "};",
+    "// wiring comment",
+  ];
+  for (const line of allowed) {
+    assert.equal(isAllowedCompositionRootWiringLine(line), true, `expected wiring line to pass: ${line}`);
+  }
+  const findings = checkCompositionRootAddedLogic({
+    file: "coord/scripts/lifecycle.js",
+    addedLines: allowed.map((text, i) => ({ text, lineNumber: i + 1 })),
+    config: DEFAULT_CONFIG.checks.compositionRoot,
+    severity: "fail",
+  });
+  assert.deepEqual(findings, []);
+});
+
+test("composition-root guard fails appended logic in both roots", () => {
+  for (const file of ["coord/scripts/lifecycle.js", "coord/scripts/governance-validation.js"]) {
+    const findings = checkCompositionRootAddedLogic({
+      file,
+      addedLines: [
+        { text: "function appendedBusinessLogic() { return true; }", lineNumber: 10 },
+        { text: "if (ticket.highRisk) fail('blocked');", lineNumber: 11 },
+      ],
+      config: DEFAULT_CONFIG.checks.compositionRoot,
+      severity: "fail",
+    });
+    assert.equal(findings.length, 2);
+    assert.equal(findings[0].check, "compositionRoot");
+    assert.equal(findings[0].severity, "fail");
+    assert.match(findings[0].message, /self-registering module/);
+  }
+});
+
+test("composition-root guard ignores self-registering modules outside the roots", () => {
+  const findings = checkCompositionRootAddedLogic({
+    file: "coord/scripts/commands/new-command.js",
+    addedLines: [{ text: "function newCommand() { return true; }", lineNumber: 1 }],
+    config: DEFAULT_CONFIG.checks.compositionRoot,
+    severity: "fail",
+  });
+  assert.deepEqual(findings, []);
 });
 
 test("monolith check reuses the size analyzer at a higher budget", () => {
@@ -622,7 +781,7 @@ test("formatArchSummary is grep-friendly", () => {
     config: { checks: { size: { maxLoc: 10 } } },
   });
   const line = formatArchSummary(summary);
-  assert.match(line, /^arch: (pass|warn|fail) files=\d+ findings=\d+ \(size=\d+ complexity=\d+ imports=\d+ dup=\d+ monolith=\d+ hardcoding=\d+ deadcode=\d+\)$/);
+  assert.match(line, /^arch: (pass|warn|fail) files=\d+ findings=\d+ \(size=\d+ complexity=\d+ imports=\d+ dup=\d+ monolith=\d+ prodloc=\d+ compositionRoot=\d+ hardcoding=\d+ deadcode=\d+\)$/);
 });
 
 // --- scanRepo (fs wrapper) --------------------------------------------------
@@ -903,8 +1062,30 @@ const {
   stableFindingKey,
   classifyFindingsAgainstBaseline,
   summarizeRatchet,
+  parseUnifiedDiffAddedLines,
   computeBaselineFindings,
 } = arch;
+
+test("COORD-396 parseUnifiedDiffAddedLines feeds composition-root guard", () => {
+  const diff = [
+    "diff --git a/coord/scripts/lifecycle.js b/coord/scripts/lifecycle.js",
+    "--- a/coord/scripts/lifecycle.js",
+    "+++ b/coord/scripts/lifecycle.js",
+    "@@ -10,0 +11,2 @@",
+    "+const createFoo = require(\"./foo.js\");",
+    "+function appendedLogic() { return true; }",
+  ].join("\n");
+  const parsed = parseUnifiedDiffAddedLines(diff);
+  const findings = checkCompositionRootAddedLogic({
+    file: "coord/scripts/lifecycle.js",
+    addedLines: parsed["coord/scripts/lifecycle.js"],
+    config: DEFAULT_CONFIG.checks.compositionRoot,
+    severity: "fail",
+  });
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].line, 12);
+  assert.match(findings[0].value, /appendedLogic/);
+});
 
 test("COORD-126 stableFindingKey: form is check:file:detail and is value-independent", () => {
   // The same complexity hotspot with a DIFFERENT measured value (count drifts
@@ -1076,6 +1257,39 @@ test("COORD-126 CLI --baseline: unresolvable base ref -> graceful absolute fallb
   }
 });
 
+test("COORD-396 CLI --baseline fails when a composition root gains non-wiring logic", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arch-composition-root-"));
+  try {
+    git(dir, ["init", "-q"]);
+    git(dir, ["config", "user.email", "t@t.t"]);
+    git(dir, ["config", "user.name", "t"]);
+    git(dir, ["config", "commit.gpgsign", "false"]);
+    fs.mkdirSync(path.join(dir, "coord", "scripts"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "coord", "scripts", "lifecycle.js"), '"use strict";\nmodule.exports = {\n};\n');
+    const cfg = path.join(dir, "arch.config.json");
+    fs.writeFileSync(cfg, JSON.stringify({
+      archGate: "ratchet",
+      checks: Object.assign(
+        { compositionRoot: { severity: "fail" } },
+        Object.fromEntries(CHECKS.filter((c) => c !== "compositionRoot").map((c) => [c, { severity: "off" }])),
+      ),
+    }));
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "base"]);
+    const base = git(dir, ["rev-parse", "HEAD"]).stdout.trim();
+
+    fs.appendFileSync(path.join(dir, "coord", "scripts", "lifecycle.js"), 'function appendedLogic() { return true; }\n');
+    const out = [];
+    const code = runCli(["classify", "--root", dir, "--config", cfg, "--baseline", base],
+      { stdout: { write: (s) => out.push(s) }, stderr: { write: () => {} } });
+    assert.equal(code, 1);
+    assert.match(out.join(""), /compositionRoot=1/);
+    assert.match(out.join(""), /ratchet new=1 pre-existing=0/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("COORD-126 computeBaselineFindings: non-git root returns ok:false (no throw, no fallthrough)", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arch-nogit-"));
   try {
@@ -1085,4 +1299,178 @@ test("COORD-126 computeBaselineFindings: non-git root returns ok:false (no throw
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ===========================================================================
+// COORD-284: arch-debt PREVENTION ratchet — monolith/size escalated to
+// fail-on-NEW, existing over-budget files grandfathered. The escalation is the
+// `ratchetFailOnNew` config seam: a check listed there hard-fails when NEW vs
+// the baseline even though its OWN severity stays "warn" (so plain absolute
+// classify + the no-baseline fallback never start failing).
+// ===========================================================================
+const { resolveDefaultBaselineRef } = arch;
+
+// N lines of real code so countLoc counts them (one `const vK = K;` per line).
+function genCodeLines(n) {
+  let s = "";
+  for (let i = 0; i < n; i += 1) s += `const v${i} = ${i};\n`;
+  return s;
+}
+
+// A git sandbox whose BASE commit holds `baseFiles` ({ name: lineCount }) plus a
+// production-shaped ratchet config: size budget 5, size at WARN severity but
+// escalated to fail-on-NEW via ratchetFailOnNew (monolith too); every other
+// check off so the finding set is tiny + deterministic.
+function makeSizeRatchetSandbox(baseFiles) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arch-ratchet284-"));
+  git(dir, ["init", "-q"]);
+  git(dir, ["config", "user.email", "t@t.t"]);
+  git(dir, ["config", "user.name", "t"]);
+  git(dir, ["config", "commit.gpgsign", "false"]);
+  fs.writeFileSync(path.join(dir, "arch.config.json"), JSON.stringify({
+    archGate: "ratchet",
+    ratchetFailOnNew: ["size", "monolith"],
+    checks: Object.assign(
+      { size: { maxLoc: 5, severity: "warn" } },
+      Object.fromEntries(CHECKS.filter((c) => c !== "size").map((c) => [c, { severity: "off" }])),
+    ),
+  }));
+  for (const [name, lines] of Object.entries(baseFiles)) {
+    fs.writeFileSync(path.join(dir, name), genCodeLines(lines));
+  }
+  git(dir, ["add", "-A"]);
+  git(dir, ["commit", "-q", "-m", "base"]);
+  return dir;
+}
+
+// Table-driven: each row sets up a base state, mutates the working tree, then
+// asserts the ratchet verdict (exit code + new/pre-existing accounting).
+const RATCHET_284_CASES = [
+  {
+    name: "grow a previously-UNDER-budget file PAST budget -> NEW size finding -> FAIL",
+    base: { "f.js": 3 },
+    work: (dir) => fs.writeFileSync(path.join(dir, "f.js"), genCodeLines(8)),
+    expectCode: 1,
+    expectMatch: /size=1.*ratchet new=1 pre-existing=0/,
+  },
+  {
+    name: "add a brand-NEW over-budget file -> NEW size finding -> FAIL",
+    base: { "under.js": 2 },
+    work: (dir) => fs.writeFileSync(path.join(dir, "new.js"), genCodeLines(9)),
+    expectCode: 1,
+    expectMatch: /ratchet new=1 pre-existing=0/,
+  },
+  {
+    name: "existing over-budget file UNCHANGED -> grandfathered (PRE-EXISTING) -> PASS",
+    base: { "big.js": 8 },
+    work: () => {},
+    expectCode: 0,
+    expectMatch: /ratchet new=0 pre-existing=1/,
+  },
+  {
+    name: "existing over-budget file with unrelated other-file churn -> still grandfathered -> PASS",
+    base: { "big.js": 8, "side.js": 2 },
+    work: (dir) => fs.writeFileSync(path.join(dir, "side.js"), genCodeLines(3)),
+    expectCode: 0,
+    expectMatch: /ratchet new=0 pre-existing=1/,
+  },
+  {
+    name: "over-budget file SHRINKS back under budget -> no finding -> PASS",
+    base: { "big.js": 8 },
+    work: (dir) => fs.writeFileSync(path.join(dir, "big.js"), genCodeLines(3)),
+    expectCode: 0,
+    expectMatch: /ratchet new=0 pre-existing=0/,
+  },
+  {
+    name: "file stays UNDER budget -> no finding -> PASS",
+    base: { "s.js": 3 },
+    work: (dir) => fs.writeFileSync(path.join(dir, "s.js"), genCodeLines(4)),
+    expectCode: 0,
+    expectMatch: /ratchet new=0 pre-existing=0/,
+  },
+];
+
+for (const tc of RATCHET_284_CASES) {
+  test(`COORD-284 ratchet classify: ${tc.name}`, () => {
+    const dir = makeSizeRatchetSandbox(tc.base);
+    try {
+      const base = git(dir, ["rev-parse", "HEAD"]).stdout.trim();
+      tc.work(dir);
+      const out = [];
+      const code = runCli(
+        ["classify", "--root", dir, "--config", path.join(dir, "arch.config.json"), "--baseline", base],
+        { stdout: { write: (s) => out.push(s) }, stderr: { write: () => {} } },
+      );
+      const line = out.join("");
+      assert.equal(code, tc.expectCode, `expected exit ${tc.expectCode}, got ${code}: ${line}`);
+      assert.match(line, tc.expectMatch, `summary did not match: ${line}`);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test("COORD-284 ratchet: NEW over-budget file with an UNRESOLVABLE baseline -> safe absolute fallback (does NOT fail)", () => {
+  // The gate must never brick on a missing ref: with no reachable baseline the
+  // run falls back to ABSOLUTE, where size stays WARN (not escalated) -> exit 0
+  // even though a ratchet against a real base WOULD have failed this diff.
+  const dir = makeSizeRatchetSandbox({ "under.js": 2 });
+  try {
+    fs.writeFileSync(path.join(dir, "grown.js"), genCodeLines(9)); // would be NEW under a real base
+    const out = [];
+    const err = [];
+    const code = runCli(
+      ["classify", "--root", dir, "--config", path.join(dir, "arch.config.json"), "--baseline", "no-such-ref-xyz"],
+      { stdout: { write: (s) => out.push(s) }, stderr: { write: (s) => err.push(s) } },
+    );
+    assert.equal(code, 0, "no reachable baseline -> non-failing absolute fallback");
+    assert.match(err.join(""), /WARNING ratchet requested but/);
+    assert.ok(!/ratchet/.test(out.join("")), "absolute fallback summary carries no ratchet suffix");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("COORD-284 summarizeRatchet: ratchetFailOnNew escalates a NEW warn finding to fail; pre-existing stays grandfathered", () => {
+  const cfg = mergeConfig({ archGate: "ratchet", ratchetFailOnNew: ["size"], checks: { size: { severity: "warn" } } });
+  const pre = { check: "size", file: "old.js", value: 9, threshold: 5, severity: "warn", message: "old.js 9 LOC over budget 5" };
+  const fresh = { check: "size", file: "new.js", value: 9, threshold: 5, severity: "warn", message: "new.js 9 LOC over budget 5" };
+  // pre-existing only -> no NEW -> pass.
+  assert.equal(summarizeRatchet([pre], cfg, 1, [pre]).result, "pass");
+  // a NEW size finding (warn severity) -> escalated to FAIL via ratchetFailOnNew.
+  const withNew = summarizeRatchet([pre, fresh], cfg, 2, [pre]);
+  assert.equal(withNew.result, "fail", "NEW size finding escalated to fail-on-new");
+  assert.equal(withNew.new, 1);
+  assert.equal(withNew.preExisting, 1);
+  // WITHOUT ratchetFailOnNew the same NEW warn finding is only a warn (default seam off).
+  const cfgOff = mergeConfig({ archGate: "ratchet", checks: { size: { severity: "warn" } } });
+  assert.equal(summarizeRatchet([pre, fresh], cfgOff, 2, [pre]).result, "warn",
+    "without the escalation list a NEW warn finding stays warn (bare --ratchet unchanged)");
+});
+
+test("COORD-284 resolveDefaultBaselineRef: returns the first RESOLVABLE candidate, else null", () => {
+  const dir = makeSizeRatchetSandbox({ "x.js": 1 });
+  try {
+    // HEAD always resolves; an all-bogus candidate list returns null (no throw).
+    assert.equal(resolveDefaultBaselineRef({ repoRoot: dir, candidates: ["nope-1", "HEAD", "main"] }), "HEAD");
+    assert.equal(resolveDefaultBaselineRef({ repoRoot: dir, candidates: ["nope-1", "nope-2"] }), null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("COORD-284 mergeConfig + checked-in ratchet config: carries ratchetFailOnNew = [monolith,size] under archGate ratchet", () => {
+  // Engine default is empty (bare --ratchet does not silently fail).
+  assert.deepEqual(DEFAULT_CONFIG.ratchetFailOnNew, []);
+  assert.deepEqual(mergeConfig({}).ratchetFailOnNew, []);
+  assert.deepEqual(mergeConfig({ ratchetFailOnNew: ["size"] }).ratchetFailOnNew, ["size"]);
+  // The checked-in gate config wires monolith+size under ratchet mode.
+  const cfgPath = path.join(__dirname, "..", "config", "arch-gate.ratchet.json");
+  const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+  assert.equal(cfg.archGate, "ratchet");
+  assert.ok(cfg.ratchetFailOnNew.includes("monolith") && cfg.ratchetFailOnNew.includes("size"));
+  // size/monolith are NOT flipped to fail severity (stay warn for plain classify).
+  const merged = mergeConfig(cfg);
+  assert.equal(merged.checks.size.severity, "warn");
+  assert.equal(merged.checks.monolith.severity, "warn");
 });

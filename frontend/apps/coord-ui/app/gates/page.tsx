@@ -12,6 +12,8 @@ function fmtMs(ms?: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+export const dynamic = 'force-dynamic';
+
 export default function GatesPage() {
   const g = loadGates();
   const repoNames = [...new Set(g.results.map((r) => r.repo))];

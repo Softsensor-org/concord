@@ -79,7 +79,7 @@ module.exports = function createBoardRebuild(deps = {}) {
       fail("rebuild-board requires <ticket-id> or --all.");
     }
 
-    const mutation = { command: "rebuild-board", ticket: ticketId, allowRecoverableProvenanceDrift: true };
+    const mutation = { command: "rebuild-board", ticket: ticketId, allowProvenanceDrift: true };
     return withGovernanceMutation(mutation, () => {
       const journal = readGovernanceEventLog();
       const board = readBoard();

@@ -302,7 +302,10 @@ function buildAskAndDelivered(plan, chainHead) {
   if (c.implemented) {
     claims.push({ field: "implemented", text: c.implemented, citations: cite });
   }
-  if (c.not_implemented && c.not_implemented.toLowerCase() !== "none") {
+  // COORD-198: gate on the recency-correct not_implemented_is_none flag (shared
+  // none-class interpretation) so a re-closure that landed at "Not implemented:
+  // none — ..." is not surfaced as a leftover carve-out.
+  if (c.not_implemented && !c.not_implemented_is_none) {
     claims.push({ field: "not_implemented", text: c.not_implemented, citations: cite });
   }
   if (c.verdict) {
@@ -402,8 +405,9 @@ function buildDecisions(plan, chainHead) {
   const cite = [planCitation(plan, chainHead)];
   const c = plan.closure;
 
-  // Deferrals: explicit deferred_to follow-up tickets.
-  if (c.deferred_to && c.deferred_to.toLowerCase() !== "none") {
+  // Deferrals: explicit deferred_to follow-up tickets (COORD-198: none-class
+  // interpretation so "none — ..." is not surfaced as a deferral).
+  if (c.deferred_to && !c.deferred_to_is_none) {
     claims.push({
       kind: "deferral",
       text: c.deferred_to,

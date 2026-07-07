@@ -2,6 +2,9 @@ import React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { loadTicketExplain } from '../../../lib/ticket-explain';
+import { loadTicketPrompt } from '../../../lib/ticket-prompt';
+import { loadAdrs } from '../../../lib/adrs';
+import { loadGatePlan } from '../../../lib/gate-plan';
 import type {
   ExplainSection,
   ReadinessLevel,
@@ -67,6 +70,13 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   if (!x.found) notFound();
 
   const { lifecycle: lc, lock } = x;
+  const prompt = loadTicketPrompt(lc.promptPath);
+  const gatePlan = loadGatePlan(id);
+  const adrModel = loadAdrs();
+  const relatedAdrs = adrModel.adrs.filter((a) => (a.linked_tickets ?? []).includes(id));
+  const decisionRequiredMissingAdr = adrModel.decision_required_missing_adrs.some(
+    (m) => (m.ticket ?? m.id) === id
+  );
 
   return (
     <>
@@ -101,6 +111,19 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </div>
           </div>
 
+          {/* Ticket prompt — the registered spec (read-only) */}
+          {prompt ? (
+            <section className="panel" style={{ marginBottom: '0.85rem' }}>
+              <h3>Ticket prompt</h3>
+              <pre
+                className="cmd-list"
+                style={{ whiteSpace: 'pre-wrap', maxHeight: '22rem', overflow: 'auto' }}
+              >
+                {prompt}
+              </pre>
+            </section>
+          ) : null}
+
           {/* Operator views — filtered evidence dossier + cost ledger */}
           <section className="panel" style={{ marginBottom: '0.85rem' }}>
             <h3>Operator views</h3>
@@ -121,6 +144,54 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             <pre className="cmd-list">{x.nextCommands.join('\n')}</pre>
             <div className="card__title">Copy/paste only — this panel never executes commands.</div>
           </section>
+
+          {/* Gate plan — why this exact gate for this ticket (read-only receipt) */}
+          {gatePlan ? (
+            <section className="panel" style={{ marginBottom: '0.85rem' }}>
+              <h3>Gate plan</h3>
+              <div className="card__title">
+                track <code>{gatePlan.track?.name ?? '—'}</code> · risk{' '}
+                <code>{gatePlan.riskClass || '—'}</code> · mode <code>{gatePlan.mode || '—'}</code>
+                {gatePlan.enforcement ? <> · {gatePlan.enforcement}</> : null}
+              </div>
+              {gatePlan.fallbackReason ? (
+                <div className="card__title rl rl--blocked" style={{ marginTop: '0.3rem' }}>
+                  fell back to full: {gatePlan.fallbackReason}
+                </div>
+              ) : null}
+              {gatePlan.selectedGates.length > 0 ? (
+                <>
+                  <div className="kv-row__k" style={{ marginTop: '0.4rem' }}>selected</div>
+                  <ul className="reason-list">
+                    {gatePlan.selectedGates.map((g) => (
+                      <li key={g.id}>
+                        <code>{g.id}</code>
+                        {g.reason ? <> — {g.reason}</> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+              {gatePlan.skippedGates.length > 0 ? (
+                <>
+                  <div className="kv-row__k" style={{ marginTop: '0.3rem' }}>skipped</div>
+                  <ul className="reason-list">
+                    {gatePlan.skippedGates.map((g) => (
+                      <li key={g.id} className="card__title">
+                        {g.id}
+                        {g.reason ? <> — {g.reason}</> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+              {gatePlan.requiredEvidence.length > 0 ? (
+                <div className="card__title" style={{ marginTop: '0.3rem' }}>
+                  required evidence: {gatePlan.requiredEvidence.join('; ')}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           {/* Dependency blockers */}
           <section className="panel" style={{ marginBottom: '0.85rem' }}>
@@ -235,6 +306,28 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               </ul>
             ) : (
               <div className="card__title">{x.requirementClosure.headline}.</div>
+            )}
+          </section>
+
+          <section className="panel">
+            <h3>Related decisions</h3>
+            {relatedAdrs.length > 0 ? (
+              <ul className="reason-list">
+                {relatedAdrs.map((a) => (
+                  <li key={a.id}>
+                    <Link href="/adrs" className="kv-row__k">
+                      {a.id}
+                    </Link>{' '}
+                    · {a.status} — {a.title}
+                  </li>
+                ))}
+              </ul>
+            ) : decisionRequiredMissingAdr ? (
+              <div className="card__title rl rl--blocked">
+                Decision-required, but no accepted ADR is linked.
+              </div>
+            ) : (
+              <div className="card__title">No linked ADRs.</div>
             )}
           </section>
 

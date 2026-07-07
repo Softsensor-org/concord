@@ -39,6 +39,7 @@ module.exports = function createAgentCommands(deps = {}) {
     // mutation + lock wrappers
     withGovernanceMutation,
     withAgentStateLock,
+    withCoordStateLock,
     // journal
     appendGovernanceEvent,
     // board-state readers/writers
@@ -53,6 +54,9 @@ module.exports = function createAgentCommands(deps = {}) {
     rebindTicketLock,
     detectActiveSameOwnerOtherThread,
     buildActiveSameOwnerOtherThreadMessage,
+    detectColocatedForeignSessions,
+    buildColocatedForeignSessionMessage,
+    recordGovernanceCollision,
     normalizeLockIdentityReferences,
     // session-engine: registry + session readers/writers
     readAgentsRegistry,
@@ -267,7 +271,7 @@ module.exports = function createAgentCommands(deps = {}) {
       return claimAgent(options.owner, options);
     }
   
-    const mutation = { command: "claim", allowRecoverableProvenanceDrift: true };
+    const mutation = { command: "claim", allowProvenanceDrift: true };
     return withGovernanceMutation(mutation, () => {
       const identity = ensureCurrentAgentIdentity();
       mutation.identity = identity;
@@ -344,7 +348,7 @@ module.exports = function createAgentCommands(deps = {}) {
       command: "claim-ticket",
       ticket: ticketId,
       beforeStatus: inferTicketStatus(ticketId),
-      allowRecoverableProvenanceDrift: true,
+      allowProvenanceDrift: true,
     };
     return withGovernanceMutation(mutation, () => {
       const board = readBoard();
@@ -352,14 +356,61 @@ module.exports = function createAgentCommands(deps = {}) {
       if (!ref) {
         fail(`Unknown ticket "${ticketId}".`);
       }
+      if ([STATUS.TODO, STATUS.DEFERRED].includes(ref.row.Status)) {
+        if (!options.optimistic) {
+          fail(
+            `Ticket ${ticketId} is still ${ref.row.Status} under owner ${ref.row.Owner}. ` +
+            `Use \`coord/scripts/gov start ${ticketId}\` to claim work through the lifecycle instead of \`claim ${ticketId}\`, ` +
+            `or use \`coord/scripts/gov claim ${ticketId} --optimistic\` to reserve owner intent without creating a lock.`
+          );
+        }
+        const identity = ensureCurrentAgentIdentity({ allowAutoClaim: false });
+        mutation.identity = identity;
+        const owner = identity.agent.handle;
+        let claimedRow = null;
+        withCoordStateLock(() => {
+          const nextBoard = readBoard();
+          const nextRef = getTicketRef(nextBoard, ticketId);
+          if (!nextRef) {
+            fail(`Unknown ticket "${ticketId}".`);
+          }
+          if (![STATUS.TODO, STATUS.DEFERRED].includes(nextRef.row.Status)) {
+            fail(
+              `Optimistic claim conflict for ${ticketId}: status changed to "${nextRef.row.Status}" before claim commit. ` +
+              "Re-read the ticket and use resume/start as appropriate."
+            );
+          }
+          const currentOwner = String(nextRef.row.Owner || "").trim();
+          const unassigned = !currentOwner || currentOwner === "unassigned";
+          if (!unassigned && currentOwner !== owner) {
+            fail(
+              `Optimistic claim conflict for ${ticketId}: already owned by ${currentOwner}; current owner is ${owner}.`
+            );
+          }
+          nextRef.row.Owner = owner;
+          claimedRow = { ...nextRef.row };
+          writeBoard(nextBoard);
+          runBoardSync({ ignoreActiveTicketLockErrors: true });
+        });
+        mutation.details = {
+          optimistic: true,
+          owner,
+          status: claimedRow?.Status || ref.row.Status,
+          lock_created: false,
+        };
+        console.log(JSON.stringify({
+          ticket: ticketId,
+          owner,
+          status: claimedRow?.Status || ref.row.Status,
+          optimistic: true,
+          lock_created: false,
+          agent: identity.agent,
+          session: identity.session,
+        }, null, 2));
+        return;
+      }
       if (!ref.row.Owner || ref.row.Owner === "unassigned") {
         fail(`Ticket ${ticketId} has no assigned owner to claim. Use start/repair first, or pass --owner without a ticket-id.`);
-      }
-      if (ref.row.Status === STATUS.TODO || ref.row.Status === STATUS.DEFERRED) {
-        fail(
-          `Ticket ${ticketId} is still ${ref.row.Status} under owner ${ref.row.Owner}. ` +
-          `Use \`coord/scripts/gov start ${ticketId}\` to claim work through the lifecycle instead of \`claim ${ticketId}\`.`
-        );
       }
   
       const previousOwner = canonicalizeOwnerOrFail(ref.row.Owner);
@@ -393,16 +444,40 @@ module.exports = function createAgentCommands(deps = {}) {
       }
       mutation.identity = { agent: payload.agent, session: payload.session, autoClaimed: false };
       const lock = findLockForTicket(ticketId);
-  
+
       // COORD-011: same-owner owner-lease gate. resume/claim (and --handoff/--force)
       // must NOT displace a live same-owner session running on a different thread.
       // Only an explicit human-admin override may take over a fresh other-thread
-      // holder. Owner transfers run through their own override path above.
+      // holder. Owner transfers run through their own override path above. This
+      // runs BEFORE the broader co-located guard so a same-owner other-thread
+      // resume keeps its specific owner-lease remediation.
       if (!isOwnerTransfer && !String(options.humanAdminOverride || "").trim()) {
         const currentThreadId = payload.session?.thread_id || currentRuntimeThreadId();
         const otherThread = detectActiveSameOwnerOtherThread(ticketId, lock, { currentThreadId });
         if (otherThread.present) {
           fail(buildActiveSameOwnerOtherThreadMessage(ticketId, otherThread, options));
+        }
+      }
+
+      // COORD-222: enforce "one governed writer per checkout/runtime". If another
+      // heartbeat-fresh governed session is already bound to this runtime on a
+      // different thread, refuse — unless the operator explicitly opts into the
+      // documented shared-worktree topology (or has already asserted a human-admin
+      // override, which signals an operator who knows what they are doing). The
+      // current session's own thread never trips this (lone/resume are safe).
+      if (options.allowSharedWorktree !== true && !String(options.humanAdminOverride || "").trim()) {
+        const currentThreadId = payload.session?.thread_id || currentRuntimeThreadId();
+        const colocated = detectColocatedForeignSessions({ currentThreadId });
+        if (colocated.present) {
+          // COORD-223: journal the co-located refusal as an auditable collision.
+          recordGovernanceCollision({
+            ticket: ticketId || null,
+            conflictType: "co-located-session",
+            verb: "claim",
+            contenders: colocated.foreign_sessions,
+            extra: { current_thread_id: colocated.current_thread_id },
+          });
+          fail(buildColocatedForeignSessionMessage("claim", colocated));
         }
       }
   
@@ -475,7 +550,7 @@ module.exports = function createAgentCommands(deps = {}) {
   }
   
   function claimAgent(subject, options) {
-    const mutation = { command: "agent-claim", allowRecoverableProvenanceDrift: true };
+    const mutation = { command: "agent-claim", allowProvenanceDrift: true };
     return withGovernanceMutation(mutation, () => {
       const payload = claimAgentSession(subject, options);
       mutation.identity = { agent: payload.agent, session: payload.session, autoClaimed: false };
@@ -691,7 +766,7 @@ module.exports = function createAgentCommands(deps = {}) {
   }
 
   function releaseAgent(subject, options) {
-    const mutation = { command: "agent-release", allowRecoverableProvenanceDrift: true };
+    const mutation = { command: "agent-release", allowProvenanceDrift: true };
     return withGovernanceMutation(mutation, () => {
       withAgentStateLock(() => {
         if (!subject) {
@@ -745,7 +820,7 @@ module.exports = function createAgentCommands(deps = {}) {
       );
     }
   
-    const mutation = { command: "agent-rebind", allowRecoverableProvenanceDrift: true };
+    const mutation = { command: "agent-rebind", allowProvenanceDrift: true };
     return withGovernanceMutation(mutation, () => {
       return withAgentStateLock(() => {
         const provider = detectRuntimeProvider();

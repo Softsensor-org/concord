@@ -4,6 +4,21 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { __testing, GovernanceError } = require("./governance-test-utils.js");
+const createFollowups = require("./followups.js");
+
+// COORD-279 (item 3): a followups instance with an INJECTED historical-ticket-id
+// set (stands in for the journal), so id allocation can be tested in isolation
+// without touching the live journal.
+function followupsWithJournal(historicalIds) {
+  return createFollowups({
+    fail: (m) => {
+      throw new GovernanceError(m);
+    },
+    getRows: (board) =>
+      (board.sections || []).flatMap((s) => s.rows || []),
+    historicalTicketIds: () => new Set(historicalIds),
+  });
+}
 
 // COORD-100 (governance.test residual split, capstone): behavior tests whose
 // primary subject is DEFINED in followups.js — id allocation (nextTicketId),
@@ -93,5 +108,43 @@ test("nextTicketId allocates 001 for a fresh prefix and max+1 for an existing on
   assert.throws(
     () => __testing.nextTicketId({ sections: [{ rows: [] }] }, "123"),
     (error) => error instanceof GovernanceError && /letters-only --prefix/i.test(error.message)
+  );
+});
+
+test("COORD-279: nextTicketId never reuses a JOURNAL-historical id after its board row was removed", () => {
+  // The board no longer carries TRUST-005 (its row was removed), but the journal
+  // still records that TRUST-005 once existed. A max+1 over LIVE rows alone would
+  // hand back TRUST-005 again and collide with history.
+  const { nextTicketId } = followupsWithJournal(["TRUST-005", "TRUST-002"]);
+  const board = { sections: [{ rows: [{ ID: "TRUST-003" }] }] };
+
+  // Live max is 003; journal historical max is 005 → reserve 006, NOT 004/005.
+  assert.equal(nextTicketId(board, "TRUST"), "TRUST-006");
+});
+
+test("COORD-279: nextTicketId reserves against the MAX of live rows and journal", () => {
+  // Live rows go HIGHER than the journal-historical set → live wins.
+  const { nextTicketId } = followupsWithJournal(["TRUST-002"]);
+  const board = { sections: [{ rows: [{ ID: "TRUST-009" }] }] };
+  assert.equal(nextTicketId(board, "TRUST"), "TRUST-010");
+
+  // COORD-430 (supersedes the prior COORD-279 fallback): a journal read failure
+  // must NOT silently fall back to live-rows-only — that re-enables the exact
+  // historical-id reuse COORD-279 exists to prevent. It now fails CLOSED so the
+  // enclosing governed mutation aborts and can retry once the journal is readable,
+  // rather than allocating a possibly-colliding id.
+  const brittle = createFollowups({
+    fail: (m) => {
+      throw new GovernanceError(m);
+    },
+    getRows: (b) => (b.sections || []).flatMap((s) => s.rows || []),
+    historicalTicketIds: () => {
+      throw new Error("journal unavailable");
+    },
+  });
+  assert.throws(
+    () => brittle.nextTicketId(board, "TRUST"),
+    /journal read failed|journal history/i,
+    "nextTicketId must fail closed (not narrow to live rows) when journal history is unreadable"
   );
 });

@@ -3,7 +3,9 @@
 
 const path = require("path");
 const util = require("util");
+const adrValidator = require("./adr-validator.js");
 const lifecycle = require("./lifecycle.js");
+const commandRegistry = require("./command-registry.js");
 const runtimeEvidence = require("./runtime-evidence.js");
 const { STATUS, legalStatusSet, legalFindingStatusSet } = require("./governance-constants.js");
 
@@ -15,6 +17,7 @@ const {
   addRepoGateCommand,
   addReviewCycleCommand,
   agentsCommand,
+  approveTicket,
   auditLandings,
   auditWorktrees,
   autoSyncAfterLifecycle,
@@ -29,6 +32,7 @@ const {
   commitTicket,
   conform,
   repairChain,
+  migrateChainHash,
   verifyEngine,
   contextPack,
   costReport,
@@ -37,13 +41,16 @@ const {
   dropFeatureProofCommand,
   explainTicket,
   fail,
+  fleetGoldenPath,
   finalizeTicket,
   finishTicket,
+  gatePlanCommand,
   heartbeat,
   landTicket,
   listTickets,
   lockAbandonTicket,
   logQuestion,
+  fileTicket,
   markDone,
   moveReview,
   openFollowup,
@@ -52,6 +59,8 @@ const {
   pickTickets,
   planTicket,
   planWaves,
+  sequencerPlan,
+  mergeQueue,
   prCreate,
   prMerge,
   prView,
@@ -64,9 +73,14 @@ const {
   recallCommand,
   signJournalCommand,
   insightsCommand,
+  coverageRollupCommand,
   preworkCommand,
   closeoutSummaryCommand,
   learnedRuleCommand,
+  codeIndexCommand,
+  codeSearchCommand,
+  codeContextCommand,
+  codeDiffCommand,
   rebindAgent,
   rebuildBoardFromJournal,
   recentEvents,
@@ -75,9 +89,11 @@ const {
   reconcileGovernance,
   recordCost,
   recoverTicket,
+  releaseTerminalTicketSession,
   registerPrompt,
   releaseAgent,
   releaseLock,
+  rejectTicket,
   reopenTicket,
   resumeTicket,
   retireStaleDriftNotes,
@@ -144,6 +160,22 @@ function flagsAfterOptionalId(args) {
 }
 
 // COORD-104 (annotated residual): dispatchCommand is the single CLI command
+function runTerminalLifecycle(verb, ticketId, flags, fn) {
+  const result = fn();
+  try {
+    autoSyncAfterLifecycle({ verb, ticketId, options: flags });
+  } finally {
+    try {
+      releaseTerminalTicketSession(ticketId);
+    } catch {
+      // Best-effort runtime-ledger cleanup. Terminal closeout authority remains
+      // the lifecycle mutation and journal; a session-ledger cleanup issue must
+      // not roll back a completed ticket.
+    }
+  }
+  return result;
+}
+
 // ROUTER — one switch over ~96 governed verbs, each arm a thin delegation to a
 // lifecycle/board handler. Its residual cyclomatic count (~102) is dominated by
 // the case-per-verb count, which is irreducible for a router of this surface.
@@ -170,6 +202,12 @@ function dispatchCommand(command, args = []) {
     case "run-ticket-cycle":
     case "ticket-cycle":
       return runTicketCycle(args[0], parseFlags(args.slice(1)));
+    case "fleet-golden-path":
+      return fleetGoldenPath(args[0], parseFlags(args.slice(1)));
+    case "guided-closeout":
+    case "governance-tier":
+    case "publishability-check":
+      return commandRegistry.runAdoptionGovernanceCommand(command, args, parseFlags);
     case "agents":
       return agentsCommand(args);
     case "agentid":
@@ -194,6 +232,8 @@ function dispatchCommand(command, args = []) {
       return conform(parseFlags(args));
     case "repair-chain":
       return repairChain(parseFlags(args));
+    case "migrate-chain-hash":
+      return migrateChainHash(parseFlags(args));
     case "verify-engine":
       return verifyEngine(parseFlags(args));
     case "orch":
@@ -201,6 +241,11 @@ function dispatchCommand(command, args = []) {
       return orchestratorCycle(parseFlags(args));
     case "audit-landings":
       return auditLandings(parseFlags(args));
+    case "adr":
+      return adrValidator.govAdr(args, {
+        withGovernanceMutation: lifecycle.__testing.withGovernanceMutation,
+        fail,
+      });
     case "ticket":
       return showTicket(args[0]);
     case "recent":
@@ -229,9 +274,7 @@ function dispatchCommand(command, args = []) {
       // journal. `--no-sync` opts out. landTicket runs first; its result
       // is what we return, sync is a best-effort side-effect afterwards.
       const flags = parseFlags(args.slice(1));
-      const result = landTicket(args[0], flags);
-      autoSyncAfterLifecycle({ verb: "land", ticketId: args[0], options: flags });
-      return result;
+      return runTerminalLifecycle("land", args[0], flags, () => landTicket(args[0], flags));
     }
     case "close": {
       // Reviewer finding #3: close/finish are documented terminal aliases
@@ -239,27 +282,19 @@ function dispatchCommand(command, args = []) {
       // dispatch wrapper on `mark-done`). They must auto-sync too,
       // otherwise the lifecycle-boundary invariant has a documented hole.
       const flags = parseFlags(args.slice(1));
-      const result = finishTicket(args[0], flags);
-      autoSyncAfterLifecycle({ verb: "close", ticketId: args[0], options: flags });
-      return result;
+      return runTerminalLifecycle("close", args[0], flags, () => finishTicket(args[0], flags));
     }
     case "finish": {
       const flags = parseFlags(args.slice(1));
-      const result = finishTicket(args[0], flags);
-      autoSyncAfterLifecycle({ verb: "finish", ticketId: args[0], options: flags });
-      return result;
+      return runTerminalLifecycle("finish", args[0], flags, () => finishTicket(args[0], flags));
     }
     case "finalize": {
       const flags = parseFlags(args.slice(1));
-      const result = finalizeTicket(args[0], flags);
-      autoSyncAfterLifecycle({ verb: "finalize", ticketId: args[0], options: flags });
-      return result;
+      return runTerminalLifecycle("finalize", args[0], flags, () => finalizeTicket(args[0], flags));
     }
     case "mark-done": {
       const flags = parseFlags(args.slice(1));
-      const result = markDone(args[0], flags);
-      autoSyncAfterLifecycle({ verb: "mark-done", ticketId: args[0], options: flags });
-      return result;
+      return runTerminalLifecycle("mark-done", args[0], flags, () => markDone(args[0], flags));
     }
     case "supersede":
       return supersedeTicket(args[0], parseFlags(args.slice(1)));
@@ -269,9 +304,7 @@ function dispatchCommand(command, args = []) {
       // un-wrapped was the residual hole in finding #3 (only close/finish
       // got wrapped on the first pass).
       const flags = parseFlags(args.slice(1));
-      const result = finishTicket(args[0], flags);
-      autoSyncAfterLifecycle({ verb: "finish-ticket", ticketId: args[0], options: flags });
-      return result;
+      return runTerminalLifecycle("finish-ticket", args[0], flags, () => finishTicket(args[0], flags));
     }
     case "review":
       return moveReview(args[0], parseFlags(args.slice(1)));
@@ -307,6 +340,9 @@ function dispatchCommand(command, args = []) {
       return commitTicket(args[0], parseFlags(args.slice(1)));
     case "open-followup":
       return openFollowup(optionalLeadingId(args), flagsAfterOptionalId(args));
+    case "file-ticket":
+    case "new":
+      return fileTicket(optionalLeadingId(args), flagsAfterOptionalId(args));
     case "next-id":
       return printNextId(args[0]);
     case "split-ticket":
@@ -317,6 +353,10 @@ function dispatchCommand(command, args = []) {
       return setTicketPriority(args[0], parseFlags(args.slice(1)));
     case "set-type":
       return setTicketType(args[0], parseFlags(args.slice(1)));
+    case "approve":
+      return approveTicket(args[0], parseFlags(args.slice(1)));
+    case "reject":
+      return rejectTicket(args[0], parseFlags(args.slice(1)));
     case "set-waiver":
       return setWaiver(args[0], parseFlags(args.slice(1)));
     case "register-prompt": {
@@ -358,6 +398,8 @@ function dispatchCommand(command, args = []) {
       return precheck(args[0], parseFlags(args.slice(1)));
     case "context-pack":
       return contextPack(args[0], parseFlags(args.slice(1)));
+    case "gate-plan":
+      return gatePlanCommand(args[0], parseFlags(args.slice(1)));
     case "recall": {
       // COORD-141: `gov recall "<query>" [--role <role>] [--json]`. The query is
       // every non-flag positional joined with spaces (so an unquoted multi-word
@@ -419,6 +461,13 @@ function dispatchCommand(command, args = []) {
       // COORD-147: `gov insights [--json]` — Strategic execution-insight reports
       // (RECOMMENDS only; source-cited; mutates/gates nothing).
       return insightsCommand(parseFlags(args));
+    case "coverage-rollup":
+      // COORD-243: `gov coverage-rollup [--json] [--dry-run]` — the DO layer of
+      // the coverage-maturity DETECT/DO/TRIGGER split. SEPARATE from `gov doctor`
+      // (doctor only DETECTS). Refreshes coord/TEST_MATURITY.md from the real
+      // per-commit coverage gate artifacts (QGATE-003) + `gov insights` gate
+      // health. Idempotent; WRITES the artifact (that is its job).
+      return coverageRollupCommand(parseFlags(args));
     case "prework":
       // COORD-148: `gov prework <ticket> [--scope "<text>"] [--role <role>]
       // [--json]` — [Memory] Solving pre-work context pack (RECOMMENDS only;
@@ -438,10 +487,52 @@ function dispatchCommand(command, args = []) {
       // the subcommand; remaining args flow through verbatim to the engine CLI
       // (which parses --rule / --target / --citation / --rationale / --json).
       return learnedRuleCommand(args[0], args.slice(1));
+    case "code-index":
+      // Build or refresh the code symbol index at coord/memory/code-index.ndjson.
+      // gov code-index [--repo <path>] [--ext .js,.ts] [--force] [--json]
+      return codeIndexCommand(parseFlags(args));
+    case "code-search": {
+      // BM25 search over the code index.
+      // gov code-search <query> [--top <N>] [--json]
+      const positional = [];
+      const flagArgs = [];
+      for (let i = 0; i < args.length; i += 1) {
+        const a = args[i];
+        if (a === "--json") {
+          flagArgs.push(a);
+        } else if (a === "--top" || a === "--n") {
+          flagArgs.push(a, args[i + 1]);
+          i += 1;
+        } else if (String(a).startsWith("--")) {
+          flagArgs.push(a);
+        } else {
+          positional.push(a);
+        }
+      }
+      return codeSearchCommand(positional.join(" "), parseFlags(flagArgs));
+    }
+    case "code-context":
+      // Compact symbol view for specific file paths.
+      // gov code-context <file1> [file2 ...] [--json]
+      return codeContextCommand(
+        args.filter(a => !String(a).startsWith("--")),
+        parseFlags(args.filter(a => String(a).startsWith("--")))
+      );
+    case "code-diff": {
+      // Compact views of files changed vs a git ref.
+      // gov code-diff [<base-ref>] [--json]
+      const baseRef = hasLeadingPositional(args) ? args[0] : null;
+      const diffFlags = parseFlags(baseRef ? args.slice(1) : args);
+      return codeDiffCommand(baseRef, diffFlags);
+    }
     case "tier":
       return tierCommand(args[0]);
     case "plan-waves":
       return planWaves(parseFlags(args));
+    case "sequencer-plan":
+      return sequencerPlan(parseFlags(args));
+    case "merge-queue":
+      return mergeQueue(parseFlags(args));
     case "dispatch-plan":
       return dispatchPlan(parseFlags(args));
     case "otlp-export":
@@ -595,20 +686,27 @@ const VALUE_FLAGS = Object.freeze({
   "--answer": "answer", "--security": "security", "--live-mcp": "liveMcp", "--startup": "startup",
   "--traceability": "traceability", "--closeout-method": "closeoutMethod",
   "--closeout-base-ref": "closeoutBaseRef", "--provenance-note": "provenanceNote",
-  "--review-profile": "reviewProfile", "--source-commit": "sourceCommit",
+  "--review-profile": "reviewProfile", "--context-pack-ack": "contextPackAck",
+  "--gate-plan": "gatePlan",
+  "--source-commit": "sourceCommit",
   "--fulfilled-by-ticket": "fulfilledByTicket",
   "--fulfilled-by-commit": "fulfilledByCommit", "--prompt": "prompt",
+  "--prompt-template": "promptTemplate", "--template": "template",
   "--section-heading": "sectionHeading", "--consolidated-into": "consolidatedInto",
   "--transfer-to": "transferTo", "--human-admin-override": "humanAdminOverride",
   "--commit": "commit", "--path": "path", "--agent": "agent", "--model": "model",
   "--input-tokens": "inputTokens", "--output-tokens": "outputTokens",
   "--usd": "usd", "--phase": "phase", "--by": "by", "--wave": "wave",
+  "--tier": "tier",
   "--class": "operationClass", "--operation-class": "operationClass",
   "--operation": "operation", "--adapter": "adapter", "--scope": "scope",
   "--redaction": "redaction", "--approval": "approval", "--cleanup": "cleanup",
   // COORD-141: `gov recall --role <role>` opts into ENT-012 RBAC redaction.
   "--role": "role",
+  // code-context: `gov code-search <q> --top <N>` limits results; `gov code-index --ext .js,.ts` filters extensions.
+  "--top": "top", "--ext": "ext",
   "--environment": "environment", "--env": "environment",
+  "--map": "mapPath", "--risk-class": "riskClass", "--track": "trackOverride",
   "--artifact": "artifact", "--running-artifact": "runningArtifact",
   "--build-source": "buildSource", "--deploy-id": "deployId",
   "--operator": "operator", "--receipt": "receipt",
@@ -624,6 +722,12 @@ const VALUE_FLAGS = Object.freeze({
   // ENT-010: `gov conform --verify-attestation <file>` re-derives the engine
   // inputs, checks the signature, and flags drift/tamper.
   "--verify-attestation": "verifyAttestation",
+  // COORD-272: `gov conform --verify-attestation <file> --trust-anchor <pem|fingerprint>`
+  // pins an org trust root so verify rejects an attestation whose signing key is
+  // not trusted (closes the forge-with-your-own-key authenticity bypass). Also
+  // configurable via project.config.js `conformance.trustedAttestationKeys` or
+  // the CONFORMANCE_TRUST_ANCHOR env. Optional — unset = self-hosting community.
+  "--trust-anchor": "trustAnchor",
 });
 
 // Append (repeatable) value flags: `--flag value` -> parsed[key].push(value).
@@ -643,11 +747,14 @@ const BOOL_FLAGS = Object.freeze({
   "--draft": "draft", "--closeout-blocker": "closeoutBlocker", "--fill": "fill",
   "--push": "push", "--autofill-startup": "autofillStartup", "--seed": "seed",
   "--all": "all", "--admin": "admin", "--handoff": "handoff",
-  "--no-sync": "noSync", "--force": "force", "--fix": "fix", "--fresh": "fresh",
+  "--repair-all": "repairAll",
+  "--no-sync": "noSync", "--force": "force", "--fix": "fix", "--fresh": "fresh", "--git": "git",
   "--clear": "clear", "--yes": "yes", "--include-blocked": "includeBlocked",
   "--full": "full", "--write": "write", "--dry-run": "dryRun",
   "--scope-self": "scopeSelf", "--json": "json", "--md": "md",
   "--record": "record",
+  "--force-live": "forceLive",
+  "--with-prompt": "withPrompt", "--create": "create", "--replace": "replace",
   // ENT-005: explicit stdout sink for the OTLP exporter (also the default when
   // no sink flag is given).
   "--stdout": "stdout",
@@ -665,6 +772,18 @@ const BOOL_FLAGS = Object.freeze({
   // COORD-124: `gov repair-chain --confirm` applies the guarded chain repair
   // (with `--reason "<why>"`). Without it, repair-chain is a read-only dry-run.
   "--confirm": "confirm",
+  // COORD-222: opt out of the fail-closed "one governed writer per
+  // checkout/runtime" guard on `gov start` / `gov claim`. DEFAULT is fail-closed;
+  // pass this only when deliberately running the documented orchestrator-spawns-
+  // N-subagents topology (each sub-agent SHOULD still use a separate worktree).
+  "--allow-shared-worktree": "allowSharedWorktree",
+  // COORD-198: `gov set-requirement-closure --supersede` REPLACES the prior
+  // requirement_closure block instead of appending. requirement_closure is
+  // append-only by default; a re-closure (e.g. partial -> complete after a
+  // takeover) otherwise leaves BOTH blocks in the ordered array. The derived
+  // verdict/debt read uses recency (last block wins) regardless, so this is a
+  // record-hygiene convenience, not a correctness requirement.
+  "--supersede": "supersede",
 });
 
 // Flags whose handling is not a plain table assignment: validation, integer

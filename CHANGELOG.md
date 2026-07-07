@@ -1,5 +1,72 @@
 # Changelog
 
+## v0.1.8 — 2026-07-07
+
+### Added
+- **App-local coord UI launcher** — scaffolds now wire `npm run coord-ui` so a
+  created app launches its own bundled read-only cockpit against its own
+  `coord/`, installs UI dependencies on first launch, serves port 3002, and tries
+  to open the browser. This avoids sending adopters back to the donor
+  `coord-template` checkout to run the UI.
+
+### Changed
+- **Create/binary install contract** — both `npx create-concord` and the
+  standalone `concord init` path now create the same `coord-ui` root script.
+- **Release binary workflow** — donor Linux binary builds attach assets to the
+  public Concord release tag when `CONCORD_PUBLIC_RELEASE_TOKEN` is configured,
+  with a clear notice when the token is absent.
+- **Release publishing** — generated repo publishes can append generated
+  snapshot commits to protected `main`, and still refresh the target branch
+  lease before `replace-main` pushes.
+
+## v0.1.7 — 2026-07-04
+
+### Added
+- **One-command install (`create-concord`)** — `npx create-concord <dir>` vendors
+  the engine in-tree (GCV-4), pins the version in `coord/.coord-engine.json`,
+  writes the commit-vs-gitignore split + a `coord/WORKSPACE.md` runtime guide, and
+  wires `npm run gov` / `npm run concord`. `--from-existing` overlays onto an
+  existing repo: it detects the repo shape and writes a tailored
+  `coord/project.config.js` + starter tickets via the vendored `coord onboard`.
+- **Standalone Linux binary (no Node required)** — a single self-contained
+  executable (Node SEA) that carries the engine bundle inside it; `concord init .`
+  scaffolds a workspace with **zero Node on `PATH`** (for devcontainers, WSL2,
+  remote/SSH boxes, CI runners, minimal images). Built for x64 + arm64 on tag and
+  attached to the GitHub Release. No code-signing/notarization needed for Linux.
+- **GCV-4 upgrade contract (`gov upgrade`)** — records the upstream pin
+  `coord/.coord-engine.json` (version/channel/ref/sha), distinct from
+  `engine-pin.json` (in-tree integrity). `gov upgrade --check` reports **engine
+  drift** (a hand-edited vendored file) separately from **project drift** (your own
+  board/config/product — never flagged). Apply preserves board/journal/plans/config
+  untouched and rolls back byte-exact on verify failure.
+- **In-place Community → Enterprise** — `gov upgrade --channel enterprise
+  --entitlement <token>` (fail-closed without the token) applies the additive
+  enterprise engine over a Community repo, preserving the entire governed history
+  (board, tamper-evident journal, plan records, decisions) and flipping the pinned
+  channel in one commit — no re-scaffold, no data migration.
+- **Grassroots org discovery + collect/verify (Enterprise)** — a `discover-boards`
+  CLI enumerates repos holding a coord board (filesystem scan or an opt-in
+  register), reports each board's engine version, channel, governance tier, ticket
+  count, and **retroactive conformance** (each board's own vendored `conform`, so
+  drift shows), and `--collect` ingests them into the org warehouse → rollup —
+  **READ-ONLY**, no team change required.
+- **Fresh-clone guarantee** — `release/verify-fresh-clone.sh` (+ a push/PR CI
+  workflow) proves that a clone carrying only the committed governance artifacts
+  (board + hash-chained journal + plan records) passes `board.js validate` +
+  `gov conform` with no ephemeral state.
+- **`USER_MANUAL.md`** — an end-to-end adopter reference (install channels, config,
+  the governed lifecycle, upgrade, Community→Enterprise, org rollup, cockpit,
+  troubleshooting, command reference).
+
+### Changed
+- **README install path** — leads with `npx create-concord` (+ `--from-existing`)
+  and the standalone Linux binary; the `cp -R` scaffold is now a documented
+  fallback. `coord/QUICKSTART.md` modernized to match.
+
+### Fixed
+- README `project.config.js` example corrected from the stale array form to the
+  real object form (`repos: { B: {…} }`).
+
 ## v0.1.6 — 2026-06-24
 
 ### Added

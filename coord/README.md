@@ -14,6 +14,15 @@ This template provides:
 - runtime coordination support under `.runtime/`
 - stub templates for product, architecture, and domain specifications
 
+## Adoption Stance
+
+Concord is meant to be borrowed into an existing engineering system. It does not
+require product code to move, CI to be replaced, or requirements to be rewritten.
+Map the repos you already have, keep the gates they already run, and link the
+PRD/URS/specification artifacts your team already trusts. Concord then adds the
+governed execution layer: ownership, locks, per-ticket plans, evidence, review,
+traceability, and an auditable journal.
+
 The canonical repo map lives in `../coord/project.config.js` and is rendered into `product/REPOS.md`.
 Template defaults assume sibling repos:
 - `../backend`
@@ -24,7 +33,9 @@ If your repo names differ, update `../project.config.js` or rerun the template i
 
 ## Specification Stubs
 
-The following files start as stubs with purpose descriptions. Populate them with project-specific content before major feature implementation:
+The following files start as stubs with purpose descriptions. Populate them with
+project-specific content before major feature implementation, or use them as
+pointers to existing PRD/URS/specification sources:
 
 | Category | File | Purpose |
 |---|---|---|
@@ -47,8 +58,8 @@ The following files start as stubs with purpose descriptions. Populate them with
 
 1. Copy this directory into a project as `coord/`
 2. Update repo names in `../project.config.js` (or via `init.sh --repo ...`) and confirm `product/REPOS.md`
-3. Populate the specification stubs relevant to your project
-4. Replace the seed backlog in `board/tasks.json`
+3. Link or populate the specification stubs relevant to your project, especially PRD/URS and architecture
+4. Replace the seed backlog in `board/tasks.json`, preserving references to external tickets when useful
 5. Run `node coord/board/board.js sync`
 
 ## Start Here

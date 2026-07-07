@@ -141,8 +141,8 @@ enough because upgrade tooling must know what "latest" means.
   "schema": 1,
   "engine_version": "0.4.0",
   "source": {
-    "repo": "git@github.com:Softsensor-org/coord-template.git",
-    "channel": "main",
+    "repo": "https://github.com/Softsensor-org/concord",
+    "channel": "community",
     "ref": "coord-engine-v0.4.0",
     "sha": "<release-sha>"
   },
@@ -150,9 +150,15 @@ enough because upgrade tooling must know what "latest" means.
 }
 ```
 
-`source.channel` is the track used by `gov upgrade --latest`. `source.ref` is
-the immutable release ref actually applied. `source.sha` is the exact content
-provenance.
+`source.channel` is the **distribution channel** — `community` (public,
+Apache-2.0) or `enterprise` (private, licensed) — that `gov upgrade` resolves
+"latest" against. Switching community→enterprise is the licensed in-place
+upgrade: `gov upgrade --channel enterprise --entitlement <token>` (fail-closed
+without the token). `source.ref` is the immutable release ref actually applied.
+`source.sha` is the exact content provenance. This pin (identity/provenance) is
+distinct from `engine-pin.json` (in-tree surface integrity fingerprint);
+`gov upgrade --check` reports engine drift against the latter and the
+version/channel from the former.
 
 ## Upgrade Contract
 

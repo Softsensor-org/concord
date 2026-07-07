@@ -352,6 +352,16 @@ Implementation alignment:
 - ticket-scoped advisory locks such as `.runtime/tx-locks/<ticket>.tx` are ephemeral serialization guards distinct from durable canonical ticket locks in `.runtime/locks/<ticket>.lock`
 - governance or audit events should continue to flow through `appendGovernanceEvent(...)` or its successor sink
 
+Implemented in COORD-223 (builds on the COORD-220 rollback + COORD-246 baseline + COORD-222 co-located guard):
+
+- Canonical nested-lock acquisition order (deadlock-free invariant). The three process-coarse advisory locks have one fixed total order, asserted fail-closed in `coord/scripts/governance-context.js`:
+  1. `withGovernanceRuntimeLock` — governance-runtime (outermost; held by `withGovernanceMutation`)
+  2. `withCoordStateLock` — coord-state (board/plan/render writes inside the mutation body)
+  3. `withAgentStateLock` — agent-state (innermost; registry/session-lease writes)
+  A coarser lock may never be acquired while a strictly-finer lock is held; `assertLockOrder(...)` rejects the inversion with a `Lock-order violation` error before acquiring, so the order the code already follows can never silently regress into an intermittent deadlock. Re-entrant re-acquisition (depth counter) is always permitted.
+- Idempotency on retry. A governed mutation may pass a stable `metadata.idempotencyKey` derived from its logical intent. After crash recovery reconciles any partial file writes, `withGovernanceMutation(...)` checks for a prior `succeeded` event carrying the same key (`findCommittedMutationByIdempotencyKey`); if one exists the retry is a clean no-op-or-resume — `fn` is not re-run and no duplicate succeeded event is appended. The key is stamped into the succeeded event's `details.idempotency_key`.
+- Audited collision events. When a conflict is DETECTED — a reserved-ID duplicate (`reserveTicketId`/file-ticket/open-followup), a stale-write/per-ticket-lock fence, or the COORD-222 co-located-session refusal — `recordGovernanceCollision(...)` appends a journaled `collision-detected` event (`result: "detected"`, `details.conflict_type`, `details.contenders`) BEFORE failing closed. The event log is not part of the rollback snapshot set, so the record survives the rollback the refusal triggers, turning a silent race into an on-chain record queryable via `gov recent [<ticket>]` and `gov explain`. Emission is best-effort and never masks the underlying refusal.
+
 Rollback and recovery protocol:
 
 | Phase | Step | Mutation | If This Step Fails | Required Result |

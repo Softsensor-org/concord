@@ -14,6 +14,8 @@ function statusClass(status: string): string {
     : 'fstatus fstatus--open';
 }
 
+export const dynamic = 'force-dynamic';
+
 export default function IssuesPage() {
   const f = loadFindings();
   const sevChips = Object.entries(f.bySeverity)

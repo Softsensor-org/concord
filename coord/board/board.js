@@ -156,15 +156,66 @@ function collectBoardRenderState(board, planSchema, options = {}) {
   };
 }
 
+// COORD-290: resolve the rendered/PLAN/compat OUTPUT paths from the live
+// __testing.paths override registry (governance-context state) at call time,
+// rather than the module-level constants pinned to THIS checkout. The board
+// validator's READ path stays pinned (forceProjectConfig) — only the WRITE
+// targets follow the override, so a test that redirects BOARD_PATH / RENDERED_DIR
+// to a sandbox no longer re-renders the LIVE coord/rendered + coord/PLAN.md tree
+// (an out-of-band mutation that trips the COORD-220 seal). In production the
+// registry holds the defaults, so the resolved paths are byte-identical.
+function resolveRenderOutputPaths() {
+  let reg = null;
+  try {
+    reg = require("../scripts/governance-context.js").state;
+  } catch {
+    reg = null;
+  }
+  const fallback = {
+    renderedTasks: RENDERED_TASKS_MD_PATH,
+    renderedPromptIndex: RENDERED_PROMPT_INDEX_MD_PATH,
+    tasksMd: TASKS_MD_PATH,
+    promptIndexMd: PROMPT_INDEX_MD_PATH,
+    planPath: PLAN_PATH,
+  };
+  if (!reg) return fallback;
+  let renderedDir;
+  let coordRoot;
+  if (reg.RENDERED_DIR && reg.RENDERED_DIR !== PATHS.renderedDir) {
+    // Explicit RENDERED_DIR override wins.
+    renderedDir = reg.RENDERED_DIR;
+    coordRoot = path.dirname(renderedDir);
+  } else if (reg.BOARD_PATH && reg.BOARD_PATH !== PATHS.boardPath) {
+    // Co-locate rendered artifacts with the (redirected) board: a BOARD_PATH
+    // sandbox auto-sandboxes the renders. Board lives at <coordRoot>/board/...
+    coordRoot = path.dirname(path.dirname(reg.BOARD_PATH));
+    renderedDir = path.join(coordRoot, "rendered");
+  } else {
+    return fallback;
+  }
+  const planPath =
+    reg.PLAN_PATH && reg.PLAN_PATH !== PATHS.planPath
+      ? reg.PLAN_PATH
+      : path.join(coordRoot, "PLAN.md");
+  return {
+    renderedTasks: path.join(renderedDir, "TASKS.md"),
+    renderedPromptIndex: path.join(renderedDir, "PROMPT_INDEX.md"),
+    tasksMd: path.join(coordRoot, "TASKS.md"),
+    promptIndexMd: path.join(coordRoot, "PROMPT_INDEX.md"),
+    planPath,
+  };
+}
+
 function writeRenderedArtifacts(state) {
   const tasksMarkdown = renderTasksMarkdown(state.board);
   const promptIndexMarkdown = renderPromptIndexMarkdown(state.board);
   const planMarkdown = renderPlanMarkdown(state.board, state.planRecords);
-  writeFile(RENDERED_TASKS_MD_PATH, tasksMarkdown);
-  writeFile(RENDERED_PROMPT_INDEX_MD_PATH, promptIndexMarkdown);
-  writeCompatibilityCopy(RENDERED_TASKS_MD_PATH, TASKS_MD_PATH, tasksMarkdown);
-  writeCompatibilityCopy(RENDERED_PROMPT_INDEX_MD_PATH, PROMPT_INDEX_MD_PATH, promptIndexMarkdown);
-  writeFile(PLAN_PATH, planMarkdown);
+  const out = resolveRenderOutputPaths();
+  writeFile(out.renderedTasks, tasksMarkdown);
+  writeFile(out.renderedPromptIndex, promptIndexMarkdown);
+  writeCompatibilityCopy(out.renderedTasks, out.tasksMd, tasksMarkdown);
+  writeCompatibilityCopy(out.renderedPromptIndex, out.promptIndexMd, promptIndexMarkdown);
+  writeFile(out.planPath, planMarkdown);
   return state;
 }
 

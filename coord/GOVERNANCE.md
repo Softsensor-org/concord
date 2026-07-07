@@ -77,9 +77,10 @@ When instructions conflict, use this order:
 1. Human-admin
 2. `coord/GOVERNANCE.md`
 3. Ticket prompt in `coord/prompts/`
-4. Repo-local `AGENTS.md` files and tool-specific shim files (`CLAUDE.md`, `CODEX.md`, `GEMINI.md`)
-5. Orchestrator cycle decisions
-6. Agent judgment
+4. Repo-local `AGENTS.md` files
+5. Tool-specific shim files (`CLAUDE.md`, `CODEX.md`, `GEMINI.md`)
+6. Orchestrator cycle decisions
+7. Agent judgment
 
 Rules:
 - Orchestrator decisions cannot override human-admin instructions, governance, or ticket prompts.
@@ -99,6 +100,58 @@ Rules:
 - Cross-agent handoffs are allowed only through clean `claim` / `resume` semantics.
 - Tool-specific wrappers do not override governance, ticket prompts, or board state.
 - comparative-strength routing across Claude, Codex, and Gemini should use `coord/AGENT_CAPABILITY_REGISTRY.md`, not prompt folklore
+
+## 3.2) Agent Boot, Retrieval, and Externalization Contract
+
+This section defines the cold-start contract for every governed agent. It adds no
+new subsystem: agents resume from existing governed artifacts and write durable
+learning back into those same artifacts.
+
+Chat memory is non-authoritative. A transcript, model memory, or remembered
+prior answer may help locate relevant material, but it never outranks the board,
+governance journal, plan records, prompts, repo gates, feature proofs, accepted
+ADRs, or product requirement sources.
+
+Boot sequence:
+1. Read the thin entry shim: root `AGENTS.md`, then the active tool shim
+   (`CODEX.md`, `CLAUDE.md`, or `GEMINI.md`) when present.
+2. Resolve canonical precedence from this file, then the ticket prompt,
+   repo-local `AGENTS.md` files, tool shim, orchestrator cycle decision, and
+   agent judgment in the authority order above.
+3. Bind identity before mutation. Use `coord/scripts/gov agentid --assign` for a
+   fresh session, then `start`, `claim`, or `resume` the ticket through
+   governance as appropriate for the current state.
+4. Retrieve the minimum governed context before planning.
+5. Plan, execute, verify, and move through the review gate.
+6. Externalize durable learning before closeout so the next cold-start agent can
+   resume without relying on chat memory.
+
+Minimum context for nontrivial tickets:
+- `coord/scripts/gov explain <ticket>` as the first ticket read;
+- the ticket prompt or waiver and current board row;
+- the active plan record, prework/context-pack, and ticket-local notes when they
+  exist;
+- relevant recall or memory-claim proposals, treated as leads until verified
+  against governed artifacts;
+- accepted ADR references, ADR proposals linked from the ticket, and product
+  requirement sources that the ticket cites or modifies;
+- business-discovery packs or requirements packs for discovery/product-shaping
+  work;
+- repo-local `AGENTS.md` files and gate docs for every repo touched by the
+  declared write scope.
+
+Externalization requirements:
+- record plan updates, requirement-closure evidence, review cycles, feature
+  proofs, and repo-gate results through governance where the CLI supports them;
+- link accepted ADRs or record an ADR proposal when the work changes durable
+  architecture, coordination semantics, or operator policy;
+- record memory-claim proposals only for reusable learning that has been
+  verified against current governed artifacts;
+- resolve questions, decisions, and reflections in the appropriate governed
+  logs instead of leaving them only in chat;
+- close out with enough evidence that a new agent tomorrow can run
+  `coord/scripts/gov explain <ticket>`, read the linked artifacts, and understand
+  what was done, what remains deferred, and which gates proved it.
 
 ## 4) Ticket Status Model
 
@@ -171,7 +224,13 @@ Additional codes can be added for projects with more repos (e.g., `M` = mobile, 
 
 ## 7) Worktree Rules
 
-- All governed code work (any repo code except `X`) should happen in repo-local worktrees under `.worktrees/<agent>/<ticket>/`.
+- Fleet mode is worktree-per-agent by default. Every governed agent must work from a repo-local or coord-owned worktree under `.worktrees/<agent>/<ticket>/`; a shared checkout/runtime is not a supported multi-agent execution surface.
+- `gov start` provisions the ticket worktree automatically. Repo-backed tickets use the product repo's `.worktrees/<agent>/<ticket>/`; repo `X` tickets use a real coord git worktree under `coord/.worktrees/<agent>/<ticket>/` with a worktree-local, gitignored `coord/.runtime/` scaffold.
+- A second heartbeat-fresh governed session in the same checkout/runtime is refused by default. Use a separate git worktree with its own `coord/.runtime`; pass `--allow-shared-worktree` only for deliberate single-agent/local or orchestrator-controlled exceptions where the operator accepts the shared-runtime risk.
+- Repo `X` work is split by declared file surface:
+  - safe coord code/doc surfaces such as `coord/scripts/`, `coord/docs/`, `coord/product/`, `coord/ui/`, `coord/GOVERNANCE.md`, and repo-local agent guide files may be scheduled in parallel waves when declared files are disjoint;
+  - global coordination state such as `coord/board/`, `coord/.runtime/`, `coord/.worktrees/`, `coord/prompts/`, `coord/rendered/`, `coord/PLAN.md`, and `coord/QUESTIONS.md` remains single-writer and must be scheduled alone.
+- Repo `X` tickets without declared files are treated as potentially global-state-affecting and scheduled alone.
 - The repo root should stay clean.
 - Never overwrite another agent's work.
 - If unrelated dirty files are found, stop and log the conflict in `coord/QUESTIONS.md`.
@@ -241,6 +300,20 @@ When a ticket does not have a prompt mapping in `prompt_index`, it must have an 
 - `reason`: why a prompt is not required
 - `recorded_at`: when the waiver was recorded
 - `recorded_by`: who recorded it
+
+Prompt creation and registration:
+- low-ceremony `gov file-ticket` remains valid without prompt coverage
+- when a ticket should be start-ready at creation time, use
+  `coord/scripts/gov file-ticket ... --with-prompt` to create
+  `coord/prompts/tickets/<ticket-id>.md` and register `prompt_index` coverage
+  in the same governed mutation
+- when an existing ticket needs its missing canonical prompt, use
+  `coord/scripts/gov register-prompt <ticket-id> --create`
+- do not hand-create prompt files and then repair sealed-state drift unless
+  explicitly recovering from an interrupted command; the governed create/register
+  path is the normal atomic path
+- a ticket already registered to a different prompt path must fail closed unless
+  the operator passes an explicit replacement/force flag
 
 ## 9) Review Gate
 
@@ -408,13 +481,12 @@ Before running `gov land`:
 
 ## 10.8) Governance Drift Classification
 
-`detectGovernanceProvenanceDrift` in `coord/scripts/governance.js` compares the governed filesystem snapshot to the last journaled snapshot. Drift paths are classified into three buckets:
+`detectGovernanceProvenanceDrift` (in `coord/scripts/journal.js`) compares the governed filesystem snapshot to the last journaled snapshot. The resulting drift paths are split by `splitGovernanceProvenanceDrift` (`coord/scripts/lifecycle-board-commands.js`) into two buckets:
 
-- `warnings` — `coord/.runtime/agent_sessions.json` and `coord/.runtime/session-threads/*`. These are expected to churn from session normalization and do not block or log a QUESTIONS.md row.
-- `acknowledgedWriter` — `coord/QUESTIONS.md`, `coord/PLAN.md`, and `coord/board/plans/*.json`. Governance is the acknowledged writer of these files; drift here is routine between mutations and is not logged to QUESTIONS.md.
-- `blocking` — any other governed file. Drift here is surfaced as a drift-note row in `coord/QUESTIONS.md` and as an error in `gov doctor`.
+- `warnings` — paths under `coord/.runtime/agent_sessions.json` or `coord/.runtime/session-threads/*`. These churn from session normalization; they do not block and are not logged as a QUESTIONS.md drift-note row.
+- `blocking` — every other governed file, **including** `coord/QUESTIONS.md`, `coord/PLAN.md`, and the plan records under `coord/.runtime/plans/*.json`. Pre-existing blocking drift detected at the start of a governed mutation is logged as a drift-note row in `coord/QUESTIONS.md` and surfaced by `gov doctor`.
 
-Warning and acknowledged-writer drift is still recorded in the governance event journal (under `details.preexisting_drift_warnings` and `details.preexisting_drift_acknowledged_writer`) so observability is preserved. To rotate `coord/QUESTIONS.md` before applying this classification to historical rows, follow `coord/docs/QUESTIONS_ROTATION_PROTOCOL.md`.
+The mutation records the pre-existing drift in the governance event journal under `details.preexisting_drift` (the drift path list) and `details.preexisting_drift_logged_to_questions` (whether the drift-note row was written), so observability is preserved. To rotate `coord/QUESTIONS.md` before applying this classification to historical rows, follow `coord/docs/QUESTIONS_ROTATION_PROTOCOL.md`.
 
 ## 10.9) Live-MCP Lifecycle Enforcement
 

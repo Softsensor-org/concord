@@ -12,6 +12,13 @@ Repo-local agent guides:
 
 If any other markdown conflicts with `coord/GOVERNANCE.md`, governance wins.
 
+Cold start:
+- Keep this shim thin. Use it to find the canonical governance sources, not as a
+  replacement for them.
+- Chat memory is non-authoritative. Resume from `coord/scripts/gov explain
+  <ticket>`, plan/prework records, relevant ADR/requirements references, and the
+  governed artifacts named in `coord/GOVERNANCE.md` Section 3.2.
+
 ## Skills
 
 Agent skills are defined in `.claude/commands/`. Use them via slash commands:

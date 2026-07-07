@@ -28,6 +28,7 @@ module.exports = function createConformanceVerbs(deps = {}) {
     fail,
     verifyGovernanceChain,
     repairGovernanceChain,
+    migrateGovernanceChainHash,
     resolveRepairIdentity,
     createConformanceAttestation,
     createEnginePin,
@@ -40,6 +41,10 @@ module.exports = function createConformanceVerbs(deps = {}) {
     coordDir,
     verifyGovernanceChain: (...args) => verifyGovernanceChain(...args),
     fail,
+    // COORD-300: forward the optional sandboxable runtime-dir resolver so the
+    // lazily-generated conformance keypair + attestation artifacts follow a
+    // RUNTIME_DIR override (test sandbox) instead of writing the live .runtime tree.
+    resolveRuntimeDir: deps.resolveRuntimeDir,
   });
 
   // ENT-002 / ENT-010: read-only conformance self-verification.
@@ -54,13 +59,24 @@ module.exports = function createConformanceVerbs(deps = {}) {
   // Read-only except writing the attestation artifact + (first-run) the keypair.
   function conform(options = {}) {
     if (options.verifyAttestation) {
-      const report = conformanceAttestation.verify(options.verifyAttestation);
+      // COORD-272: thread the OPTIONAL pinned trust anchor (CLI --trust-anchor)
+      // through to verify so anchored runs reject an untrusted signing key.
+      const report = conformanceAttestation.verify(options.verifyAttestation, {
+        trustAnchor: options.trustAnchor,
+      });
       if (options.json === true) {
         console.log(JSON.stringify(report, null, 2));
       } else {
         console.log(`Attestation verification: ${report.ok ? "PASS" : "FAIL"}`);
         console.log(`  file:              ${report.path}`);
-        console.log(`  signature valid:   ${report.signature_valid}`);
+        // COORD-272: signature validity is integrity-vs-the-embedded-key ONLY;
+        // authenticity is reported SEPARATELY and never conflated with it.
+        console.log(`  signature valid:   ${report.signature_valid} (integrity vs embedded key only)`);
+        console.log(
+          `  authenticity:      ${report.authenticity}` +
+          (report.trust_anchor_configured ? "" : " (no trust anchor configured — unverified)")
+        );
+        console.log(`  trusted:           ${report.trusted}`);
         console.log(`  digest matches:    ${report.digest_matches_subject}`);
         console.log(`  matches live:      ${report.matches_live_inputs}`);
         console.log(`  attested digest:   ${report.attested_digest || "(none)"}`);
@@ -85,8 +101,15 @@ module.exports = function createConformanceVerbs(deps = {}) {
     const report = {
       verdict: chain.ok ? "pass" : "fail",
       chain_head: chain.head,
+      // COORD-289: name the era of the head explicitly (sha1 = pre-migration,
+      // sha256 = post hash-alg-migration).
+      chain_head_alg: chain.headAlg || null,
       total_events: chain.total,
       chained_events: chain.chainedCount,
+      // COORD-289: per-era breakdown + the migration boundary.
+      sha1_chained_events: chain.sha1ChainedCount,
+      sha256_chained_events: chain.sha256ChainedCount,
+      migration_index: chain.migrationIndex,
       pre_chain_events: chain.preChainCount,
       broken_links: chain.broken,
     };
@@ -94,10 +117,21 @@ module.exports = function createConformanceVerbs(deps = {}) {
       console.log(JSON.stringify(report, null, 2));
     } else {
       console.log(`Journal hash-chain conformance: ${report.verdict.toUpperCase()}`);
-      console.log(`  chain head: ${report.chain_head || "(no chained events yet)"}`);
+      console.log(
+        `  chain head: ${report.chain_head || "(no chained events yet)"}` +
+        `${report.chain_head_alg ? ` [${report.chain_head_alg}]` : ""}`
+      );
       console.log(
         `  events: ${report.total_events} total, ${report.chained_events} chained, ` +
         `${report.pre_chain_events} pre-chain (legacy, unverified)`
+      );
+      // COORD-289: show the SHA-1 vs SHA-256 era split + migration boundary.
+      console.log(
+        `  eras: ${report.sha1_chained_events} sha1-chained, ` +
+        `${report.sha256_chained_events} sha256-chained` +
+        `${report.migration_index !== null && report.migration_index !== undefined
+          ? ` (migration boundary @ event #${report.migration_index})`
+          : " (no hash-alg-migration yet — dormant)"}`
       );
       if (!chain.ok) {
         console.log(`  broken links (${chain.broken.length}):`);
@@ -186,6 +220,52 @@ module.exports = function createConformanceVerbs(deps = {}) {
     return result;
   }
 
+  // COORD-289: the governed `hash-alg-migration` verb — the SINGLE, human-only
+  // hinge that migrates the live journal hash-chain from the SHA-1 era to the
+  // SHA-256 era WITHOUT re-hashing or re-chaining any historical event.
+  //   - default (no --confirm): DRY-RUN. Reports the SHA-1 head that WOULD be
+  //                             bridged + writes nothing.
+  //   - --confirm:              APPLY (irreversible). Under the runtime lock,
+  //                             preconditions the chain verifies `ok`, refuses if a
+  //                             migration already exists (idempotent), signs the
+  //                             transition payload with the conformance keypair, and
+  //                             appends the single SHA-1-linked, sha256-checkpoint
+  //                             bridge event. After it runs, `gov conform` reports a
+  //                             non-zero SHA-256 era and headAlg=sha256, while the
+  //                             full SHA-1 history still verifies as historical fact.
+  function migrateChainHash(options = {}) {
+    const confirm = options.confirm === true;
+    const identity =
+      typeof resolveRepairIdentity === "function" ? resolveRepairIdentity() : null;
+    const result = migrateGovernanceChainHash({ confirm, identity, ticket: options.ticket });
+
+    if (options.json === true) {
+      console.log(JSON.stringify(result, null, 2));
+    } else if (result.status === "already-migrated") {
+      console.log(`Hash-alg migration: NO-OP (chain already migrated).`);
+      console.log(`  migration boundary: event #${result.migration_index}`);
+      console.log(`  chain head:         ${result.head || "(none)"} [${result.head_alg || "?"}]`);
+    } else if (result.status === "dry-run") {
+      console.log(`Hash-alg migration: DRY-RUN (no --confirm; nothing written).`);
+      console.log(`  sha1 chain head:  ${result.sha1_chain_head}`);
+      console.log(`  verifier version: ${result.verifier_version}`);
+      console.log(`  chained events:   ${result.chained_events} of ${result.total_events} total`);
+      console.log(`  Re-run with: gov migrate-chain-hash --confirm to apply (IRREVERSIBLE).`);
+    } else if (result.status === "migrated") {
+      console.log(`Hash-alg migration: APPLIED.`);
+      console.log(`  sha1 chain head (bridged): ${result.sha1_chain_head}`);
+      console.log(`  migrated at:               ${result.migrated_at}`);
+      console.log(`  verifier version:          ${result.verifier_version}`);
+      console.log(`  signer fingerprint:        ${result.signature_fingerprint}`);
+      console.log(`  migration boundary:        event #${result.migration_index}`);
+      console.log(`  new chain head:            ${result.head} [${result.head_alg}]`);
+      console.log(
+        `  eras: ${result.sha1_chained} sha1-chained, ${result.sha256_chained} sha256-chained`
+      );
+    }
+    return result;
+  }
+
   // ENT-011: engine version-pin + drift-check factory (COMMUNITY half of ENT-008).
   // Reuses the same TEMPLATE_SYNC_MANIFEST.json fingerprint computation as ENT-010's
   // conformance attestation so a pin and an attestation agree on the surface hash.
@@ -260,6 +340,7 @@ module.exports = function createConformanceVerbs(deps = {}) {
     enginePin,
     conform,
     repairChain,
+    migrateChainHash,
     verifyEngine,
   };
 };

@@ -119,3 +119,46 @@ test("runInfraGate passes through in-memory inputs and honors target", () => {
   assert.strictEqual(r.result, "pass");
   assert.strictEqual(r.target, "softsensor-www");
 });
+
+test("enterprise deployment checks skip by default for bare templates", () => {
+  const r = evaluateInfra({ staticwebappConfig: goodConfig(), workflowText: goodWorkflow });
+  const c = r.checks.find((x) => x.name === "enterprise_deployment_policy");
+  assert.strictEqual(c.result, "skip");
+  assert.strictEqual(r.result, "pass");
+});
+
+test("enterprise deployment checks block when required evidence is absent", () => {
+  const r = evaluateInfra({
+    staticwebappConfig: goodConfig(),
+    workflowText: goodWorkflow,
+    enterpriseRequired: true,
+  });
+  assert.strictEqual(r.result, "fail");
+  assert.strictEqual(r.checks.find((x) => x.name === "deploy_identity").result, "fail");
+  assert.strictEqual(r.checks.find((x) => x.name === "artifact_identity").result, "fail");
+  assert.strictEqual(r.checks.find((x) => x.name === "rollback_path").result, "fail");
+});
+
+test("enterprise deployment checks pass with full receipt evidence", () => {
+  const r = evaluateInfra({
+    staticwebappConfig: goodConfig(),
+    workflowText: goodWorkflow,
+    enterpriseRequired: true,
+    deploymentEvidence: {
+      deploy_identity: "ci:coord-enterprise-deployer",
+      landed_commit: "abc123",
+      deployed_commit: "abc123",
+      secret_refs_only: true,
+      secret_store_ref: "secretKeyRef:coord/deploy",
+      kms_key_ref: "kms://coord-signing",
+      environment_diff_reviewed: true,
+      iam_policy_reviewed: true,
+      network_policy_reviewed: true,
+      rollback_path: "redeploy previous image tag",
+      runtime_smoke: "GET /readyz and feature verify pass",
+      receipt_path: "coord/evidence/deploy/receipt.json",
+    },
+  });
+  assert.strictEqual(r.result, "pass");
+  assert.ok(r.artifact_paths.includes("coord/evidence/deploy/receipt.json"));
+});

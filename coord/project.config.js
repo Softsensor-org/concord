@@ -81,6 +81,26 @@ module.exports = {
   requirements: {
     path: "product/REQUIREMENTS.md",
   },
+  // COORD-272: OPTIONAL conformance-attestation trust anchor seam.
+  //
+  // ENT-010 conformance attestations are ed25519-signed and self-verify against
+  // the public key EMBEDDED in the artifact — that proves integrity-vs-bitflips
+  // but ZERO authenticity (anyone can re-sign with their own key and embed it).
+  // To establish authenticity, pin an org trust root here: list the trusted
+  // signing key(s) as a public-key PEM, a path to a PEM file, or a bare sha256
+  // fingerprint hex (see `signing_key_fingerprint` in a verify result). When set,
+  // `gov conform --verify-attestation <file>` REJECTS any attestation whose
+  // signing key is not in this allowlist. When UNSET (the default below — the
+  // community self-hosting case), verify still works but honestly reports the
+  // result as `authenticity: "self-signed"` (unverified). Per-call override:
+  // `--trust-anchor <pem|fingerprint>` or the CONFORMANCE_TRUST_ANCHOR env.
+  //
+  // conformance: {
+  //   trustedAttestationKeys: [
+  //     "coord/.runtime/conformance-keys/attestation-signing-key.pub.pem",
+  //     "0f2c…<64-hex sha256 fingerprint>…",
+  //   ],
+  // },
   // COORD-181: multi-track governance profile (see
   // coord/product/MULTI_TRACK_GOVERNANCE_PROFILE.md). A TRACK is the work-type
   // axis — it selects a gate-proc, a default gate LANE (the existing

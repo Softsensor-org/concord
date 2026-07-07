@@ -1,3 +1,5 @@
+// COORD-299 / COORD-390: relocate this worker's full runtime + seal surfaces to an os.tmpdir() sandbox
+require("./governance-test-utils.js").sandboxProcessRuntime();
 // Behavior tests for the wired dispatch loop reference harness
 // coord/scripts/dispatch.mjs (COORD-033). The harness is provider-agnostic,
 // read-only, deterministic, and does NOT spawn agents. Relocated verbatim from

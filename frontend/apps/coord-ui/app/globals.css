@@ -209,7 +209,37 @@ a {
 .coord-nav {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
   gap: 0.1rem;
+}
+
+.coord-nav__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0 0.4rem;
+  border-left: 1px solid var(--line);
+}
+
+.coord-nav__group:first-child {
+  border-left: none;
+  padding-left: 0;
+}
+
+.coord-nav__group-label {
+  font-family: var(--font-display);
+  font-size: 0.54rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  padding: 0 0.62rem;
+}
+
+.coord-nav__group-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.05rem;
 }
 
 .coord-nav__link {
@@ -253,6 +283,132 @@ a {
   padding: var(--lm-space-5, 1.5rem);
   max-width: 1680px;
   margin: 0 auto;
+}
+
+/* ─── action center (home) ───────────────────────────────────── */
+
+.action-center {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.ac-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.85rem 1rem;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.ac-card--wide {
+  grid-column: 1 / -1;
+}
+
+.ac-card__title {
+  font-family: var(--font-display);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0;
+}
+
+.ac-ok {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.ac-stat {
+  font-size: 0.82rem;
+  color: var(--fg);
+}
+
+.ac-stat code {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.3rem;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.ac-warn {
+  color: var(--accent-strong);
+}
+
+.ac-muted {
+  color: var(--muted);
+}
+
+.ac-chips,
+.ac-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.ac-rows {
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ac-chip {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.22rem 0.6rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--line-strong);
+}
+
+.ac-chip--crit {
+  color: #b42318;
+  background: #fee4e2;
+  border-color: #fda29b;
+}
+
+.ac-chip--warn {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.ac-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.8rem;
+}
+
+.ac-row__id {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--accent-strong);
+  flex-shrink: 0;
+}
+
+.ac-row__desc {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ac-link {
+  margin-top: auto;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--accent);
 }
 
 /* ─── telemetry readout (board-meta) ─────────────────────────── */

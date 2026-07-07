@@ -17,6 +17,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { shapeGateResult } = require("./gate-result.js");
 
 const DEFAULT_LIGHTHOUSE_THRESHOLD = 0.9;
 
@@ -214,19 +215,15 @@ function evaluateSite(pages, options = {}) {
 }
 
 function finalize(site, checks, artifactPaths) {
-  const failed = checks.filter((c) => c.result === "fail");
-  return {
+  // COORD-279: shared gate-result shaping (was an inlined duplicate of the
+  // analytics/infra blocks).
+  return shapeGateResult({
     gateProc: "content",
     track: "marketing",
-    site,
-    result: failed.length === 0 ? "pass" : "fail",
+    subject: { site },
     checks,
-    artifact_paths: artifactPaths,
-    summary:
-      failed.length === 0
-        ? `content gate pass: ${checks.length} check(s) ok`
-        : `content gate fail: ${failed.length}/${checks.length} check(s) failed`,
-  };
+    artifactPaths,
+  });
 }
 
 // ---- fs loader (thin layer over the pure core) ---------------------------

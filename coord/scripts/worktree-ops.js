@@ -387,6 +387,45 @@ module.exports = function createWorktreeOps(deps = {}) {
       branch,
     };
   }
+
+  function ensureCoordGitWorktree({ worktree, branch, base }) {
+    const repoRoot = path.dirname(COORD_DIR);
+    const worktrees = listGitWorktrees(repoRoot);
+    const existingByPath = worktrees.find((entry) => entry.path === worktree);
+    if (existingByPath) {
+      ensureCoordWorktreeRuntime(worktree);
+      return {
+        createdWorktree: false,
+        createdBranch: false,
+        repoCode: "X",
+        worktree,
+        branch,
+      };
+    }
+    fs.mkdirSync(path.dirname(worktree), { recursive: true });
+    const branchExists = gitTry(repoRoot, ["rev-parse", "--verify", branch], { stdio: "ignore" }).status === 0;
+    if (branchExists) {
+      runGit(repoRoot, ["worktree", "add", worktree, branch]);
+      ensureCoordWorktreeRuntime(worktree);
+      return {
+        createdWorktree: true,
+        createdBranch: false,
+        repoCode: "X",
+        worktree,
+        branch,
+      };
+    }
+    const baseRef = base && gitCommitishExists(repoRoot, base) ? base : "HEAD";
+    runGit(repoRoot, ["worktree", "add", worktree, "-b", branch, baseRef]);
+    ensureCoordWorktreeRuntime(worktree);
+    return {
+      createdWorktree: true,
+      createdBranch: true,
+      repoCode: "X",
+      worktree,
+      branch,
+    };
+  }
   
   function ensureTicketWorkspace({ repoCode, worktree, branch, base }) {
     if (isRepoBackedCode(repoCode)) {
@@ -398,17 +437,41 @@ module.exports = function createWorktreeOps(deps = {}) {
       });
     }
     if (repoCode === "X") {
-      const existed = fs.existsSync(worktree);
-      fs.mkdirSync(worktree, { recursive: true });
-      return {
-        createdWorktree: !existed,
-        createdBranch: false,
-        repoCode,
+      return ensureCoordGitWorktree({
         worktree,
         branch,
-      };
+        base,
+      });
     }
     fail(`Unsupported repo code "${repoCode}".`);
+  }
+
+  function ensureCoordWorktreeRuntime(worktree) {
+    const runtimeDir = path.join(worktree, "coord", ".runtime");
+    for (const rel of [
+      ".",
+      "locks",
+      "plans",
+      "session-threads",
+      "governance-snapshots",
+      "identity",
+    ]) {
+      fs.mkdirSync(path.join(runtimeDir, rel), { recursive: true });
+    }
+    const gitignorePath = path.join(runtimeDir, ".gitignore");
+    if (!fs.existsSync(gitignorePath)) {
+      fs.writeFileSync(gitignorePath, "*\n!.gitignore\n", "utf8");
+    }
+    const roleMarkerPath = path.join(runtimeDir, "runtime-role.json");
+    if (!fs.existsSync(roleMarkerPath)) {
+      fs.writeFileSync(roleMarkerPath, `${JSON.stringify({
+        schema_version: 1,
+        role: "ephemeral_worktree",
+        authority: "non_authoritative_until_landed",
+        canonical_write_path: "integration_tree_via_merge_queue",
+      }, null, 2)}\n`, "utf8");
+    }
+    return runtimeDir;
   }
   
   function cleanupPreparedTicketWorkspace(prepared) {
@@ -430,7 +493,19 @@ module.exports = function createWorktreeOps(deps = {}) {
       return;
     }
     if (prepared.repoCode === "X" && fs.existsSync(prepared.worktree)) {
-      fs.rmSync(prepared.worktree, { recursive: true, force: true });
+      const repoRoot = path.dirname(COORD_DIR);
+      const current = listGitWorktrees(repoRoot).find((entry) => entry.path === prepared.worktree);
+      if (current) {
+        runGit(repoRoot, ["worktree", "remove", "--force", prepared.worktree]);
+      } else {
+        fs.rmSync(prepared.worktree, { recursive: true, force: true });
+      }
+      if (prepared.createdBranch) {
+        const branchExists = gitTry(repoRoot, ["rev-parse", "--verify", prepared.branch], { stdio: "ignore" }).status === 0;
+        if (branchExists) {
+          runGit(repoRoot, ["branch", "-D", prepared.branch]);
+        }
+      }
       pruneEmptyParents(prepared.worktree, coordWorktreesRoot());
     }
   }
@@ -722,5 +797,6 @@ module.exports = function createWorktreeOps(deps = {}) {
     coordWorktreesRoot, pruneEmptyParents, formatMissingStartBaseRefMessage,
     buildDependencyBootstrapGuidance, repoBootstrapLabel, inferTicketIdFromPath,
     cleanupTicketWorktree, cleanupCoordTicketWorktrees, cleanupClosedTicketWorkspace,
+    ensureCoordWorktreeRuntime,
   };
 };

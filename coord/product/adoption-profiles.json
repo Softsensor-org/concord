@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "default_profile": "solo-dev",
+  "profiles": {
+    "solo-dev": {
+      "label": "Solo development",
+      "intent": "Lightweight governance for an individual or early prototype repo.",
+      "default_lane": "default",
+      "recommended_tracks": ["development"],
+      "required_ticket_fields": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description"],
+      "required_evidence": ["repo_gate_or_not_required", "feature_proof", "requirement_closure"],
+      "closeout_expectations": ["local_gate", "clear_done_summary"],
+      "allowed_adapter_classes": ["local_fs", "git", "test_runner"],
+      "ui_labels": ["lightweight", "local-first"]
+    },
+    "small-team": {
+      "label": "Small team",
+      "intent": "Shared repo governance for multiple developers or agents.",
+      "default_lane": "default",
+      "recommended_tracks": ["development", "devops"],
+      "required_ticket_fields": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      "required_evidence": ["repo_gate", "feature_proof", "review_cycles", "requirement_closure"],
+      "closeout_expectations": ["owner_lock", "review_record", "landing_evidence"],
+      "allowed_adapter_classes": ["local_fs", "git", "test_runner", "issue_tracker_read"],
+      "ui_labels": ["team", "reviewed"]
+    },
+    "product-engineering": {
+      "label": "Product engineering",
+      "intent": "Real product delivery with requirements, tests, release evidence, and runtime awareness.",
+      "default_lane": "full",
+      "recommended_tracks": ["development", "devops", "product-engineering"],
+      "required_ticket_fields": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      "required_evidence": ["repo_gate", "feature_proof", "review_cycles", "requirement_closure", "landing_evidence"],
+      "closeout_expectations": ["test_evidence", "release_or_no_pr_rationale", "post_close_followups"],
+      "allowed_adapter_classes": ["local_fs", "git", "test_runner", "issue_tracker_read", "runtime_read"],
+      "ui_labels": ["product", "release-aware"]
+    },
+    "regulated": {
+      "label": "Regulated",
+      "intent": "URS/SRS, validation, audit-facing, or compliance-sensitive delivery.",
+      "default_lane": "full",
+      "recommended_tracks": ["development", "devops", "data-analytics"],
+      "required_ticket_fields": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On", "Requirement IDs"],
+      "required_evidence": ["traceability", "repo_gate", "review_cycles", "requirement_closure", "criticality", "evidence_class", "qa_or_business_signoff_when_required", "deviation_or_waiver_when_applicable"],
+      "closeout_expectations": ["product_traceability", "validation_grade_closure", "controlled_document_or_code_evidence", "audit_trail", "partial_closure_not_laundered_as_satisfied"],
+      "allowed_adapter_classes": ["local_fs", "git", "test_runner", "issue_tracker_read", "evidence_export"],
+      "ui_labels": ["regulated", "traceability"],
+      "regulated_controls": {
+        "baseline_states": ["draft", "review_ready", "approved_baseline", "contradictory", "ambiguous", "deferred"],
+        "closure_states": ["Missing", "Planned", "Implemented", "Partial", "Satisfied", "Waived", "Deviation", "Defect", "Retired"],
+        "criticality": ["standard", "business_critical", "safety_critical", "compliance_critical", "gxp_impacting"],
+        "signoff_roles": ["engineering", "product", "qa", "business_owner", "compliance", "validation_owner"],
+        "donor_reuse_decisions": ["reuse", "replace", "isolate", "migrate", "defer", "reject"]
+      }
+    },
+    "enterprise": {
+      "label": "Enterprise",
+      "intent": "Enterprise repo-family rollout or central development command center.",
+      "default_lane": "full",
+      "recommended_tracks": ["development", "devops", "product-engineering", "data-analytics"],
+      "required_ticket_fields": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On", "System", "Tenant Scope"],
+      "required_evidence": ["rbac_scope", "repo_gate", "landing_evidence", "runtime_or_deploy_receipt", "evidence_export"],
+      "closeout_expectations": ["pilot_vs_enterprise_readiness_split", "security_gap_statement", "tenant_boundary_note"],
+      "allowed_adapter_classes": ["local_fs", "git", "test_runner", "issue_tracker_read", "runtime_read", "enterprise_collector"],
+      "ui_labels": ["enterprise", "command-center"]
+    },
+    "production-mcp": {
+      "label": "Production MCP",
+      "intent": "Governed read or investigation workflow against deployed systems through MCP-style adapters.",
+      "default_lane": "full",
+      "recommended_tracks": ["product-engineering", "devops"],
+      "required_ticket_fields": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Operation Class", "Scope"],
+      "required_evidence": ["operation_class", "approval_or_policy", "redaction", "receipt", "cleanup_or_no_cleanup"],
+      "closeout_expectations": ["observe_before_fix", "handoff_to_development_for_code_changes", "runtime_verification"],
+      "allowed_adapter_classes": ["runtime_read", "mcp_read_safe", "policy_broker"],
+      "ui_labels": ["runtime", "receipted"]
+    },
+    "server-bootstrap": {
+      "label": "Server bootstrap",
+      "intent": "Startup, seed, migration, replay, backfill, generated-data, and fact-table population work.",
+      "default_lane": "full",
+      "recommended_tracks": ["development", "devops", "data-analytics"],
+      "required_ticket_fields": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Runtime Environment"],
+      "required_evidence": ["resource_envelope", "idempotency", "rollback_or_disable", "bounded_read", "runtime_success_signal"],
+      "closeout_expectations": ["separate_job_or_explicit_boot_rationale", "before_after_row_count_when_data_population", "readyz_not_sufficient"],
+      "allowed_adapter_classes": ["local_fs", "git", "test_runner", "runtime_read", "deploy_read"],
+      "ui_labels": ["bootstrap", "runtime-safety"]
+    }
+  }
+}

@@ -1,3 +1,5 @@
+// COORD-299 / COORD-390: relocate this worker's full runtime + seal surfaces to an os.tmpdir() sandbox
+require("./governance-test-utils.js").sandboxProcessRuntime();
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -13,6 +15,15 @@ const {
   createTempGitRepoWithOrigin,
 } = require("./governance-test-utils.js");
 const { DEFAULT_PATHS: ACTIVE_PATHS } = require("./governance-context.js");
+const {
+  advanceCadenceCursor,
+  buildContinuityReadOnlyReadout,
+  computeContinuityGenerationHash,
+  mergeAppendOnlyContinuityRecords,
+  validateContinuityFreshRead,
+} = require("./governance-context.js");
+const { countLoc } = require("./arch-checks.js");
+const createGovernanceValidation = require("./governance-validation.js");
 
 // COORD-098 (governance.test residual split, slice 3): validation / readiness
 // behavior. Every subject here is DEFINED in governance-validation.js — the
@@ -45,6 +56,105 @@ delete process.env.GROK_THREAD_ID;
 // non-default "API"). Derive a B-mapped prefix from the active registry.
 const B_TICKET_PREFIX =
   Object.entries(ACTIVE_PATHS.ticketPrefixToRepoCode || {}).find(([, code]) => code === "B")?.[0] || "MSRV";
+
+test("continuity cursor advancement uses compare-and-swap to reject stale concurrent writers", () => {
+  const baseCadence = {
+    id: "cadence.validation.weekly",
+    owner: "ops",
+    cursor: { type: "hash", value: "export:a" },
+  };
+  const observedHash = computeContinuityGenerationHash(baseCadence.cursor);
+  const writerA = advanceCadenceCursor(
+    baseCadence,
+    { type: "hash", value: "export:b", evidence_ref: "journal:a" },
+    { expected_cursor_hash: observedHash, advancedAtUtc: "2026-06-27T12:00:00.000Z" }
+  );
+
+  assert.equal(writerA.previous_cursor_hash, observedHash);
+  assert.equal(writerA.cursor.value, "export:b");
+  assert.throws(
+    () => advanceCadenceCursor(
+      writerA,
+      { type: "hash", value: "export:c", evidence_ref: "journal:b" },
+      { expected_cursor_hash: observedHash, advancedAtUtc: "2026-06-27T12:01:00.000Z" }
+    ),
+    /Stale cadence cursor.*Re-read the cadence cursor/
+  );
+});
+
+test("continuity append-only merge allows independent appends and rejects record rewrites", () => {
+  const existing = [
+    { id: "journal.2026-06-27.001", kind: "daily_journal", observations: ["read current cursor"] },
+  ];
+  const merged = mergeAppendOnlyContinuityRecords(existing, [
+    { id: "journal.2026-06-27.002", kind: "daily_journal", observations: ["new note"] },
+    { id: "journal.2026-06-27.001", kind: "daily_journal", observations: ["read current cursor"] },
+  ]);
+
+  assert.deepEqual(merged.appended, ["journal.2026-06-27.002"]);
+  assert.equal(merged.merged.length, 2);
+  assert.equal(existing[0].record_hash, undefined);
+  assert.throws(
+    () => mergeAppendOnlyContinuityRecords(existing, [
+      { id: "journal.2026-06-27.001", kind: "daily_journal", observations: ["rewritten note"] },
+    ]),
+    /append-only continuity conflict/
+  );
+});
+
+test("continuity stale context checks fail with re-read guidance before cold-finish", () => {
+  const observed = [
+    { id: "context-pack:COORD-340", hash: "sha256:old" },
+  ];
+  const current = [
+    { id: "context-pack:COORD-340", hash: "sha256:new" },
+  ];
+  const report = validateContinuityFreshRead(observed, current);
+
+  assert.equal(report.ok, false);
+  assert.match(report.guidance.join(" "), /Re-read the listed context-pack/);
+
+  const validation = createGovernanceValidation({ GovernanceError });
+  const issues = validation.collectContinuityWriteSafetyIssues({
+    fresh_read: { observed, current },
+  });
+  assert.equal(issues[0].code, "continuity_stale_reread_required");
+  assert.match(issues[0].next_steps.join(" "), /Regenerate the derived continuity readout/);
+});
+
+test("continuity derived-view generation hashes change without corrupting governance journal", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "continuity-derived-journal-"));
+  const journalPath = path.join(tempDir, "governance-events.ndjson");
+  const originalJournal = JSON.stringify({ event: "prior", ticket: "COORD-340" }) + "\n";
+  fs.writeFileSync(journalPath, originalJournal, "utf8");
+
+  const firstInput = {
+    ticket: { ID: "COORD-340" },
+    warm_start_records: [{ id: "warm.COORD-340", source_refs: ["coord/scripts/gov explain COORD-340"] }],
+    cold_finish_records: [{ id: "finish.COORD-340", evidence_refs: ["test:pending"] }],
+    cadences: [{ id: "cadence.safe", cursor: { type: "hash", value: "a" }, freshness_policy: { status: "fresh" } }],
+  };
+  const secondInput = {
+    ...firstInput,
+    cadences: [{ id: "cadence.safe", cursor: { type: "hash", value: "b" }, freshness_policy: { status: "fresh" } }],
+  };
+  const first = buildContinuityReadOnlyReadout(firstInput, { generatedAtUtc: "2026-06-27T12:00:00.000Z" });
+  const second = buildContinuityReadOnlyReadout(secondInput, { generatedAtUtc: "2026-06-27T12:00:00.000Z" });
+
+  assert.notEqual(first.input_generation_hash, second.input_generation_hash);
+  assert.notEqual(first.generation_hash, second.generation_hash);
+  assert.equal(fs.readFileSync(journalPath, "utf8"), originalJournal);
+
+  const validation = createGovernanceValidation({ GovernanceError });
+  const issues = validation.collectContinuityWriteSafetyIssues({
+    derived_view: {
+      expected_input_generation_hash: first.input_generation_hash,
+      current_inputs: secondInput,
+    },
+  });
+  assert.equal(issues[0].code, "continuity_derived_view_stale");
+  assert.match(issues[0].next_steps.join(" "), /Do not append derived readout output to the governance journal/);
+});
 
 test("deriveGovernanceReadiness respects explicit required_question_logged=false in plan governance", () => {
   const readiness = __testing.deriveGovernanceReadiness(
@@ -889,6 +999,57 @@ test("collectStartReadinessBlockers surfaces gov plan --seed when plan state is 
   }
 });
 
+test("COORD-355: repo-X start readiness advises declared files without blocking", () => {
+  const originalPromptsDir = __testing.paths.PROMPTS_DIR;
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "declared-files-advisory-"));
+  __testing.paths.PROMPTS_DIR = path.join(tempDir, "prompts");
+  try {
+    const row = { ID: "COORD-998", Repo: "X", Status: "todo", Owner: "unassigned", Description: "coord work" };
+    const advisories = __testing.collectStartReadinessAdvisories("COORD-998", row);
+    assert.equal(advisories.length, 1);
+    assert.equal(advisories[0].code, "repo_x_declared_files_missing");
+    assert.match(advisories[0].message, /plan-waves must schedule it alone/);
+  } finally {
+    __testing.paths.PROMPTS_DIR = originalPromptsDir;
+  }
+});
+
+test("COORD-355: declared files from board or prompt suppress repo-X advisory", () => {
+  const originalPromptsDir = __testing.paths.PROMPTS_DIR;
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "declared-files-present-"));
+  const promptsDir = path.join(tempDir, "prompts");
+  const ticketsDir = path.join(promptsDir, "tickets");
+  fs.mkdirSync(ticketsDir, { recursive: true });
+  __testing.paths.PROMPTS_DIR = promptsDir;
+  try {
+    const boardDeclared = {
+      ID: "COORD-997",
+      Repo: "X",
+      Status: "todo",
+      Owner: "unassigned",
+      Description: "coord work",
+      "Declared Files": "coord/scripts/token-economics.js",
+    };
+    assert.deepEqual(__testing.collectStartReadinessAdvisories("COORD-997", boardDeclared), []);
+
+    fs.writeFileSync(
+      path.join(ticketsDir, "COORD-996.md"),
+      [
+        "# COORD-996",
+        "",
+        "## Likely Files",
+        "",
+        "- `coord/docs/MULTI_AGENT_TOPOLOGIES.md`",
+      ].join("\n"),
+      "utf8"
+    );
+    const promptDeclared = { ID: "COORD-996", Repo: "X", Status: "todo", Owner: "unassigned", Description: "coord work" };
+    assert.deepEqual(__testing.collectStartReadinessAdvisories("COORD-996", promptDeclared), []);
+  } finally {
+    __testing.paths.PROMPTS_DIR = originalPromptsDir;
+  }
+});
+
 test("collectStartReadinessBlockers offers governed follow-up relation repairs for a single blocking dependency", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-start-followup-repair-"));
   const original = {
@@ -1237,6 +1398,90 @@ test("collectReviewPlanReadinessIssues reports the full missing review-plan stac
   }
 });
 
+function decompositionRefactorRecord(ticketId, featureProof = []) {
+  return {
+    schema_version: 1,
+    ticket_id: ticketId,
+    markdown_heading: `## ${ticketId} — 2026-06-29T00:00:00.000Z`,
+    startup_checklist: ["completed"],
+    traceability_gate: ["exempt"],
+    review_round: 1,
+    baseline_reproduction: ["Command: node --test coord/scripts/governance-validation.test.js", "Outcome: reproduced closeout-proof behavior"],
+    prior_findings: [],
+    intended_files: ["coord/scripts/lifecycle.js", "coord/scripts/arch-checks.js"],
+    change_summary: ["Slim lifecycle.js into a pure composition root by extracting command clusters."],
+    verification_commands: ["node --test coord/scripts/governance-validation.test.js"],
+    critical_invariants: [],
+    requirement_closure: ["Ticket ask: slim lifecycle composition root", "Implemented: extracted lifecycle helpers", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    feature_proof: featureProof,
+    repo_gates: ["node --test coord/scripts/governance-validation.test.js"],
+    self_review_cycles: standardCoordReviewCycles(),
+    rollback_strategy: ["revert"],
+    security_surface: "no",
+    governance: {},
+  };
+}
+
+test("collectReviewPlanReadinessIssues blocks slimming refactors without computed decomposition proof", () => {
+  const ticketId = "COORD-910";
+  const issues = withGovernanceFixturePaths({
+    prefix: "decomp-missing",
+    ticketId,
+    record: decompositionRefactorRecord(ticketId),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "refactor",
+    Description: "Slim lifecycle.js to a pure composition root by extracting command clusters.",
+  }));
+
+  assert.ok(issues.some((issue) => issue.code === "decomposition_proof_missing"));
+});
+
+test("collectReviewPlanReadinessIssues fail-closes stale decomposition proof using computed countLoc", () => {
+  const ticketId = "COORD-911";
+  const lifecyclePath = "coord/scripts/lifecycle.js";
+  const actualAfter = countLoc(fs.readFileSync(path.join(process.cwd(), lifecyclePath), "utf8")).loc;
+  const issues = withGovernanceFixturePaths({
+    prefix: "decomp-stale",
+    ticketId,
+    record: decompositionRefactorRecord(ticketId, [
+      `decomposition-proof: file=${lifecyclePath}; before=3675; after=${actualAfter + 1}; claimed_reduction=1076; target_max=2600; budget=${actualAfter}; extracted=heartbeat, reapGateProcs`,
+    ]),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "refactor",
+    Description: "Slim lifecycle.js to a pure composition root by extracting command clusters.",
+  }));
+
+  const blocker = issues.find((issue) => issue.code === "decomposition_proof_invalid");
+  assert.ok(blocker, "stale proof should block closeout");
+  assert.match(blocker.message, /does not match computed countLoc/);
+});
+
+test("collectReviewPlanReadinessIssues accepts computed decomposition proof with ratcheted budget", () => {
+  const ticketId = "COORD-912";
+  const lifecyclePath = "coord/scripts/lifecycle.js";
+  const actualAfter = countLoc(fs.readFileSync(path.join(process.cwd(), lifecyclePath), "utf8")).loc;
+  const issues = withGovernanceFixturePaths({
+    prefix: "decomp-valid",
+    ticketId,
+    record: decompositionRefactorRecord(ticketId, [
+      `decomposition-proof: file=${lifecyclePath}; before=3675; after=${actualAfter}; claimed_reduction=${3675 - actualAfter}; target_max=2600; budget=${actualAfter}; extracted=heartbeat, reapGateProcs, withTemporaryExecutionContext`,
+    ]),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "refactor",
+    Description: "Slim lifecycle.js to a pure composition root by extracting command clusters.",
+  }));
+
+  const codes = issues.map((issue) => issue.code);
+  assert.equal(codes.includes("decomposition_proof_missing"), false);
+  assert.equal(codes.includes("decomposition_proof_invalid"), false);
+});
+
 // COORD-153: live-MCP lifecycle enforcement is wired into the move-review /
 // closeout readiness gate (collectReviewPlanReadinessIssues). It must (a) add
 // live_mcp blockers ONLY when the plan declares a live_mcp operation, and (b)
@@ -1372,6 +1617,16 @@ test("collectReviewPlanReadinessIssues enforces live-MCP evidence only for decla
           approval: "human-admin",
           receipt_path: "coord/evidence/live-mcp/q.json",
         },
+        context_pack_ack: contextPackAck({
+          considered: {
+            active_constraints: ["live-MCP operation constraints checked"],
+            open_questions: ["none"],
+          },
+          closeout_learning: {
+            decision: "scratch-only",
+            scratch_only: ["live-MCP receipt is ticket-local evidence only"],
+          },
+        }),
       }, null, 2),
       "utf8"
     );
@@ -1421,8 +1676,18 @@ test("collectReviewPlanReadinessIssues allows bounded repair tickets to pass wit
     intended_files: ["apps/ops-web/app/reports/data.ts", "apps/ops-web/app/reports/data.test.ts"],
     change_summary: ["Repair report fallback handling without widening product scope."],
     verification_commands: ["pnpm test:reports"],
-    critical_invariants: ["Fallback reports must not throw without an actor.", "Report defaults must still use tenant-local date boundaries."],
+    critical_invariants: ["business-context investigation: not-required", "Fallback reports must not throw without an actor.", "Report defaults must still use tenant-local date boundaries."],
     requirement_closure: ["Ticket ask: fix reports fallback", "Implemented: fixed fallback guard", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    context_pack_ack: contextPackAck({
+      considered: {
+        active_constraints: ["report fallback constraints checked"],
+        business_rules: ["business-context investigation: not-required"],
+      },
+      closeout_learning: {
+        decision: "none",
+        rationale: "No new durable business learning was produced.",
+      },
+    }),
     feature_proof: ["path:apps/ops-web/app/reports/data.ts"],
     repo_gates: ["pnpm test:reports"],
     self_review_cycles: [
@@ -1562,7 +1827,7 @@ function withGovernanceFixturePaths(fixture, fn) {
   fs.writeFileSync(boardPath, JSON.stringify({
     version: 1,
     metadata: {},
-    sections: [],
+    sections: fixture.sections || [],
     review_findings: {},
     pr_index: {},
     landing_index: {},
@@ -1624,6 +1889,613 @@ function lightLaneDocsRecord(ticketId, intendedFiles, overrides = {}) {
     ...overrides,
   };
 }
+
+function standardCoordReviewCycles() {
+  return [
+    {
+      cycle: 1,
+      total: 3,
+      lens: "contract/state invariants",
+      diff: "git diff -- coord/scripts/governance-validation.js",
+      risks: ["missing context gate", "false positive blocker"],
+      findings: "none",
+      verification: "node --test coord/scripts/governance-validation.test.js",
+      verdict: "pass",
+      raw: "lens=contract/state invariants; diff=git diff -- coord/scripts/governance-validation.js; risks=missing context gate, false positive blocker; findings=none; verification=node --test coord/scripts/governance-validation.test.js; verdict=pass",
+    },
+    {
+      cycle: 2,
+      total: 3,
+      lens: "auth/security/failure modes",
+      diff: "git diff -- coord/scripts/governance-validation.js",
+      risks: ["implementation accident treated as intent", "uncertain finding becomes todo"],
+      findings: "none",
+      verification: "node --test coord/scripts/governance-validation.test.js",
+      verdict: "pass",
+      raw: "lens=auth/security/failure modes; diff=git diff -- coord/scripts/governance-validation.js; risks=implementation accident treated as intent, uncertain finding becomes todo; findings=none; verification=node --test coord/scripts/governance-validation.test.js; verdict=pass",
+    },
+    {
+      cycle: 3,
+      total: 3,
+      lens: "tests/operability/performance",
+      diff: "git diff -- coord/scripts/governance-validation.test.js",
+      risks: ["stale pack path", "board intake status drift"],
+      findings: "none",
+      verification: "node --test coord/scripts/governance-validation.test.js",
+      verdict: "pass",
+      raw: "lens=tests/operability/performance; diff=git diff -- coord/scripts/governance-validation.test.js; risks=stale pack path, board intake status drift; findings=none; verification=node --test coord/scripts/governance-validation.test.js; verdict=pass",
+    },
+  ];
+}
+
+function contextPackAck(overrides = {}) {
+  return {
+    refs: [],
+    considered: {
+      active_constraints: ["none"],
+      adrs: ["none"],
+      business_rules: ["none"],
+      conflicts: ["none"],
+      stale_warnings: ["none"],
+      open_questions: ["none"],
+      ...(overrides.considered || {}),
+    },
+    authority: {
+      constraints: ["confirmed/current sources only"],
+      advisory_only: ["candidate, inferred, stale, private, rejected, and conflicted claims kept advisory"],
+      ...(overrides.authority || {}),
+    },
+    closeout_learning: {
+      decision: "none",
+      promote: [],
+      demote: [],
+      scratch_only: [],
+      rationale: "No reusable learning created.",
+      ...(overrides.closeout_learning || {}),
+    },
+    ...Object.fromEntries(Object.entries(overrides).filter(([key]) => !["considered", "authority", "closeout_learning"].includes(key))),
+  };
+}
+
+function businessContextGateRecord(ticketId, overrides = {}) {
+  return {
+    schema_version: 1,
+    ticket_id: ticketId,
+    markdown_heading: `## ${ticketId} — 2026-06-27T00:00:00.000Z`,
+    startup_checklist: ["completed"],
+    traceability_gate: ["closing-gap"],
+    review_round: 1,
+    baseline_reproduction: ["Command: not-required", "Outcome: feature ticket"],
+    prior_findings: [],
+    intended_files: ["backend/src/invoices/post.ts"],
+    change_summary: ["Change invoice approval workflow behavior."],
+    verification_commands: ["node --test coord/scripts/governance-validation.test.js"],
+    critical_invariants: ["Approval behavior must preserve business intent.", "Unknown business rules must not govern implementation."],
+    requirement_closure: ["Ticket ask: change invoice workflow", "Implemented: added behavior", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    context_pack_ack: contextPackAck({
+      considered: {
+        active_constraints: ["invoice approval constraints checked"],
+        business_rules: ["confirmed/current invoice rules only"],
+      },
+    }),
+    feature_proof: ["path:coord/scripts/governance-validation.js"],
+    repo_gates: ["node --test coord/scripts/governance-validation.test.js"],
+    self_review_cycles: standardCoordReviewCycles(),
+    rollback_strategy: ["revert"],
+    security_surface: "no",
+    synced_from_markdown_at: "2026-06-27T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function adrDecisionRecord(ticketId, overrides = {}) {
+  return {
+    schema_version: 1,
+    ticket_id: ticketId,
+    markdown_heading: `## ${ticketId} — 2026-06-27T00:00:00.000Z`,
+    startup_checklist: ["completed"],
+    traceability_gate: ["closing-gap"],
+    review_round: 1,
+    baseline_reproduction: ["Command: not-required", "Outcome: feature ticket"],
+    prior_findings: [],
+    intended_files: ["coord/scripts/governance-validation.js"],
+    change_summary: ["Change governance policy for high-impact decisions."],
+    verification_commands: ["node --test coord/scripts/governance-validation.test.js"],
+    critical_invariants: ["High-impact governance policy changes must be backed by decision evidence."],
+    adr_refs: [],
+    requirement_closure: ["Ticket ask: change governance policy", "Implemented: added guidance", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    context_pack_ack: contextPackAck({
+      considered: {
+        adrs: ["decision surface checked"],
+      },
+    }),
+    feature_proof: ["path:coord/scripts/governance-validation.js"],
+    repo_gates: ["node --test coord/scripts/governance-validation.test.js"],
+    self_review_cycles: standardCoordReviewCycles(),
+    rollback_strategy: ["revert"],
+    security_surface: "no",
+    synced_from_markdown_at: "2026-06-27T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+test("collectReviewPlanReadinessIssues blocks high-risk behavior tickets without business context evidence", () => {
+  const ticketId = "BCTX-001";
+  const issues = withGovernanceFixturePaths({
+    prefix: "business-context-gate-",
+    ticketId,
+    record: businessContextGateRecord(ticketId, { context_pack_ack: undefined }),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "feature",
+    Description: "Change invoice approval workflow.",
+  }));
+  assert.ok(issues.some((issue) => issue.code === "business_context_gate"));
+  assert.ok(issues.some((issue) => issue.code === "context_pack_ack"));
+});
+
+test("collectReviewPlanReadinessIssues ignores tickets without business-context risk signals", () => {
+  const ticketId = "BCTX-002";
+  const issues = withGovernanceFixturePaths({
+    prefix: "business-context-safe-",
+    ticketId,
+    record: businessContextGateRecord(ticketId, {
+      intended_files: ["coord/docs/README.md"],
+      change_summary: ["Refresh developer documentation wording."],
+      critical_invariants: ["Docs remain readable.", "Links stay valid."],
+      requirement_closure: ["Ticket ask: docs wording", "Implemented: docs wording", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    }),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "feature",
+    Description: "Refresh developer documentation wording.",
+  }));
+  assert.equal(issues.some((issue) => issue.code === "business_context_gate"), false);
+  assert.equal(issues.some((issue) => issue.code === "business_context_proposed_intake"), false);
+});
+
+test("collectReviewPlanReadinessIssues routes uncertain business-context findings through proposed intake", () => {
+  const ticketId = "BCTX-003";
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "business-context-pack-ref-"));
+  const packPath = path.join(dir, "BCTX-003.json");
+  fs.writeFileSync(packPath, JSON.stringify({
+    kind: "concord.business_context_pack",
+    proposed_ticket_recommendations: [
+      {
+        source_record_id: "BD-REC-CONFLICT",
+        suggested_type: "spike",
+        suggested_priority: "P1",
+        statement: "Imported invoices can skip approval.",
+      },
+    ],
+  }, null, 2), "utf8");
+
+  const missingProposalIssues = withGovernanceFixturePaths({
+    prefix: "business-context-proposed-missing-",
+    ticketId,
+    record: businessContextGateRecord(ticketId, {
+      critical_invariants: [
+        `business-context: ${packPath}`,
+        "Unknown business rules must not govern implementation.",
+      ],
+    }),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "feature",
+    Description: "Change invoice approval workflow.",
+  }));
+  assert.ok(missingProposalIssues.some((issue) => issue.code === "business_context_proposed_intake"));
+
+  const proposedRows = [{
+    name: "Proposed",
+    rows: [
+      {
+        ID: "BCTX-PROP-1",
+        Repo: "X",
+        Type: "spike",
+        Pri: "P1",
+        Status: "proposed",
+        Owner: "unassigned",
+        Description: "BD-REC-CONFLICT: investigate imported invoice approval exception.",
+      },
+    ],
+  }];
+  const proposedIssues = withGovernanceFixturePaths({
+    prefix: "business-context-proposed-present-",
+    ticketId,
+    sections: proposedRows,
+    record: businessContextGateRecord(ticketId, {
+      critical_invariants: [
+        `business-context: ${packPath}`,
+        "Unknown business rules must not govern implementation.",
+      ],
+    }),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "feature",
+    Description: "Change invoice approval workflow.",
+  }));
+  assert.equal(proposedIssues.some((issue) => issue.code === "business_context_proposed_intake"), false);
+});
+
+test("COORD-367: an explicit investigation disposition neutralizes proposed-ticket findings", () => {
+  const ticketId = "BCTX-367";
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "coord367-"));
+  const packPath = path.join(dir, "BCTX-367.json");
+  fs.writeFileSync(packPath, JSON.stringify({
+    kind: "concord.business_context_pack",
+    proposed_ticket_recommendations: [
+      { source_record_id: "BD-REC-CONFLICT", suggested_type: "spike", suggested_priority: "P1", statement: "Imported invoices can skip approval." },
+    ],
+  }, null, 2), "utf8");
+
+  // A pack ref but NO disposition -> the proposed-ticket finding still blocks.
+  const blocked = withGovernanceFixturePaths({
+    prefix: "coord367-nodisp-", ticketId,
+    record: businessContextGateRecord(ticketId, {
+      critical_invariants: [`business-context: ${packPath}`, "Unknown business rules must not govern implementation."],
+    }),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, { ID: ticketId, Repo: "X", Type: "feature", Description: "Change invoice approval workflow." }));
+  assert.ok(blocked.some((i) => i.code === "business_context_proposed_intake"), "no disposition -> findings block");
+
+  // The SAME pack with an explicit investigation disposition -> findings neutralized.
+  const neutralized = withGovernanceFixturePaths({
+    prefix: "coord367-disp-", ticketId,
+    record: businessContextGateRecord(ticketId, {
+      critical_invariants: [
+        `business-context: ${packPath}`,
+        "business-context investigation: not-required",
+        "Unknown business rules must not govern implementation.",
+      ],
+    }),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, { ID: ticketId, Repo: "X", Type: "feature", Description: "Change invoice approval workflow." }));
+  assert.equal(neutralized.some((i) => i.code === "business_context_proposed_intake"), false, "explicit disposition neutralizes proposed-ticket findings");
+});
+
+test("COORD-348 requires context-pack acknowledgement for high-risk work", () => {
+  const ticketId = "CTXACK-001";
+  const issues = withGovernanceFixturePaths({
+    prefix: "context-pack-ack-missing-",
+    ticketId,
+    record: businessContextGateRecord(ticketId, {
+      context_pack_ack: undefined,
+      critical_invariants: [
+        "business-context investigation: investigated by product owner",
+        "Unknown business rules must not govern implementation.",
+      ],
+    }),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "feature",
+    Description: "Change invoice approval workflow.",
+  }));
+
+  assert.ok(issues.some((issue) => issue.code === "context_pack_ack"));
+});
+
+test("COORD-348 requires explicit handling of context-pack conflict, stale, and open-question sections", () => {
+  const ticketId = "CTXACK-002";
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "context-pack-mandatory-"));
+  const packPath = path.join(dir, "CTXACK-002.json");
+  fs.writeFileSync(packPath, JSON.stringify({
+    kind: "concord.business_context_pack",
+    sections: {
+      conflicts: { items: [{ id: "BD-REC-CONFLICT", statement: "approval rule conflicts" }] },
+      stale_sources: { items: [{ id: "BD-REC-STALE", statement: "old approval source" }] },
+      open_questions: { items: [{ id: "BD-Q-1", statement: "who owns exception approval?" }] },
+    },
+  }, null, 2), "utf8");
+
+  const issues = withGovernanceFixturePaths({
+    prefix: "context-pack-ack-mandatory-",
+    ticketId,
+    record: businessContextGateRecord(ticketId, {
+      context_pack_ack: contextPackAck({
+        refs: [packPath],
+        considered: {
+          active_constraints: ["confirmed/current invoice approval constraints"],
+          business_rules: ["confirmed/current approval rules"],
+          conflicts: ["none"],
+          stale_warnings: ["none"],
+          open_questions: ["none"],
+        },
+      }),
+    }),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "feature",
+    Description: "Change invoice approval workflow.",
+  }));
+
+  const mandatory = issues.find((issue) => issue.code === "context_pack_ack_mandatory_sections");
+  assert.ok(mandatory, `expected mandatory section blocker, got ${JSON.stringify(issues.map((issue) => issue.code))}`);
+  assert.match(mandatory.message, /conflicts/);
+  assert.match(mandatory.message, /stale_warnings/);
+  assert.match(mandatory.message, /open_questions/);
+});
+
+test("COORD-348 blocks advisory memory when cited as implementation authority", () => {
+  const ticketId = "CTXACK-003";
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "context-pack-advisory-"));
+  const packPath = path.join(dir, "CTXACK-003.json");
+  fs.writeFileSync(packPath, JSON.stringify({
+    kind: "concord.business_context_pack",
+    sections: {
+      conflicts: { items: [{ id: "BD-REC-CONFLICT", statement: "approval rule conflicts" }] },
+      stale_sources: { items: [] },
+      open_questions: { items: [] },
+    },
+  }, null, 2), "utf8");
+
+  const issues = withGovernanceFixturePaths({
+    prefix: "context-pack-advisory-authority-",
+    ticketId,
+    record: businessContextGateRecord(ticketId, {
+      context_pack_ack: contextPackAck({
+        refs: [packPath],
+        considered: {
+          conflicts: ["handled: kept advisory pending proposed spike"],
+        },
+        authority: {
+          constraints: ["BD-REC-CONFLICT"],
+          advisory_only: [],
+        },
+      }),
+    }),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "feature",
+    Description: "Change invoice approval workflow.",
+  }));
+
+  assert.ok(issues.some((issue) => issue.code === "context_pack_advisory_authority"));
+});
+
+test("COORD-348 requires closeout learning disposition in context-pack acknowledgement", () => {
+  const ticketId = "CTXACK-004";
+  const ack = contextPackAck();
+  delete ack.closeout_learning;
+
+  const issues = withGovernanceFixturePaths({
+    prefix: "context-pack-closeout-learning-",
+    ticketId,
+    record: businessContextGateRecord(ticketId, {
+      context_pack_ack: ack,
+    }),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "feature",
+    Description: "Change invoice approval workflow.",
+  }));
+
+  assert.ok(issues.some((issue) => issue.code === "context_pack_closeout_learning"));
+});
+
+test("COORD-322 blocks high-impact decision tickets without accepted ADR refs or waiver", () => {
+  const ticketId = "ADRREQ-001";
+  const issues = withGovernanceFixturePaths({
+    prefix: "adr-required-missing-",
+    ticketId,
+    record: adrDecisionRecord(ticketId),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "feature",
+    Description: "Change governance policy for high-impact tickets.",
+  }));
+  const issue = issues.find((entry) => entry.code === "adr_required");
+  assert.ok(issue, `expected adr_required issue, got ${JSON.stringify(issues.map((entry) => entry.code))}`);
+  assert.match(issue.message, /accepted ADR ref/i);
+});
+
+test("COORD-322 accepts explicit decision waiver or investigation status for high-impact work", () => {
+  const waiverTicket = "ADRREQ-002";
+  const waiverIssues = withGovernanceFixturePaths({
+    prefix: "adr-required-waiver-",
+    ticketId: waiverTicket,
+    record: adrDecisionRecord(waiverTicket, {
+      decision_required: {
+        required: true,
+        status: "waived",
+        reason: "security boundary change is intentionally waived for one ticket",
+        waiver: "human-admin approved ticket-scoped waiver",
+      },
+    }),
+  }, () => __testing.collectReviewPlanReadinessIssues(waiverTicket, {
+    ID: waiverTicket,
+    Repo: "X",
+    Type: "feature",
+    Description: "Change security boundary policy.",
+  }));
+  assert.equal(waiverIssues.some((entry) => entry.code === "adr_required"), false);
+
+  const investigationTicket = "ADRREQ-003";
+  const investigationIssues = withGovernanceFixturePaths({
+    prefix: "adr-required-investigation-",
+    ticketId: investigationTicket,
+    record: adrDecisionRecord(investigationTicket, {
+      decision_required: {
+        required: true,
+        status: "investigating",
+        reason: "cross-repo contract decision still in discovery",
+        owner: "architecture-owner",
+      },
+    }),
+  }, () => __testing.collectReviewPlanReadinessIssues(investigationTicket, {
+    ID: investigationTicket,
+    Repo: "X",
+    Type: "spike",
+    Description: "Investigate cross-repo contract options.",
+  }));
+  assert.equal(investigationIssues.some((entry) => entry.code === "adr_required"), false);
+});
+
+test("COORD-322 accepts an ADR ref only when the registry record is accepted", () => {
+  const decisionsReadmePath = path.join(__dirname, "..", "docs", "decisions", "README.md");
+  const adrPath = path.join(__dirname, "..", "docs", "decisions", "0001-resource-aware-multi-agent-test-architecture.md");
+  const originalReadme = fs.readFileSync(decisionsReadmePath, "utf8");
+  const originalAdr = fs.readFileSync(adrPath, "utf8");
+  try {
+    fs.writeFileSync(adrPath, originalAdr.replace("- **Status:** Deferred", "- **Status:** Accepted"), "utf8");
+    fs.writeFileSync(
+      decisionsReadmePath,
+      originalReadme.replace("| [0001](./0001-resource-aware-multi-agent-test-architecture.md) | Resource-Aware Multi-Agent Test Architecture | Deferred |", "| [0001](./0001-resource-aware-multi-agent-test-architecture.md) | Resource-Aware Multi-Agent Test Architecture | Accepted |"),
+      "utf8"
+    );
+    const ticketId = "ADRREQ-004";
+    const issues = withGovernanceFixturePaths({
+      prefix: "adr-required-accepted-",
+      ticketId,
+      record: adrDecisionRecord(ticketId, { adr_refs: ["ADR-0001"] }),
+    }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+      ID: ticketId,
+      Repo: "X",
+      Type: "feature",
+      Description: "Change governance policy for high-impact tickets.",
+    }));
+    assert.equal(issues.some((entry) => entry.code === "adr_required"), false);
+  } finally {
+    fs.writeFileSync(adrPath, originalAdr, "utf8");
+    fs.writeFileSync(decisionsReadmePath, originalReadme, "utf8");
+  }
+});
+
+test("COORD-324 requires ADR-aware review answers and closeout citation for decision-required work", () => {
+  const decisionsReadmePath = path.join(__dirname, "..", "docs", "decisions", "README.md");
+  const adrPath = path.join(__dirname, "..", "docs", "decisions", "0001-resource-aware-multi-agent-test-architecture.md");
+  const originalReadme = fs.readFileSync(decisionsReadmePath, "utf8");
+  const originalAdr = fs.readFileSync(adrPath, "utf8");
+  try {
+    fs.writeFileSync(adrPath, originalAdr.replace("- **Status:** Deferred", "- **Status:** Accepted"), "utf8");
+    fs.writeFileSync(
+      decisionsReadmePath,
+      originalReadme.replace("| [0001](./0001-resource-aware-multi-agent-test-architecture.md) | Resource-Aware Multi-Agent Test Architecture | Deferred |", "| [0001](./0001-resource-aware-multi-agent-test-architecture.md) | Resource-Aware Multi-Agent Test Architecture | Accepted |"),
+      "utf8"
+    );
+
+    const ticketId = "ADRREQ-324";
+    const missingIssues = withGovernanceFixturePaths({
+      prefix: "adr-aware-review-missing-",
+      ticketId,
+      record: adrDecisionRecord(ticketId, { adr_refs: ["ADR-0001"] }),
+    }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+      ID: ticketId,
+      Repo: "X",
+      Type: "feature",
+      Description: "Change governance policy for high-impact tickets.",
+    }));
+    assert.ok(missingIssues.some((entry) => entry.code === "adr_review_cycle"));
+    assert.ok(missingIssues.some((entry) => entry.code === "adr_closeout_citation"));
+
+    const readyIssues = withGovernanceFixturePaths({
+      prefix: "adr-aware-review-ready-",
+      ticketId,
+      record: adrDecisionRecord(ticketId, {
+        adr_refs: ["ADR-0001"],
+        requirement_closure: [
+          "Ticket ask: change governance policy",
+          "Implemented: added guidance",
+          "Not implemented: none",
+          "Deferred to: none",
+          "ADR compliance: follows ADR-0001 by preserving exact-commit landing evidence.",
+          "Closeout verdict: complete",
+        ],
+        self_review_cycles: [
+          ...standardCoordReviewCycles(),
+          {
+            cycle: 4,
+            total: 4,
+            lens: "ADR compliance",
+            diff: "governance decision gate",
+            risks: ["ADR drift", "rejected alternative regression"],
+            findings: "ADR compliance: follows ADR-0001. Rejected alternatives: does not violate rejected shared-evidence broker. Revisit trigger: not triggered. New ADR: not required.",
+            verification: "node --test coord/scripts/governance-validation.test.js",
+            verdict: "pass",
+            raw: "lens=ADR compliance; diff=governance decision gate; risks=ADR drift, rejected alternative regression; findings=ADR compliance: follows ADR-0001. Rejected alternatives: does not violate rejected shared-evidence broker. Revisit trigger: not triggered. New ADR: not required.; verification=node --test coord/scripts/governance-validation.test.js; verdict=pass",
+          },
+        ],
+      }),
+    }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+      ID: ticketId,
+      Repo: "X",
+      Type: "feature",
+      Description: "Change governance policy for high-impact tickets.",
+    }));
+    assert.equal(readyIssues.some((entry) => entry.code === "adr_required"), false);
+    assert.equal(readyIssues.some((entry) => entry.code === "adr_review_cycle"), false);
+    assert.equal(readyIssues.some((entry) => entry.code === "adr_closeout_citation"), false);
+  } finally {
+    fs.writeFileSync(adrPath, originalAdr, "utf8");
+    fs.writeFileSync(decisionsReadmePath, originalReadme, "utf8");
+  }
+});
+
+test("COORD-324 leaves ordinary low-risk tickets free of ADR review ceremony", () => {
+  const ticketId = "ADRSAFE-324";
+  const issues = withGovernanceFixturePaths({
+    prefix: "adr-safe-low-risk-",
+    ticketId,
+    record: adrDecisionRecord(ticketId, {
+      intended_files: ["coord/docs/README.md"],
+      change_summary: ["Local wording maintenance."],
+      critical_invariants: ["Existing behavior is preserved."],
+      requirement_closure: ["Ticket ask: docs wording", "Implemented: docs wording", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    }),
+  }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+    ID: ticketId,
+    Repo: "X",
+    Type: "docs",
+    Description: "Local wording maintenance.",
+  }));
+  assert.equal(issues.some((entry) => entry.code === "adr_review_cycle"), false);
+  assert.equal(issues.some((entry) => entry.code === "adr_closeout_citation"), false);
+});
+
+test("COORD-322 leaves ordinary bug docs and test tickets unblocked by ADR guidance", () => {
+  for (const type of ["bug", "docs", "test"]) {
+    const suffix = { bug: "001", docs: "002", test: "003" }[type];
+    const ticketId = `ADRSAFE-${suffix}`;
+    const issues = withGovernanceFixturePaths({
+      prefix: `adr-safe-${type}-`,
+      ticketId,
+      record: adrDecisionRecord(ticketId, {
+        intended_files: ["coord/docs/README.md"],
+        change_summary: ["Local wording or regression-only maintenance."],
+        critical_invariants: ["Existing behavior is preserved."],
+        requirement_closure: ["Ticket ask: local maintenance", "Implemented: local maintenance", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+      }),
+    }, () => __testing.collectReviewPlanReadinessIssues(ticketId, {
+      ID: ticketId,
+      Repo: "X",
+      Type: type,
+      Description: "Local maintenance.",
+    }));
+    assert.equal(issues.some((entry) => entry.code === "adr_required"), false, `${type} should not require ADR`);
+  }
+});
+
+test("COORD-322 deriveGovernanceReadiness surfaces missing ADR guidance in explain output", () => {
+  const readiness = __testing.deriveGovernanceReadiness(
+    "ADRREQ-005",
+    { ID: "ADRREQ-005", Repo: "X", Type: "feature", Description: "Change RBAC permission model." },
+    { metadata: {}, sections: [] },
+    null,
+    adrDecisionRecord("ADRREQ-005", {
+      change_summary: ["Change RBAC permission model."],
+    })
+  );
+  assert.equal(readiness.decision_required.required, true);
+  assert.equal(readiness.decision_required.satisfied, false);
+  assert.match(readiness.decision_required.reason, /RBAC|rbac|permission/i);
+});
 
 test("COORD-166 isLightLaneEligible: docs ticket touching reference/design docs is light-lane eligible", () => {
   const decision = __testing.isLightLaneEligible(

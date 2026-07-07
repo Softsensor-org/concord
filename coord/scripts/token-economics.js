@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { spawnSync } = require("child_process");
 const { COORD_DIR, ROOT_DIR, state } = require("./governance-context.js");
 const { readCanonicalJsonFile, readCanonicalTextFile } = require("./state-io.js");
@@ -294,7 +295,10 @@ function loadTicketPrecheckProbes(ticketId) {
   // Probes are declared without code changes via a sibling
   // coord/prompts/tickets/<ID>.precheck.json, or a ```precheck fenced JSON
   // block in the ticket prompt front-matter. Sidecar wins when both exist.
-  const sidecar = path.join(COORD_DIR, "prompts", "tickets", `${ticketId}.precheck.json`);
+  // COORD-290: resolve via the overridable PROMPTS_DIR registry (defaults to
+  // COORD_DIR/prompts) so tests can sandbox these reads/writes instead of
+  // touching the live coord/prompts/tickets tree.
+  const sidecar = path.join(state.PROMPTS_DIR, "tickets", `${ticketId}.precheck.json`);
   if (fs.existsSync(sidecar)) {
     try {
       const parsed = JSON.parse(fs.readFileSync(sidecar, "utf8"));
@@ -304,7 +308,7 @@ function loadTicketPrecheckProbes(ticketId) {
       return { probes: [], source: relativeCoordPath(sidecar), parse_error: error.message };
     }
   }
-  const promptPath = path.join(COORD_DIR, "prompts", "tickets", `${ticketId}.md`);
+  const promptPath = path.join(state.PROMPTS_DIR, "tickets", `${ticketId}.md`);
   if (fs.existsSync(promptPath)) {
     const text = fs.readFileSync(promptPath, "utf8");
     const match = text.match(/```precheck\s*\n([\s\S]*?)\n```/);
@@ -484,7 +488,7 @@ function parseTicketPromptSections(ticketId) {
   // Mines the ticket prompt for declared files (## Likely Files backtick paths),
   // acceptance criteria bullets, and linked spec section names. Degrades to
   // empty arrays when the prompt or a section is absent.
-  const promptPath = path.join(COORD_DIR, "prompts", "tickets", `${ticketId}.md`);
+  const promptPath = path.join(state.PROMPTS_DIR, "tickets", `${ticketId}.md`);
   const result = { files: [], acceptance_criteria: [], spec_sections: [] };
   if (!fs.existsSync(promptPath)) {
     return result;
@@ -530,6 +534,54 @@ function parseTicketPromptSections(ticketId) {
   }
   result.spec_sections = [...specSet].sort();
   return result;
+}
+
+const DECLARED_FILES_BOARD_FIELDS = [
+  "Declared Files",
+  "Declared files",
+  "declared_files",
+  "declaredFiles",
+];
+
+function parseDeclaredFilesValue(value) {
+  const values = Array.isArray(value) ? value : [value];
+  const fileSet = new Set();
+  for (const entry of values) {
+    const text = String(entry || "").trim();
+    if (!text) {
+      continue;
+    }
+    for (const m of text.matchAll(/`([^`]+)`/g)) {
+      const candidate = normalizePlanWaveFile(m[1]);
+      if (candidate && /[\/.]/.test(candidate) && !candidate.includes(" ")) {
+        fileSet.add(candidate);
+      }
+    }
+    for (const token of text.split(/[\n,;]+/)) {
+      const candidate = normalizePlanWaveFile(token.replace(/^\s*-\s*/, "").replace(/^`|`$/g, ""));
+      if (candidate && /[\/.]/.test(candidate) && !candidate.includes(" ")) {
+        fileSet.add(candidate);
+      }
+    }
+  }
+  return [...fileSet].sort();
+}
+
+function parseBoardDeclaredFiles(row) {
+  const fileSet = new Set();
+  for (const field of DECLARED_FILES_BOARD_FIELDS) {
+    for (const file of parseDeclaredFilesValue(row?.[field])) {
+      fileSet.add(file);
+    }
+  }
+  return [...fileSet].sort();
+}
+
+function collectTicketDeclaredFiles(row, ticketId) {
+  return [...new Set([
+    ...parseTicketPromptSections(ticketId).files,
+    ...parseBoardDeclaredFiles(row),
+  ])].sort();
 }
 
 function normalizeProofPathForMatch(proofEntry) {
@@ -616,10 +668,24 @@ function buildContextPack(ticketId) {
     shared_references: [...CONTEXT_PACK_STABLE_REFERENCES].sort(),
   };
   // TICKET-SPECIFIC section: varies per ticket.
+  // file_symbols: compact API surface of declared files from code-context.js.
+  // When the index exists, agents read signatures (~200 tokens) instead of
+  // full source (~3 000 tokens). Silently omitted when no index is present so
+  // existing context-pack callers are unaffected.
+  let fileSymbols = [];
+  if (prompt.files.length > 0) {
+    try {
+      const codeCtx = require("./code-context.js");
+      fileSymbols = codeCtx.getCompactViews(prompt.files);
+    } catch {
+      // code-context module absent or index not built — degrade gracefully.
+    }
+  }
   const ticketSpecific = {
     ticket: ticketId,
     description: ref.row.Description || "",
     files: prompt.files,
+    file_symbols: fileSymbols,
     acceptance_criteria: prompt.acceptance_criteria,
     spec_sections: prompt.spec_sections,
     prior_feature_proofs: mined.proofs,
@@ -662,6 +728,20 @@ function contextPack(ticketId, options = {}) {
     }
   }
   lines.push("");
+  // File symbols: compact API surface from the code index (token-saving).
+  // Only rendered when the index has at least one match for the declared files.
+  const syms = pack.ticket_specific.file_symbols || [];
+  if (syms.length > 0) {
+    lines.push("File symbols (compact; read full source only when needed):");
+    for (const s of syms) {
+      lines.push(`### ${s.path}  [${s.locs} lines]`);
+      if (s.purpose) lines.push(`  ${s.purpose}`);
+      for (const e of s.exports) {
+        lines.push(`  [${e.kind}:${e.line}] ${e.sig}`);
+      }
+    }
+    lines.push("");
+  }
   lines.push("Acceptance criteria:");
   for (const ac of pack.ticket_specific.acceptance_criteria) {
     lines.push(`- ${ac}`);
@@ -824,9 +904,39 @@ function tierCommand(ticketId) {
 // Computes a conflict-free parallel schedule from each ticket's declared files
 // (file-overlap) and its dependsOn graph: wave N contains tickets that share no
 // file with each other and whose deps are satisfied by earlier waves / done
-// tickets. Repo-X tickets (no worktree isolation) are scheduled one-per-wave.
+// tickets. Repo-X tickets can parallelize only when they declare safe coord
+// code/doc surfaces; global coordination state remains single-writer.
 // Deterministic (stable sort by ID); no silent drops.
 // ---------------------------------------------------------------------------
+
+const REPO_X_GLOBAL_STATE_PATHS = [
+  "coord/.runtime/",
+  "coord/.worktrees/",
+  "coord/board/",
+  "coord/locks/",
+  "coord/prompts/",
+  "coord/rendered/",
+  "coord/PLAN.md",
+  "coord/QUESTIONS.md",
+];
+
+const REPO_X_SAFE_SURFACE_PREFIXES = [
+  "coord/docs/",
+  "coord/product/",
+  "coord/scripts/",
+  "coord/ui/",
+];
+
+const REPO_X_SAFE_SURFACE_FILES = new Set([
+  "AGENTS.md",
+  "CLAUDE.md",
+  "CODEX.md",
+  "GEMINI.md",
+  "README.md",
+  "QUICKSTART.md",
+  "coord/AGENTS.md",
+  "coord/GOVERNANCE.md",
+]);
 
 function parseTicketDependsOn(row) {
   const raw = row && (row["Depends On"] || row.dependsOn || row.depends_on);
@@ -837,6 +947,43 @@ function parseTicketDependsOn(row) {
     .split(/[\s,;]+/)
     .map((s) => s.trim())
     .filter((s) => /^[A-Z]+-\d+$/.test(s));
+}
+
+function normalizePlanWaveFile(file) {
+  return String(file || "").trim().replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function repoXIsolationDecision(files) {
+  const normalized = files.map(normalizePlanWaveFile).filter(Boolean);
+  if (normalized.length === 0) {
+    return {
+      parallelizable: false,
+      note: "repo-X: no declared files - treated as global coord-state risk, scheduled alone",
+    };
+  }
+  const globalStatePath = normalized.find((file) =>
+    REPO_X_GLOBAL_STATE_PATHS.some((entry) => file === entry.replace(/\/$/, "") || file.startsWith(entry))
+  );
+  if (globalStatePath) {
+    return {
+      parallelizable: false,
+      note: `repo-X: touches global coordination state (${globalStatePath}) - scheduled alone`,
+    };
+  }
+  const unsafePath = normalized.find((file) =>
+    !REPO_X_SAFE_SURFACE_FILES.has(file) &&
+    !REPO_X_SAFE_SURFACE_PREFIXES.some((prefix) => file.startsWith(prefix))
+  );
+  if (unsafePath) {
+    return {
+      parallelizable: false,
+      note: `repo-X: undeclared isolation surface (${unsafePath}) - scheduled alone`,
+    };
+  }
+  return {
+    parallelizable: true,
+    note: "repo-X: safe declared coord code/doc surfaces - worktree-isolated when file-disjoint",
+  };
 }
 
 function planWaves(options = {}) {
@@ -857,7 +1004,7 @@ function planWaves(options = {}) {
   // Resolve each candidate's files and deps once.
   const meta = new Map();
   for (const row of candidates) {
-    const files = parseTicketPromptSections(row.ID).files;
+    const files = collectTicketDeclaredFiles(row, row.ID);
     meta.set(row.ID, {
       id: row.ID,
       repo: row.Repo,
@@ -900,17 +1047,17 @@ function planWaves(options = {}) {
         deferred.push(id);
         continue;
       }
-      // Repo-X tickets are NOT parallelizable (no worktree isolation): schedule
-      // one per wave. If this wave already has any ticket, defer the X ticket.
-      if (m.isRepoX && wave.length > 0) {
-        deferred.push(id);
-        continue;
-      }
       if (m.isRepoX) {
-        wave.push({ ticket: id, repo: m.repo, files: m.files, parallelizable: false, satisfied_deps: depSatisfactionMap(m, doneIds, waves), note: "repo-X: not parallelizable (no worktree isolation) - scheduled alone" });
-        // Lock the wave so nothing else joins an X ticket.
-        waveFiles.add("__repo_x_wave_lock__");
-        continue;
+        const isolation = repoXIsolationDecision(m.files);
+        if (!isolation.parallelizable) {
+          if (wave.length > 0) {
+            deferred.push(id);
+            continue;
+          }
+          wave.push({ ticket: id, repo: m.repo, files: m.files, parallelizable: false, satisfied_deps: depSatisfactionMap(m, doneIds, waves), note: isolation.note });
+          waveFiles.add("__repo_x_wave_lock__");
+          continue;
+        }
       }
       // No declared files -> potentially-conflicting: never silently assumed
       // independent. Schedule alone in its own wave (defer if wave non-empty).
@@ -932,7 +1079,15 @@ function planWaves(options = {}) {
       for (const f of m.files) {
         waveFiles.add(f);
       }
-      wave.push({ ticket: id, repo: m.repo, files: m.files, parallelizable: true, satisfied_deps: depSatisfactionMap(m, doneIds, waves) });
+      const isolation = m.isRepoX ? repoXIsolationDecision(m.files) : null;
+      wave.push({
+        ticket: id,
+        repo: m.repo,
+        files: m.files,
+        parallelizable: true,
+        satisfied_deps: depSatisfactionMap(m, doneIds, waves),
+        ...(isolation?.note ? { note: isolation.note } : {}),
+      });
     }
     if (wave.length === 0) {
       // No progress possible (e.g. a dependency cycle among remaining tickets):
@@ -1009,6 +1164,364 @@ function emitPlanWaves(payload) {
       console.log(`  ${e.ticket}: ${e.reason}`);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// COORD-357: gov sequencer-plan.
+// Read-only contention-triggered integration planner. It does NOT mutate queue
+// state or run gates; it identifies tickets whose final land must be sequenced
+// because their declared files, dependencies, or risk class make optimistic
+// independent promotion unsafe.
+// ---------------------------------------------------------------------------
+
+const SEQUENCER_DEFAULT_STATUSES = [STATUS.REVIEW, STATUS.DOING];
+const MERGE_QUEUE_STATE_PATH = () => path.join(state.RUNTIME_DIR, "merge-queue.json");
+
+function parseSequencerStatuses(rawStatus) {
+  if (!rawStatus) {
+    return SEQUENCER_DEFAULT_STATUSES;
+  }
+  return String(rawStatus)
+    .split(/[\s,;]+/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function sequencerRiskForTicket(meta) {
+  const risks = [];
+  if (meta.files.length === 0) {
+    risks.push({ code: "missing_declared_files", gate_mode: "full", reason: "missing declared file surface" });
+  }
+  if (meta.isRepoX) {
+    const isolation = repoXIsolationDecision(meta.files);
+    if (!isolation.parallelizable) {
+      risks.push({ code: "repo_x_sequential_surface", gate_mode: "full", reason: isolation.note });
+    }
+  }
+  return risks;
+}
+
+function makeUnionFind(ids) {
+  const parent = new Map(ids.map((id) => [id, id]));
+  const find = (id) => {
+    let p = parent.get(id);
+    while (p !== parent.get(p)) {
+      p = parent.get(p);
+    }
+    let current = id;
+    while (parent.get(current) !== p) {
+      const next = parent.get(current);
+      parent.set(current, p);
+      current = next;
+    }
+    return p;
+  };
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) {
+      parent.set(rb, ra);
+    }
+  };
+  return { find, union };
+}
+
+function sequencerGroupId(tickets) {
+  const material = tickets
+    .map((item) => `${item.ticket}:${item.files.join(",")}:${item.reasons.map((r) => r.code).join(",")}`)
+    .sort()
+    .join("|");
+  return `sha256:${crypto.createHash("sha256").update(material).digest("hex").slice(0, 16)}`;
+}
+
+function gateModeForReasons(reasons) {
+  return reasons.some((reason) => reason.gate_mode === "full") ? "full" : "slice";
+}
+
+function buildSequencerPlan(options = {}) {
+  const board = readBoard();
+  const allRows = getRows(board);
+  const statuses = parseSequencerStatuses(options.status);
+  const repoFilter = options.repo || null;
+  const candidateRows = allRows
+    .filter((row) => statuses.includes(row.Status))
+    .filter((row) => (repoFilter ? row.Repo === repoFilter : true))
+    .sort((a, b) => (a.ID < b.ID ? -1 : a.ID > b.ID ? 1 : 0));
+  const metas = new Map();
+  for (const row of candidateRows) {
+    const files = collectTicketDeclaredFiles(row, row.ID);
+    const deps = parseTicketDependsOn(row);
+    const meta = {
+      ticket: row.ID,
+      repo: row.Repo,
+      status: row.Status,
+      priority: row.Pri || "",
+      owner: row.Owner || "",
+      files,
+      deps,
+      isRepoX: row.Repo === "X",
+    };
+    meta.risks = sequencerRiskForTicket(meta);
+    metas.set(row.ID, meta);
+  }
+
+  const ids = [...metas.keys()];
+  const uf = makeUnionFind(ids);
+  const reasonsByTicket = new Map(ids.map((id) => [id, []]));
+  const fileOwners = new Map();
+  for (const meta of metas.values()) {
+    for (const file of meta.files) {
+      const owner = fileOwners.get(file);
+      if (owner) {
+        uf.union(owner, meta.ticket);
+        reasonsByTicket.get(owner).push({ code: "declared_file_overlap", gate_mode: "slice", reason: `shares ${file} with ${meta.ticket}` });
+        reasonsByTicket.get(meta.ticket).push({ code: "declared_file_overlap", gate_mode: "slice", reason: `shares ${file} with ${owner}` });
+      } else {
+        fileOwners.set(file, meta.ticket);
+      }
+    }
+    for (const dep of meta.deps) {
+      if (metas.has(dep)) {
+        uf.union(meta.ticket, dep);
+        reasonsByTicket.get(meta.ticket).push({ code: "dependency_edge", gate_mode: "slice", reason: `depends on active ticket ${dep}` });
+        reasonsByTicket.get(dep).push({ code: "dependency_edge", gate_mode: "slice", reason: `blocks active ticket ${meta.ticket}` });
+      }
+    }
+    reasonsByTicket.get(meta.ticket).push(...meta.risks);
+  }
+
+  const buckets = new Map();
+  for (const id of ids) {
+    const root = uf.find(id);
+    if (!buckets.has(root)) {
+      buckets.set(root, []);
+    }
+    buckets.get(root).push(id);
+  }
+
+  const groups = [];
+  for (const ticketIds of buckets.values()) {
+    const shouldSequence = ticketIds.length > 1 || ticketIds.some((id) => reasonsByTicket.get(id).length > 0);
+    if (!shouldSequence) {
+      continue;
+    }
+    const tickets = ticketIds
+      .map((id) => {
+        const meta = metas.get(id);
+        const reasons = reasonsByTicket.get(id)
+          .sort((a, b) => (a.code + a.reason).localeCompare(b.code + b.reason));
+        return {
+          ticket: id,
+          repo: meta.repo,
+          status: meta.status,
+          priority: meta.priority,
+          owner: meta.owner,
+          declared_files: meta.files,
+          depends_on: meta.deps,
+          gate_mode: gateModeForReasons(reasons),
+          reasons,
+        };
+      })
+      .sort((a, b) => {
+        const depAOnB = a.depends_on.includes(b.ticket);
+        const depBOnA = b.depends_on.includes(a.ticket);
+        if (depAOnB !== depBOnA) {
+          return depAOnB ? 1 : -1;
+        }
+        if (a.priority !== b.priority) {
+          return a.priority < b.priority ? -1 : 1;
+        }
+        return a.ticket < b.ticket ? -1 : a.ticket > b.ticket ? 1 : 0;
+      });
+    const groupGateMode = tickets.some((ticket) => ticket.gate_mode === "full") ? "full" : "slice";
+    groups.push({
+      overlap_group: sequencerGroupId(tickets.map((ticket) => ({
+        ticket: ticket.ticket,
+        files: ticket.declared_files,
+        reasons: ticket.reasons,
+      }))),
+      gate_mode: groupGateMode,
+      ticket_count: tickets.length,
+      tickets,
+    });
+  }
+  groups.sort((a, b) => {
+    const aFirst = a.tickets[0]?.ticket || "";
+    const bFirst = b.tickets[0]?.ticket || "";
+    return aFirst < bFirst ? -1 : aFirst > bFirst ? 1 : 0;
+  });
+  return {
+    status_filter: statuses,
+    repo_filter: repoFilter,
+    group_count: groups.length,
+    groups,
+  };
+}
+
+function sequencerPlan(options = {}) {
+  const payload = buildSequencerPlan(options);
+  if (options.json) {
+    console.log(JSON.stringify(payload));
+    return payload;
+  }
+  console.log(`sequencer-plan (status=${payload.status_filter.join(",")}${payload.repo_filter ? `, repo=${payload.repo_filter}` : ""}): ${payload.group_count} group(s)`);
+  for (const group of payload.groups) {
+    console.log("");
+    console.log(`${group.overlap_group} [${group.gate_mode}]`);
+    for (const ticket of group.tickets) {
+      const reasons = ticket.reasons.map((entry) => entry.code).join(", ");
+      console.log(`  ${ticket.ticket} ${ticket.status} ${ticket.gate_mode}${reasons ? ` (${reasons})` : ""}`);
+    }
+  }
+  return payload;
+}
+
+// ---------------------------------------------------------------------------
+// COORD-388: gov merge-queue.
+// Operationalizes the read-only sequencer plan into an inspectable queue state.
+// It deliberately does NOT perform git merges or bypass finalize/land evidence:
+// it records the deterministic integration order that land/finalize runners must
+// honor when tickets contend. Disjoint/single-agent paths produce an empty queue.
+// ---------------------------------------------------------------------------
+
+function detectMergeQueueAmbiguities(group) {
+  const tickets = new Set((group.tickets || []).map((ticket) => ticket.ticket));
+  const ambiguous = [];
+  for (const ticket of group.tickets || []) {
+    for (const dep of ticket.depends_on || []) {
+      if (!tickets.has(dep)) continue;
+      const depTicket = (group.tickets || []).find((item) => item.ticket === dep);
+      if (depTicket && (depTicket.depends_on || []).includes(ticket.ticket)) {
+        const pair = [ticket.ticket, dep].sort().join("<->");
+        if (!ambiguous.includes(pair)) ambiguous.push(pair);
+      }
+    }
+  }
+  return ambiguous.map((pair) => ({
+    code: "ambiguous_dependency_cycle",
+    reason: `active tickets have a cyclic dependency edge (${pair})`,
+    next_steps: "Resolve the dependency cycle before recording or draining the merge queue.",
+  }));
+}
+
+function loadExistingMergeQueue() {
+  try {
+    const parsed = readCanonicalJsonFile(MERGE_QUEUE_STATE_PATH(), { allowMissing: true });
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function priorEnqueuedAt(existing, ticketId) {
+  for (const group of existing?.groups || []) {
+    for (const ticket of group.tickets || []) {
+      if (ticket.ticket === ticketId && ticket.enqueued_at) {
+        return ticket.enqueued_at;
+      }
+    }
+  }
+  return null;
+}
+
+function buildMergeQueueState(options = {}) {
+  const now = options.now || new Date().toISOString();
+  const plan = buildSequencerPlan(options);
+  const existing = options.existing || loadExistingMergeQueue();
+  const groups = (plan.groups || []).map((group, groupIndex) => {
+    const ambiguities = detectMergeQueueAmbiguities(group);
+    const blocked = ambiguities.length > 0;
+    return {
+      queue_id: `mq-${String(groupIndex + 1).padStart(3, "0")}-${group.overlap_group.replace(/^sha256:/, "")}`,
+      overlap_group: group.overlap_group,
+      state: blocked ? "blocked" : "queued",
+      gate_mode: group.gate_mode,
+      ambiguous_ordering: blocked,
+      ambiguities,
+      contention_reason: group.tickets
+        .flatMap((ticket) => ticket.reasons || [])
+        .map((reason) => reason.code)
+        .filter((value, index, all) => all.indexOf(value) === index)
+        .sort(),
+      tickets: (group.tickets || []).map((ticket, index) => ({
+        position: index + 1,
+        ticket: ticket.ticket,
+        repo: ticket.repo,
+        status: ticket.status,
+        owner: ticket.owner,
+        gate_mode: ticket.gate_mode,
+        declared_files: ticket.declared_files || [],
+        depends_on: ticket.depends_on || [],
+        reason_codes: (ticket.reasons || []).map((reason) => reason.code).sort(),
+        enqueued_at: priorEnqueuedAt(existing, ticket.ticket) || now,
+      })),
+    };
+  });
+  const depth = groups.reduce((total, group) => total + group.tickets.length, 0);
+  const blockedCount = groups.filter((group) => group.state === "blocked").length;
+  return {
+    schema_version: 1,
+    queue_version: "merge-queue-v1",
+    generated_at: now,
+    updated_at: now,
+    status_filter: plan.status_filter,
+    repo_filter: plan.repo_filter,
+    depth,
+    group_count: groups.length,
+    blocked_group_count: blockedCount,
+    mode: groups.length === 0 ? "single_agent_or_disjoint_bypass" : "contention_queue",
+    backpressure: depth > 0,
+    groups,
+  };
+}
+
+function emitMergeQueueState(payload, options = {}) {
+  if (options.json) {
+    console.log(JSON.stringify(payload));
+    return;
+  }
+  console.log(`merge-queue: ${payload.group_count} group(s), depth=${payload.depth}, blocked=${payload.blocked_group_count}`);
+  if (payload.mode === "single_agent_or_disjoint_bypass") {
+    console.log("  no contending tickets; single-agent/disjoint land path remains unchanged");
+  }
+  for (const group of payload.groups) {
+    console.log(`  ${group.queue_id} ${group.state} ${group.gate_mode}`);
+    for (const ticket of group.tickets) {
+      console.log(`    ${ticket.position}. ${ticket.ticket} ${ticket.status} ${ticket.gate_mode} (${ticket.reason_codes.join(", ") || "contention"})`);
+    }
+    for (const ambiguity of group.ambiguities) {
+      console.log(`    BLOCKED ${ambiguity.code}: ${ambiguity.reason}`);
+    }
+  }
+}
+
+function mergeQueue(options = {}) {
+  const payload = buildMergeQueueState(options);
+  if (options.record) {
+    const mutation = {
+      command: "merge-queue",
+      ticket: null,
+      allowProvenanceDrift: true,
+      forceLog: true,
+      details: {
+        event_type: "merge_queue.recorded",
+        merge_queue: {
+          depth: payload.depth,
+          group_count: payload.group_count,
+          blocked_group_count: payload.blocked_group_count,
+          mode: payload.mode,
+        },
+      },
+    };
+    return withGovernanceMutation(mutation, () => {
+      fs.mkdirSync(path.dirname(MERGE_QUEUE_STATE_PATH()), { recursive: true });
+      fs.writeFileSync(MERGE_QUEUE_STATE_PATH(), `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+      emitMergeQueueState(payload, options);
+      return payload;
+    });
+  }
+  emitMergeQueueState(payload, options);
+  return payload;
 }
 
 // ---------------------------------------------------------------------------
@@ -1233,6 +1746,9 @@ function emitDispatchPlanMarkdown(payload) {
     classifyPrecheckVerdict,
     precheck,
     parseTicketPromptSections,
+    parseDeclaredFilesValue,
+    parseBoardDeclaredFiles,
+    collectTicketDeclaredFiles,
     minePriorProofsAndInvariants,
     ticketFilesIntersect,
     buildContextPack,
@@ -1243,7 +1759,13 @@ function emitDispatchPlanMarkdown(payload) {
     effectiveTierMinimum,
     tierCommand,
     parseTicketDependsOn,
+    repoXIsolationDecision,
     planWaves,
+    buildSequencerPlan,
+    sequencerPlan,
+    detectMergeQueueAmbiguities,
+    buildMergeQueueState,
+    mergeQueue,
     dispatchCachePrefixMarker,
     dispatchPrecheckVerdict,
     dispatchActionForTicket,

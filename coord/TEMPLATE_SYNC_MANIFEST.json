@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "manifest_version": "2026-06-16-ent-011",
-  "generated_at": "2026-06-23T18:54:49.144Z",
+  "manifest_version": "2026-07-03-ent-018",
+  "generated_at": "2026-07-03T12:48:25.592Z",
   "purpose": "Post-sync drift detection for reusable template-canonical governance surfaces.",
   "source_inventory": {
     "path": null,
     "version": "2026-04-12-phase-0",
     "recorded_at": "2026-04-14T13:23:07.665Z",
-    "template_head_sha": "7776ed5d5ae208391e2059453f15427880e7ed86",
+    "template_head_sha": "fc06ac77301b058caa332100425e319f7e2b9fd3",
     "notes": [
       "This manifest tracks reusable exact-match surfaces only.",
       "Mixed surfaces are intentionally excluded because downstream projects may customize them.",
@@ -65,11 +65,11 @@
     {
       "path": "coord/board/board.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:60b95a7a0a47",
+      "version_stamp": "sha256:ee2c7c6b9e5e",
       "checksum": {
         "algo": "sha256",
-        "hex": "60b95a7a0a47da5cdcbace15a9243cf64a55a5801acfbf7bf990fdd9940f4fb3",
-        "bytes": 58593
+        "hex": "ee2c7c6b9e5e54e26ff2c33e7ce00e463dda6820e6e9585f704663288c0f4a8a",
+        "bytes": 60641
       },
       "rationale": "Board renderer/runtime is reusable governance control-plane code.",
       "source_inventory": {
@@ -82,11 +82,11 @@
     {
       "path": "coord/board/board.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:738381a530f2",
+      "version_stamp": "sha256:12fcfcf835f1",
       "checksum": {
         "algo": "sha256",
-        "hex": "738381a530f2953187e19d890399df51cabf6659c31348893b5b99c514ed203d",
-        "bytes": 33011
+        "hex": "12fcfcf835f13a3e72c50dffbdfa4cb39b0a35e77d462601fe685f1ed104af59",
+        "bytes": 35875
       },
       "rationale": "Board test suite is reusable governance validation.",
       "source_inventory": {
@@ -99,11 +99,11 @@
     {
       "path": "coord/board/plan.schema.json",
       "match_policy": "exact",
-      "version_stamp": "sha256:aabcaca60d5e",
+      "version_stamp": "sha256:fb48db18b942",
       "checksum": {
         "algo": "sha256",
-        "hex": "aabcaca60d5eb621ac1618bab7be03a424f002b3afbb2913c93c695f6d79acc5",
-        "bytes": 7449
+        "hex": "fb48db18b9422b79d237437bd130551eece2158d22f230240469d8821c06bd43",
+        "bytes": 11252
       },
       "rationale": "Plan schema is reusable governance runtime contract.",
       "source_inventory": {
@@ -116,11 +116,11 @@
     {
       "path": "coord/board/tasks.schema.json",
       "match_policy": "exact",
-      "version_stamp": "sha256:cb69df8d69f2",
+      "version_stamp": "sha256:6d58bdccce16",
       "checksum": {
         "algo": "sha256",
-        "hex": "cb69df8d69f234b32153a62bbecbda68970f9a2a4cbcebaf4b9adfb2384e90d0",
-        "bytes": 9708
+        "hex": "6d58bdccce16e2a748a12fd4dcb01fd601dc77acbb8c476bdb24cfec89663aa6",
+        "bytes": 9753
       },
       "rationale": "Task schema is reusable governance runtime contract.",
       "source_inventory": {
@@ -133,11 +133,11 @@
     {
       "path": "coord/docs/AGENT_ID_COLLISION_RECOVERY_POLICY.md",
       "match_policy": "exact",
-      "version_stamp": "sha256:3fec7ee02df1",
+      "version_stamp": "sha256:5684fe4f9cb6",
       "checksum": {
         "algo": "sha256",
-        "hex": "3fec7ee02df1600d2e8edc276679811b122ac1caa9c1eed0ed076971dcc6ac27",
-        "bytes": 78769
+        "hex": "5684fe4f9cb61fe829d075280dfb474c192d35d975aaf3316b6bf4b630a5328a",
+        "bytes": 80870
       },
       "rationale": "Identity and recovery companion policy is a reusable governance companion doc.",
       "source_inventory": {
@@ -145,6 +145,23 @@
         "status": "template-only",
         "recorded_at": "2026-04-14T13:06:58.590Z",
         "template_head_sha": "7776ed5d5ae208391e2059453f15427880e7ed86"
+      }
+    },
+    {
+      "path": "coord/docs/FLEET_GOLDEN_PATH.md",
+      "match_policy": "exact",
+      "rationale": "Fleet multi-agent runbook is reusable governance operator guidance.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T14:59:19.913Z",
+        "template_head_sha": "local"
+      },
+      "version_stamp": "sha256:85605097cf8d",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "85605097cf8d3418e93ade7211728889d3b3b2698965c0b85162675e7da99610",
+        "bytes": 2029
       }
     },
     {
@@ -184,11 +201,11 @@
     {
       "path": "coord/GOVERNANCE_ARCHITECTURE.md",
       "match_policy": "exact",
-      "version_stamp": "sha256:e22133b42406",
+      "version_stamp": "sha256:fcf00b331eab",
       "checksum": {
         "algo": "sha256",
-        "hex": "e22133b424064d4ddfad7ab6f8d1cb61bf45aed691c3338ece680f47da5adc4d",
-        "bytes": 43132
+        "hex": "fcf00b331eaba629c2174d147e4efdbd85407dee21429d22d40c97e8ba6582a8",
+        "bytes": 64436
       },
       "rationale": "Template architecture is the canonical reusable operator-model design surface.",
       "source_inventory": {
@@ -199,13 +216,30 @@
       }
     },
     {
-      "path": "coord/scripts/agent-commands.js",
+      "path": "coord/product/JOURNAL_RETENTION_POLICY.md",
       "match_policy": "exact",
-      "version_stamp": "sha256:1aba5a0de87b",
+      "rationale": "Journal retention and rotation policy is reusable governance operability guidance.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T14:26:11.243Z",
+        "template_head_sha": "local"
+      },
+      "version_stamp": "sha256:c89447f14e78",
       "checksum": {
         "algo": "sha256",
-        "hex": "1aba5a0de87bee6dea42c7fec72c5dd6659aa545c27cc8b9ef2b779e9a910af9",
-        "bytes": 34902
+        "hex": "c89447f14e784ad461c4f5a0bea8ff6620a4e72cc6bdec3f2be85147ddf275f2",
+        "bytes": 2975
+      }
+    },
+    {
+      "path": "coord/scripts/agent-commands.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:8c37f8921bcd",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "8c37f8921bcd48314564ea749cc8f4ba7b67fb2b57e757dfc795fbd91179a42e",
+        "bytes": 38315
       },
       "rationale": "AGENT-COMMAND / claim-orchestration surface (agents list/register/enable/disable, the agentid resolver + payload formatting, the claim/claimTicket/claimAgent/claimAgentSession cluster, resumeTicket, releaseAgent, rebindAgent, resolveHumanAdminOverride, detectCwdTicketClaimHazard, and the agent-status report builder) extracted from lifecycle.js as a DI factory (COORD-087, Wave 4 slice 3). The COMMAND LAYER above the governance-session.js session engine: it injects the session/registry readers+writers, identity resolution, owner-lease metadata (PROVIDER_REGISTRY), board readers, the mutation/lock wrappers and the journal appender rather than duplicating session semantics; findLockForTicket/getLockFiles and the journal/board binds are injected as deferred wrappers; wired in lifecycle.js after createGovernanceSession.",
       "source_inventory": {
@@ -218,11 +252,11 @@
     {
       "path": "coord/scripts/agent-commands.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:caef8cf99f64",
+      "version_stamp": "sha256:e0ec4a99d3f9",
       "checksum": {
         "algo": "sha256",
-        "hex": "caef8cf99f64cb3458e26602c35f023fee9d95211b42f23db1b2f587fadb8567",
-        "bytes": 49336
+        "hex": "e0ec4a99d3f950c488e7f0723bb41afcf7141d64460929ebc586372c690d91b9",
+        "bytes": 65217
       },
       "rationale": "Module-owned agent-command behavior tests (claim transfer override, the same-owner other-thread owner-lease gate, agentid resolver payloads, agent-status release candidates, the cwd-claim hazard, rebind --fresh) relocated from governance.test.js (COORD-087, Wave 4 slice 3).",
       "source_inventory": {
@@ -235,11 +269,11 @@
     {
       "path": "coord/scripts/arch-checks.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:e54143b4ef87",
+      "version_stamp": "sha256:d82ea382bc25",
       "checksum": {
         "algo": "sha256",
-        "hex": "e54143b4ef874d367b3db76ee1eb5073345d99e9ba9157de02de266a8e37bfe3",
-        "bytes": 71182
+        "hex": "d82ea382bc251399d9f20c547bdfd5f71ff013caf92783f3e8daa16648dffd11",
+        "bytes": 84466
       },
       "rationale": "Architecture/complexity guardrails (QGATE-004, COORD-078): reusable, zero-dependency static-check library AND single-source policy for the arch gate. Exported pure checks (size/complexity/imports/duplication/monolith/hardcoding/deadcode) return the structured finding shape consumed by COORD-083's ticket generator; WARNING-FIRST defaults + config-driven thresholds; classify CLI shelled from the template gate.sh runners on full/ci. QSCAN-001 added two warning-first detectors: hardcoding (low-noise config-seam-leak: inline paths, repeated multi-word string literals, opt-in magic numbers; obvious-OK literals filtered) and deadcode (dispatch/facade/export-aware unreferenced-def detector that prefers false negatives and never auto-fails; subtree scans take a referenceRoot so cross-subtree references keep a def live).",
       "source_inventory": {
@@ -252,11 +286,11 @@
     {
       "path": "coord/scripts/arch-checks.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:a115bf0ffd0d",
+      "version_stamp": "sha256:884f2561f523",
       "checksum": {
         "algo": "sha256",
-        "hex": "a115bf0ffd0da8340d25e93a4d6404bcb3f3870ff56d8ff471285d23fed966c6",
-        "bytes": 51605
+        "hex": "884f2561f52348997557efc3e3cc03438c17dfa3ca3cfe7d3b0f793bc1ffa78b",
+        "bytes": 69034
       },
       "rationale": "Module-owned architecture-gate tests (COORD-078): each check fires on a positive fixture and passes a clean one, threshold/severity classification, WARNING-FIRST non-blocking default, escalation-to-fail, the importable finding-shape contract for COORD-083, and template gate.sh runner integration (arch absent on default, warning-first on full). QSCAN-001 adds detector tests for hardcoding (path fires; URL/module-specifier/prose silent; repeated multi-word string fires while single occurrence + shared enum/flag vocabulary stay silent; number whitelist) and deadcode (true-orphan fires; bare-identifier/export/__testing-facade/dispatch-string-key/cross-subtree references all keep a def live; severity:off toggle).",
       "source_inventory": {
@@ -303,11 +337,11 @@
     {
       "path": "coord/scripts/board-rebuild.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:85e57467da0c",
+      "version_stamp": "sha256:d23017a978f1",
       "checksum": {
         "algo": "sha256",
-        "hex": "85e57467da0cf22937665616557fb6f94715f292d38647b6e26502884fe29321",
-        "bytes": 6141
+        "hex": "d23017a978f1e3c365fd94c66c6627ad81b1de330d5b3a6f792a5c6d2d81bd6b",
+        "bytes": 6130
       },
       "rationale": "Board-rebuild-from-journal surface (rebuildBoardFromJournal, terminalJournalStatusForTicket, collectTicketsWithJournalDrift) extracted from lifecycle.js as a DI factory (COORD-091, Wave 4 residual). Replays the governance event journal to repair board/tasks.json rows whose Status/Owner drifted from the journal's terminal succeeded event (GOV-012); writes the board only inside the injected withGovernanceMutation envelope and injects readGovernanceEventLog/readBoard/getTicketRef/writeBoard/fail rather than owning wiring. Wired in lifecycle.js after createJournal and createGovernanceBoardState; the factory binds are re-destructured back so the dispatch/commands/__testing facade keys and cli.js's rebuild-board route are unchanged.",
       "source_inventory": {
@@ -320,17 +354,34 @@
     {
       "path": "coord/scripts/board-rebuild.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:b5e3f5301749",
+      "version_stamp": "sha256:47d24a60f5c9",
       "checksum": {
         "algo": "sha256",
-        "hex": "b5e3f53017496ee7591fa6d9038e8aedb3b4886c827cd098eda379a0cf0f9420",
-        "bytes": 14758
+        "hex": "47d24a60f5c92da02f7826ed6340b4007ce042ab0030e6d14feea039429638e7",
+        "bytes": 27696
       },
       "rationale": "Behavior tests for the board-rebuild-from-journal surface (board-rebuild.js): the four GOV-012 rebuildBoardFromJournal assertions (regressed-row repair, idempotency, missing-row failure, --all best-effort) relocated out of governance.test.js when the journal-replay repair layer was extracted from lifecycle.js (COORD-091). They reach the surface through the stable governance.js __testing facade (which re-exports the createBoardRebuild factory binds) via the temp BOARD_PATH/GOVERNANCE_EVENT_LOG_PATH/QUESTIONS_PATH override seam.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
         "recorded_at": "2026-06-15T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/chain-transition-signer.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:c00230971b0d",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "c00230971b0dd1bf8b87b70ca39a399a64eb256f7ac096f30091063a3e52ef76",
+        "bytes": 728
+      },
+      "rationale": "Extracted reusable governance engine module; downstream templates must receive this exact control-plane behavior.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T14:06:36.594Z",
         "template_head_sha": null
       }
     },
@@ -371,11 +422,11 @@
     {
       "path": "coord/scripts/cli.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:b779fb0dac5a",
+      "version_stamp": "sha256:dea0dded8256",
       "checksum": {
         "algo": "sha256",
-        "hex": "b779fb0dac5a214a7413b89b0d4a6ae8d964064cb9864bc8cd65c01a9a7bddb0",
-        "bytes": 32087
+        "hex": "dea0dded825694b9c4b11a25ce18c51c4ce4c38f026316dc48db4cfddc705114",
+        "bytes": 37408
       },
       "rationale": "CLI router/flag surface including production/runtime evidence receipt verbs and --receipt-result parsing.",
       "source_inventory": {
@@ -388,11 +439,11 @@
     {
       "path": "coord/scripts/closeout.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:3af7601eefa9",
+      "version_stamp": "sha256:44a40dda97e2",
       "checksum": {
         "algo": "sha256",
-        "hex": "3af7601eefa9ddea68f2dd5442c71ce8afc794a60383171077c334f78c943ab0",
-        "bytes": 12618
+        "hex": "44a40dda97e2316f2b126264a6a36e32396862d0592438755efd27149fb8f549",
+        "bytes": 13444
       },
       "rationale": "Ticket closeout / land surface (finalize/land/finish-ticket/prepareDoneCloseout plus the closeout plan-update builders) extracted from lifecycle.js as a DI factory. Injects the ticket-transitions surface (moveReview/markDone/applyMarkDone) and provides prepareDoneCloseout back to transitions; wired after createTicketTransitions.",
       "source_inventory": {
@@ -405,11 +456,11 @@
     {
       "path": "coord/scripts/closeout.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:e5bbede10ef0",
+      "version_stamp": "sha256:e0c13dc032e6",
       "checksum": {
         "algo": "sha256",
-        "hex": "e5bbede10ef0f987a3a46ed02f14f83b75967ce88c9c7314d59c04c9d8af2c77",
-        "bytes": 9905
+        "hex": "e0c13dc032e637296c64d18a4965ecc5e19c56f3c8e5c86825fe4372ed079745",
+        "bytes": 10366
       },
       "rationale": "Module-owned closeout tests (buildNoPrCloseoutPlanUpdate fulfilled-by vs no-pr) relocated from governance.test.js.",
       "source_inventory": {
@@ -422,11 +473,11 @@
     {
       "path": "coord/scripts/conformance-attestation.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:d7710919fc7b",
+      "version_stamp": "sha256:47e848674ca8",
       "checksum": {
         "algo": "sha256",
-        "hex": "d7710919fc7b2721e1f8ca8d163b551896843e2f62deb0dbf8d9f78057628ac2",
-        "bytes": 13683
+        "hex": "47e848674ca87ed8e2eb195f01a3c27ebdfa55230421a3661cc2d6080ff7d409",
+        "bytes": 29758
       },
       "rationale": "ENT-010 conformance attestation (COMMUNITY per-team tier): derives a deterministic engine-integrity subject (engine version, TEMPLATE_SYNC_MANIFEST.json fingerprint, gate config + latest gate-artifact result/coverage/audit per COORD-080, RELEASE_PROVENANCE donor SHA per COORD-044 when present, and the ENT-002 journal chain head), signs the canonical digest with a LOCAL ed25519 keypair (private key gitignored under coord/.runtime/conformance-keys/), and re-verifies it (signature + drift/tamper). DI-factory wired in lifecycle.js, exercised via gov conform --attest / --verify-attestation. READ-ONLY except writing the attestation artifact + (first-run) the local keypair. This is the per-team self-verify and the exact input the Enterprise central re-hash service (ENT-007) would later verify.",
       "source_inventory": {
@@ -439,13 +490,30 @@
     {
       "path": "coord/scripts/conformance-attestation.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:a01346029685",
+      "version_stamp": "sha256:443c29189a8d",
       "checksum": {
         "algo": "sha256",
-        "hex": "a01346029685cb8a1072db26960ed022c843807d2e7a0222f5db9c15b4d0850a",
-        "bytes": 9271
+        "hex": "443c29189a8da4d7cf76c8c5368bc18c42c4b45dd90af81b344014ce51aea7c5",
+        "bytes": 25448
       },
       "rationale": "ENT-010 unit tests for the conformance attestation module: emit produces a well-formed signed attestation with the 5 engine-integrity inputs; self-verify passes on a clean attestation; tampered subject/signature and drifted engine inputs are detected; identical inputs yield a deterministic digest; the private signing key is gitignored. Temp fixtures only \u2014 no network, no live engine/journal side effects.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-16T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/conformance-verbs.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:2ec55a9a4402",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "2ec55a9a440204b47649bcd10819ee1ce3ad615d4c0e49c76a49909f1d03df1c",
+        "bytes": 17385
+      },
+      "rationale": "COORD-107: the ENT conformance / engine-integrity CLI verb surface (gov conform ENT-002 journal hash-chain self-verify + ENT-010 signed conformance attestation emit/verify, and gov verify-engine ENT-011 engine version-pin + drift-check) extracted from lifecycle.js to get it back under the documented honest 5000 logical-LOC composition-root ceiling by EXTRACTION (not a budget bump): lifecycle.js dropped 5036 -> 4911. DI-factory wired in lifecycle.js \u2014 the createConformanceAttestation + createEnginePin CREATORS, the journal verifyGovernanceChain, the GovernanceError fail, and COORD_DIR are all injected; conform/verifyEngine are destructured back out for the commands dispatch map + cli.js case. Pure presentation glue over the two injected factories; behavior byte-identical (covered by the existing CLI-level gov conform tests in journal.test.js plus the conformance-attestation.test.js / engine-pin.test.js factory unit tests). READ-ONLY except writing conform --attest's gitignored attestation artifact + first-run keypair and verify-engine --pin's committed coord/engine-pin.json.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -484,6 +552,176 @@
         "direction": "template-canonical",
         "status": "template-only",
         "recorded_at": "2026-06-15T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/coord",
+      "match_policy": "exact",
+      "version_stamp": "sha256:3799dd0ab4b8",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "3799dd0ab4b8991480d20d2e38ba1a07582f1ffe82ad94810a3492347235292f",
+        "bytes": 134
+      },
+      "rationale": "Product-facing `coord` CLI executable wrapper (COORD-116) over coord-cli.js; mirrors the `gov` engine wrapper. Reusable product entrypoint plumbing.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-18T14:35:42.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/coord-cli.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:15c95407e439",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "15c95407e43908be3ecaf7511006f73944488ff9af0ae913b775de67df839f35",
+        "bytes": 15384
+      },
+      "rationale": "Product `coord` CLI subcommand dispatcher (COORD-116): extensible command registry (init + conformance + upgrade as of COORD-118) with a pure-ish `dispatch` for routing/help/unknown-command. Distinct from the `gov`/cli.js engine verb surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-18T14:35:42.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/coord-cli.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:8b5bc8c269ee",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "8b5bc8c269ee7d59e1122334a905768df8015d92e5fe28cf6d10e69c59655bbc",
+        "bytes": 14868
+      },
+      "rationale": "Module-owned tests for the `coord` CLI dispatcher (routing/help/unknown-command) and `coord init` (fresh-dir create, idempotent re-run, --dry-run, existing-config preservation) using os.tmpdir scratch dirs.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-18T14:35:42.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/coord-conformance.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:9bcbc482da03",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "9bcbc482da03cdefd2b7939b96b7a96f2f6d1b0c335f75e262eb6418d70671c3",
+        "bytes": 10174
+      },
+      "rationale": "`coord conformance` (COORD-117): product-facing packaging command that COMPOSES the existing conformance engine (conformance-verbs.js conform/verifyEngine + conformance-attestation.js + engine-pin.js) into one fail-closed entrypoint (--json/--attest/--verify). Zero crypto/conformance reimplementation; DI-factory so tests inject the engine + an ephemeral keypair.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-18T14:35:42.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/coord-conformance.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:97f870f1a8a5",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "97f870f1a8a5acd0287e51fdfe975f9664199d34d1c892a8bef1feb1d40c6687",
+        "bytes": 9879
+      },
+      "rationale": "Module-owned tests for `coord conformance` (COORD-117): pass/fail exit codes, --json, an --attest/--verify round-trip over an EPHEMERAL in-test ed25519 keypair, tamper detection, and a wrapper-digest==engine-digest proof that the command reuses the engine. os.tmpdir scratch coordDir; no committed keys.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-18T14:35:42.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/coord-init-starter-board.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:366c7c2ddb79",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "366c7c2ddb793228117e7a1e4f49ea1e55a76bcd39368bdcaf970c53ef898667",
+        "bytes": 3345
+      },
+      "rationale": "Canonical CLEAN STARTER BOARD shape (SETUP-001/SAMPLE-001) \u2014 single source of truth reused by both `coord init` and the public release builder's clean-board step (COORD-116) so init and the release cut never disagree.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-18T14:35:42.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/coord-ui-launch.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:9b4550a1d897",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "9b4550a1d897c45229db9998dd966bc0ceabd586b0ab06ed262fa1f9625787d8",
+        "bytes": 6025
+      },
+      "rationale": "App-local read-only coord-ui launcher wired by create-concord and concord init as `npm run coord-ui`; resolves the scaffolded repo root from coord/scripts, points the UI at that repo's coord/, and avoids sending adopters back to the donor checkout.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-07T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/coord-init.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:16eefe010d20",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "16eefe010d20e5b6a11791bc0d0640a4886c1c09989ab20c523c64d8a06b0040",
+        "bytes": 9099
+      },
+      "rationale": "`coord init` (COORD-116): idempotent no-clobber zero->governed-board bootstrap for a target repo (scaffold project.config.js seam, seed starter board if absent, ensure product spec stubs). DI-factory; --dry-run writes nothing; never overwrites existing files.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-18T14:35:42.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/coord-upgrade.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:8ac48d688acc",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "8ac48d688acc02367fc33b4115cdbab9882934c70edaa6325e7e99df8b5bfde8",
+        "bytes": 24571
+      },
+      "rationale": "`coord upgrade` (COORD-118): managed engine-upgrade automation. Applies a new engine surface (--from <dir|bundle>) into an adopter repo, re-pins via engine-pin.js, then verifies; idempotent, --dry-run, and exact byte-rollback on verify failure. Builds ON engine-pin.js (no fingerprint/verify reimplementation); only ever writes manifest-tracked reusable surface, never project-local files. DI-factory so tests inject fs/log/engine-pin.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-18T14:35:42.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/coord-upgrade.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:23a5e146875a",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "23a5e146875af3189645d3ceed7628df1713a1346e0b54dc8c9e216f8875194d",
+        "bytes": 19312
+      },
+      "rationale": "Module-owned tests for `coord upgrade` (COORD-118): apply (update changed + add new surface file, regenerate engine-pin.json, real-engine verify pass), idempotent re-run no-op, --dry-run no-writes, forced-verify-failure exact byte-rollback (incl. removing added files), surface-only guarantee (board/project.config.js never touched), and dispatcher routing. os.tmpdir scratch source+target trees.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-18T14:35:42.000Z",
         "template_head_sha": null
       }
     },
@@ -541,11 +779,11 @@
     {
       "path": "coord/scripts/dispatch.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:69470c401dbe",
+      "version_stamp": "sha256:231be7e9aab3",
       "checksum": {
         "algo": "sha256",
-        "hex": "69470c401dbe45c7bfcdb1010ff5b32ae4b687bd2720975e06d6211aab808b9d",
-        "bytes": 7215
+        "hex": "231be7e9aab3ddb61efce03f9aa0f922cfbab4b86847a611ce1d4338dbbd02df",
+        "bytes": 7382
       },
       "rationale": "Module-owned behavior tests for the wired dispatch loop reference harness coord/scripts/dispatch.mjs (COORD-033), relocated verbatim from governance.test.js (COORD-096, residual split slice 1). They drive dispatch.mjs as an imported ESM module against a seeded manifest file \u2014 provider-agnostic, read-only, deterministic, no live board.",
       "source_inventory": {
@@ -558,11 +796,11 @@
     {
       "path": "coord/scripts/doctor-recovery.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:f79440483aad",
+      "version_stamp": "sha256:23a8c6cf6c29",
       "checksum": {
         "algo": "sha256",
-        "hex": "f79440483aad7c844571faca87813f809ee6763c6ec4f62c1fe1b6546188738e",
-        "bytes": 25115
+        "hex": "23a8c6cf6c29642690427c561b7845640289e0341648717d15679767f6969104",
+        "bytes": 28350
       },
       "rationale": "MUTATING governance repair/recovery surface (doctorFix behind `doctor --fix`, reconcileGovernance, recoverTicket, plus the private session-mirror rebuild helper) extracted from lifecycle.js as a DI factory. Wired after the journal/board-state factories; the read-only doctor diagnostic stays in lifecycle.js and delegates to the injected-back doctorFix only on --fix.",
       "source_inventory": {
@@ -575,11 +813,11 @@
     {
       "path": "coord/scripts/doctor-recovery.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:26b073f02a7a",
+      "version_stamp": "sha256:318c17711ed8",
       "checksum": {
         "algo": "sha256",
-        "hex": "26b073f02a7a99bfacc9bc6340a9c9bdf7ae06b0294125e469a329e3828dd9e8",
-        "bytes": 28993
+        "hex": "318c17711ed8cb5336d4a2605c98fa712fe703f6e8146ad6ccb1510f96922f85",
+        "bytes": 35210
       },
       "rationale": "Module-owned doctor-recovery tests (the three doctor --fix repair-pass tests) relocated from governance.test.js.",
       "source_inventory": {
@@ -592,11 +830,11 @@
     {
       "path": "coord/scripts/doctor-report.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:d6696c4e0313",
+      "version_stamp": "sha256:19c7184e058b",
       "checksum": {
         "algo": "sha256",
-        "hex": "d6696c4e0313ce6d6ead75d83a3e25efc65bc49af8a96dac0ae5c7fd5514fe28",
-        "bytes": 19770
+        "hex": "19c7184e058b72be33708539c09031fb259f5cefed003be225f271287cc6a71a",
+        "bytes": 25547
       },
       "rationale": "READ-ONLY governance doctor REPORTING surface (resolveDoctorScope/resolveDoctorOwnerScope, the read-only doctor() report, and the buildCanonicalDerivedDriftError report builder) extracted from lifecycle.js as a DI factory (COORD-085, Wave 4 slice 1). Wired in lifecycle.js after createDoctorRecovery; injects doctorFix so the read-only doctor() still delegates to the MUTATING repair only on --fix without owning it.",
       "source_inventory": {
@@ -609,11 +847,11 @@
     {
       "path": "coord/scripts/doctor-report.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:31b559e653c2",
+      "version_stamp": "sha256:e4262600489f",
       "checksum": {
         "algo": "sha256",
-        "hex": "31b559e653c20a342745532595843a9e84a3bbeb1b98324291ce4c7530625547",
-        "bytes": 5607
+        "hex": "e4262600489f1d70af34a9e0a526068b61c435f5cc175ec3f4932c5ac75fcd3b",
+        "bytes": 16328
       },
       "rationale": "Module-owned doctor-report tests (resolveDoctorScope/resolveDoctorOwnerScope, ticket-scoped resolution guidance, buildCanonicalDerivedDriftError) relocated from governance.test.js (COORD-085).",
       "source_inventory": {
@@ -658,30 +896,47 @@
       }
     },
     {
-      "path": "coord/scripts/conformance-verbs.js",
+      "path": "coord/scripts/fleet-golden-path.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:60cbb262f063",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "60cbb262f063098ae96ec2f87c011c3c3fd654afb6333f0de19c2ae708aa46e8",
-        "bytes": 12560
-      },
-      "rationale": "COORD-107: the ENT conformance / engine-integrity CLI verb surface (gov conform ENT-002 journal hash-chain self-verify + ENT-010 signed conformance attestation emit/verify, and gov verify-engine ENT-011 engine version-pin + drift-check) extracted from lifecycle.js to get it back under the documented honest 5000 logical-LOC composition-root ceiling by EXTRACTION (not a budget bump): lifecycle.js dropped 5036 -> 4911. DI-factory wired in lifecycle.js \u2014 the createConformanceAttestation + createEnginePin CREATORS, the journal verifyGovernanceChain, the GovernanceError fail, and COORD_DIR are all injected; conform/verifyEngine are destructured back out for the commands dispatch map + cli.js case. Pure presentation glue over the two injected factories; behavior byte-identical (covered by the existing CLI-level gov conform tests in journal.test.js plus the conformance-attestation.test.js / engine-pin.test.js factory unit tests). READ-ONLY except writing conform --attest's gitignored attestation artifact + first-run keypair and verify-engine --pin's committed coord/engine-pin.json.",
+      "rationale": "Fleet golden-path wrapper is reusable governance operator guidance.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
-        "recorded_at": "2026-06-16T00:00:00.000Z",
-        "template_head_sha": null
+        "recorded_at": "2026-06-29T14:59:19.905Z",
+        "template_head_sha": "local"
+      },
+      "version_stamp": "sha256:06bd88ab72fd",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "06bd88ab72fd687c2b011046d9fe5bcc262f90c271302c5434dda7c03bd7a46b",
+        "bytes": 3431
+      }
+    },
+    {
+      "path": "coord/scripts/fleet-golden-path.test.js",
+      "match_policy": "exact",
+      "rationale": "Fleet golden-path wrapper tests are reusable governance validation.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T14:59:19.913Z",
+        "template_head_sha": "local"
+      },
+      "version_stamp": "sha256:f676a2800b77",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "f676a2800b77522b17327c03a9e411858ce9e1c1d2d5d7d08806de5d04a0955a",
+        "bytes": 1477
       }
     },
     {
       "path": "coord/scripts/followups.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:32e6ccc96421",
+      "version_stamp": "sha256:08d0accda0c0",
       "checksum": {
         "algo": "sha256",
-        "hex": "32e6ccc9642178887f388187e19a5af2a5690d8aa6c221ed3031db73cbe17e4c",
-        "bytes": 5040
+        "hex": "08d0accda0c009247ffa8b42efd969b337bd18c71c44b87023edad5575019dd0",
+        "bytes": 6965
       },
       "rationale": "Governance follow-up relation and readiness helpers are reusable control-plane runtime.",
       "source_inventory": {
@@ -694,11 +949,11 @@
     {
       "path": "coord/scripts/followups.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:c3e98fa0658c",
+      "version_stamp": "sha256:ebbdaafe50b3",
       "checksum": {
         "algo": "sha256",
-        "hex": "c3e98fa0658cc8cd843850bcfc4007993dcc874b53f4461fbb1d4649e6da796e",
-        "bytes": 3655
+        "hex": "ebbdaafe50b35ecbf4bfa90051554a38a4a7abb98f06facce6a9ac03712944be",
+        "bytes": 6015
       },
       "rationale": "Module-owned behavior tests for followups.js (nextTicketId allocation, resolveFollowupPromptPath inheritance/coverage, applyFollowupRelation mapping) relocated out of governance.test.js (COORD-100, facade capstone).",
       "source_inventory": {
@@ -862,6 +1117,101 @@
       }
     },
     {
+      "path": "coord/scripts/gates/adr.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:92cb703cf132",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "92cb703cf13293421dc3e388b01ccd9d9e844c42eea79544e9584ef11e5676d9",
+        "bytes": 12409
+      },
+      "rationale": "Pure extracted readiness gate module introduced by COORD-374; reusable control-plane enforcement surface."
+    },
+    {
+      "path": "coord/scripts/gates/business-context.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:366d813bc19a",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "366d813bc19a7937eb5aad55956d96f02aa69f37e476c2aa9f4585589fcc590a",
+        "bytes": 7253
+      },
+      "rationale": "Pure extracted readiness gate module introduced by COORD-374; reusable control-plane enforcement surface."
+    },
+    {
+      "path": "coord/scripts/gates/context-pack-ack.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:3b1ed59897bd",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "3b1ed59897bd309f4e0b3dcab7016695c609b002d0e9eed8def4c3ef5ff82a4e",
+        "bytes": 7886
+      },
+      "rationale": "Extracted governance gate module is reusable governance control-plane code.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T00:00:00.000Z",
+        "template_head_sha": "local-coord-375"
+      }
+    },
+    {
+      "path": "coord/scripts/gates/readiness.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:b2058b61a808",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "b2058b61a8086ad459cac0000485f4952e4fee93debcf827c0c47f291f107a7b",
+        "bytes": 11961
+      },
+      "rationale": "Extracted governance gate module is reusable governance control-plane code.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T00:00:00.000Z",
+        "template_head_sha": "local-coord-375"
+      }
+    },
+    {
+      "path": "coord/scripts/gates/registry.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:692a4bd3d033",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "692a4bd3d0338005ee80fd2ae851c2d8c13ff6e232189205d8db7ba6db16ca2e",
+        "bytes": 935
+      },
+      "rationale": "Pure extracted readiness gate module introduced by COORD-374; reusable control-plane enforcement surface."
+    },
+    {
+      "path": "coord/scripts/gates/registry.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:3e6c4b9258ae",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "3e6c4b9258aedba9e5ac8b6726e127f08de07b493ed25cffcfd1c53dfd01a3d3",
+        "bytes": 1315
+      },
+      "rationale": "GateCheck registry unit tests for the pure phase-scoped gate pipeline introduced by COORD-374."
+    },
+    {
+      "path": "coord/scripts/gates/review-closeout.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:d6a40bf82c5a",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "d6a40bf82c5a194089ddb035ba3b0fe8f0a3a72ac6c2d488a696f6b57d46ef55",
+        "bytes": 13825
+      },
+      "rationale": "Extracted governance gate module is reusable governance control-plane code.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T00:00:00.000Z",
+        "template_head_sha": "local-coord-375"
+      }
+    },
+    {
       "path": "coord/scripts/git-ops.js",
       "match_policy": "exact",
       "version_stamp": "sha256:385662fb1622",
@@ -915,11 +1265,11 @@
     {
       "path": "coord/scripts/governance-constants.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:065f59569afd",
+      "version_stamp": "sha256:0331d1110d9b",
       "checksum": {
         "algo": "sha256",
-        "hex": "065f59569afde90f1376af8f874a98a0876680a0302818a669dff05e0f62d071",
-        "bytes": 6808
+        "hex": "0331d1110d9b0b15773f1a8e897808f8361dd4f5f542df7619231ddec722f4b9",
+        "bytes": 8277
       },
       "rationale": "Shared governance constants (stalled-lock / template-feedback windows + trigger pattern), escapeRegExp, and the gate vocabulary single-sources: GATE_LANES (COORD-075/QGATE-001) plus the deploy-gate contract CANONICAL_GATE_ENTRYPOINTS + DEPLOY_GATE_LANES (COORD-079/QGATE-005) consumed by the deploy workflow template and deploy-gate-contract.test.js so deploy gates can never drift below the PR gate. De-duplicated from lifecycle.js and governance-repair.js (COORD-071).",
       "source_inventory": {
@@ -932,11 +1282,11 @@
     {
       "path": "coord/scripts/governance-context.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:efdb7ea15fd8",
+      "version_stamp": "sha256:b41f31fa9d69",
       "checksum": {
         "algo": "sha256",
-        "hex": "efdb7ea15fd8f6d4def19c4213e74a1781c0a1a1c601a72c925d4b66a4956db5",
-        "bytes": 9591
+        "hex": "b41f31fa9d6914815b73300c81755c8403b37ec6e929cb311724db0f9d4ab279",
+        "bytes": 75054
       },
       "rationale": "Governance shared mutable context is reusable control-plane runtime.",
       "source_inventory": {
@@ -949,11 +1299,11 @@
     {
       "path": "coord/scripts/governance-context.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:d8f10c08996e",
+      "version_stamp": "sha256:2c2b3ad1db71",
       "checksum": {
         "algo": "sha256",
-        "hex": "d8f10c08996ef3b34246a0b54465600ac0ebeda03be6df695012badc6fcedac7",
-        "bytes": 1666
+        "hex": "2c2b3ad1db7123a153cdf197279f39b26e203668bb9b71915f42e2dba740e541",
+        "bytes": 38243
       },
       "rationale": "Module-owned behavior test for governance-context.js (tryReclaimStaleDirectoryLock) relocated out of governance.test.js (COORD-100, facade capstone).",
       "source_inventory": {
@@ -998,6 +1348,40 @@
       }
     },
     {
+      "path": "coord/scripts/governance-plan-shape.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:fdd9e5bae5a2",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "fdd9e5bae5a2049064db621b2c97b6e9b0dbc7575f798577fea212427617f8c0",
+        "bytes": 15247
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Governance PLAN-SHAPE service (scaffoldSelfReviewCycle/buildDefaultGovernancePlan/normalizeGovernancePlanShape/formatGovernancePlanEntry/formatGovernanceReviewProfileEntry/formatGovernanceRepairEntry/parseGovernancePlanEntries/buildScaffoldPlanRecord/ensurePlanStub) extracted from lifecycle.js as a DI factory (COORD-295, lifecycle decomposition slice #4 per the COORD-291 composition-root boundary contract). Behavior-preserving move of governance-plan normalization + scaffold-plan construction \u2014 distinct from plan-records.js (canonical plan record IO) and plan-command.js (the gov plan/update-plan verbs). CRITICAL: NO behavior change \u2014 plan JSON/markdown round-trips byte-stable where expected (normalizeGovernancePlanShape/parseGovernancePlanEntries/formatGovernancePlanEntry + the review-profile/repair sibling formatters produce byte-identical output) and buildDefaultGovernancePlan/buildScaffoldPlanRecord/ensurePlanStub/scaffoldSelfReviewCycle yield identical plan records. COORD-007: buildDefaultGovernancePlan seeds expected_closeout.base_ref from the LIVE REPO_INTEGRATION_BRANCHES map, injected BY REFERENCE (the __testing.paths.REPO_INTEGRATION_BRANCHES in-place mutation propagates). Primitives (state, REPO_INTEGRATION_BRANCHES, DEFAULT_INTEGRATION_BRANCH, isRepoBackedCode, repoNameForCode, toArray, the state-io canonical readers/writers) injected BY REFERENCE; the plan-record IO collaborators wired LATER by createPlanRecords (readPlanRecord/extractPlanBlock/renderPlanRecordBlock/appendPlanBlock/syncPlanRecordFromBlock/planRecordPath/writePlanCompatibilityBlockFromRecord) injected as deferred (...a)=>fn(...a) wrappers. Wired in lifecycle.js EARLY (before createGovernanceValidation/createPlanRecords); the nine names re-destructured back so the commands dispatch, the __testing facade (buildDefaultGovernancePlan/ensurePlanStub), and the deferred wrappers other factories inject resolve byte-identically. lifecycle.js 4473 -> 4261 raw LOC."
+    },
+    {
+      "path": "coord/scripts/governance-plan-shape.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:63c83ba8943d",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "63c83ba8943da3af254cfd1da0435ca28a8402280340c4935e1999211117a3a9",
+        "bytes": 13946
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Behavior + DI wiring-guard coverage for the governance-plan-shape.js extraction (COORD-295). Exercises the factory directly with injected fake deps: the format/parse/normalize byte-stable round-trip (formatGovernancePlanEntry<->parseGovernancePlanEntries, the review-profile/repair sibling formatters, normalizeGovernancePlanShape repo-default collapse vs explicit-shape preservation), the scaffoldSelfReviewCycle deterministic raw line, and the buildScaffoldPlanRecord stable repo-backed record shape (4 vs 3 review cycles). The buildDefaultGovernancePlan (repo-default + COORD-006/007 REPO_INTEGRATION_BRANCHES live-mutation) tests and the ensurePlanStub canonical-record-seam tests (stale-stub no-overwrite + scaffold-record seeding) were relocated VERBATIM from lifecycle.test.js through the same fully-wired __testing facade (byte-identical assertions). Adds a DI wiring guard: the factory returns exactly the nine public functions, and lifecycle.js re-exports the two facade plan-shape helpers (buildDefaultGovernancePlan/ensurePlanStub, BRACKET-form, COORD-280 scanner-safe) unchanged."
+    },
+    {
       "path": "coord/scripts/governance-repair.js",
       "match_policy": "exact",
       "version_stamp": "sha256:3b3e3da057b8",
@@ -1034,11 +1418,11 @@
     {
       "path": "coord/scripts/governance-session.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:f6263537f26d",
+      "version_stamp": "sha256:54b6a99956cb",
       "checksum": {
         "algo": "sha256",
-        "hex": "f6263537f26d5d4d97ff5ff6d86b41335846b438beee909030707adb29c45fbd",
-        "bytes": 51064
+        "hex": "54b6a99956cb7b4ab6ab4a5d8029ebc2f52afcb590d558e0bcb110dda0cd9c94",
+        "bytes": 56462
       },
       "rationale": "Governance agent/session registry, provider identity, liveness, session token, and lock identity helpers are reusable control-plane runtime. COORD-087 (Wave 4 slice 3) exports PROVIDER_REGISTRY from the factory so the extracted agent-commands.js command layer can inject the same provider metadata.",
       "source_inventory": {
@@ -1051,11 +1435,11 @@
     {
       "path": "coord/scripts/governance-session.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:2ac9a070f74b",
+      "version_stamp": "sha256:ec952e855dc9",
       "checksum": {
         "algo": "sha256",
-        "hex": "2ac9a070f74be99a0453c78c556c1be79d8183aadf48a12b214b8a8c3e3cfcf5",
-        "bytes": 57854
+        "hex": "ec952e855dc90bf2aaf69bd68b380c0409017caea57e74a59708dc96c6f300b1",
+        "bytes": 66949
       },
       "rationale": "Module-owned lower-level session / identity / lock-authority ENGINE behavior tests, every subject defined in governance-session.js: registry/session read+legacy-migration (readAgentSessions/readAgentsRegistry), runtime session fingerprinting (runtimeSessionFingerprint), effective-thread-id resolution (resolveEffectiveThreadId, including the COORD_SESSION_ID override and the foreign-adoption/ambiguous-identity fail-closed cases), current-agent identity (ensureCurrentAgentIdentity no-touch), session-token minting + idle-stub reaping (getOrCreateSessionToken), mutation/repair ownership + guidance (assertTicketMutationOwnership, ensureTicketMutationOwnership, describeTicketMutationOwnershipIssue, assertTicketRepairOwnership, resolveOwnerIdentity), the pure lock/identity validators (isCompleteLockPayload, findDoingTicketForOwner/isDoingStatus, allocateAgentSimpleId), and the v2 owner-authoritative lock writer/rebinder (writeLock/rebindTicketLock). Relocated from governance.test.js (COORD-097, residual split slice 2). The agent-COMMAND orchestration layer stays in agent-commands.test.js; lifecycle-owned reaper/lock-integrity cases (reapIdleAutoClaimedProviderStubs, ensureDoingTicketLockIntegrity, buildStartOwnershipRaceMessage, refreshLockHead, assertCurrentTicketLockIntegrity) stay in governance.test.js.",
       "source_inventory": {
@@ -1068,11 +1452,11 @@
     {
       "path": "coord/scripts/governance-test-utils.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:c33519fd5fa5",
+      "version_stamp": "sha256:2a63a9864251",
       "checksum": {
         "algo": "sha256",
-        "hex": "c33519fd5fa506bf65197e445eb8c4f9a230a02225e02de725d717c9ce4e6b00",
-        "bytes": 30509
+        "hex": "2a63a9864251da313de46375c599544a2563b9dc29e2852bf9685f168a500a52",
+        "bytes": 43137
       },
       "rationale": "Shared governance test utilities for module-split tests while preserving facade-based assertions. Hosts the COORD-003/004/transition workspace harness (createMinimalGovernanceWorkspace, setupCoord003Workspace, readBoardRow) shared by governance.test.js and ticket-transitions.test.js. Hosts withCanonicalTicketPrompt, lifted from governance.test.js so the staying facade prompt tests and the relocated token-economics context-pack tests share one definition (COORD-096).",
       "source_inventory": {
@@ -1085,13 +1469,13 @@
     {
       "path": "coord/scripts/governance-validation.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:c83d48433a99",
+      "version_stamp": "sha256:58f3ac75ea8a",
       "checksum": {
         "algo": "sha256",
-        "hex": "c83d48433a99f610c0bdde7cc8bfe50e5d3e07b1706a4781e98762fb74519aac",
-        "bytes": 69949
+        "hex": "58f3ac75ea8af88ab027e16e9fb3e1c8ab37b142843b4486d4cc34dd2dacb9d3",
+        "bytes": 57219
       },
-      "rationale": "Governance readiness, review-plan, feature-proof, testing-infrastructure, and landing validation helpers are reusable control-plane runtime checks. The landing-audit report/record surface moved to landing-audit.js (COORD-070); classifyLandingRecord/derive*Audit/requiresLandingGovernance stay here and are injected into it.",
+      "rationale": "Module-owned validation / readiness orchestrator. COORD-374 moved business-context and ADR readiness dimensions behind the pure GateCheck registry while preserving the exported validation facade.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -1102,11 +1486,11 @@
     {
       "path": "coord/scripts/governance-validation.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:233c2da94de5",
+      "version_stamp": "sha256:ca15b40beba2",
       "checksum": {
         "algo": "sha256",
-        "hex": "233c2da94de5f8f953b659128ae31b9c46e93acde2737faac8869c6d17d989cd",
-        "bytes": 72525
+        "hex": "ca15b40beba2dfae2c54f59e60b974bfbd7902e329802b6c51c644e05c9552b3",
+        "bytes": 110360
       },
       "rationale": "Module-owned validation / readiness behavior tests, every subject defined in governance-validation.js: readiness evaluation (deriveGovernanceReadiness, collectStartReadinessBlockers, evaluateReadiness), review-plan readiness + closeout validation (collectReviewPlanReadinessIssues, assertReviewPlanReady, submitRequiresReviewPlanCheck), the testing-infrastructure and feature-proof audit derivers (deriveTestingInfrastructureAudit, deriveFeatureProofAudit, validateFeatureProofEntry), the no-PR / supersede landing validators (assertAlreadyLandedNoPrReconcileReady, assertLandingIntegrity, classifyLandingRecord, detectSupersedeLandingBypass), and the self-review-cycle helpers (replaceSelfReviewCycles, inferRequiredReviewRound). Relocated from governance.test.js (COORD-098, residual split slice 3). landing-resolution.test.js keeps commit/base-ref resolution and landing-audit.test.js keeps audit/report writers; lifecycle-owned validation (assertCommittedReviewState, appendReviewFollowupPlan, ensurePlanStub) and cross-module facade cases stay in governance.test.js.",
       "source_inventory": {
@@ -1136,11 +1520,11 @@
     {
       "path": "coord/scripts/governance.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:4269a94a071c",
+      "version_stamp": "sha256:fbead214e3e3",
       "checksum": {
         "algo": "sha256",
-        "hex": "4269a94a071c7e5a47d05491a5630053b646a0dabac8225351e7549e8785ecc8",
-        "bytes": 82795
+        "hex": "fbead214e3e3b7e88ef496f03e11f418628a9f9ff26bafa2a5d969d7eb687998",
+        "bytes": 89563
       },
       "rationale": "Governance test suite encodes reusable control-plane behavior and canonical runtime expectations. The landing-audit report/record/testing-infra-audit tests moved to landing-audit.test.js (COORD-070). The deep doctor-report behavior tests (resolveDoctorScope/resolveDoctorOwnerScope, ticket-scoped resolution guidance, buildCanonicalDerivedDriftError) moved to doctor-report.test.js (COORD-085). The deep buildTicketNextCommands guidance behavior tests moved to ticket-guidance.test.js (COORD-086, Wave 4 slice 2). The deep agent-command behavior tests (claim transfer, the same-owner other-thread owner-lease gate, agentid payloads, agent-status release candidates, the cwd-claim hazard, rebind --fresh) moved to agent-commands.test.js (COORD-087, Wave 4 slice 3). The deep landing commit-resolution behavior tests (resolveLandingBaseRef/resolvePrLandingBaseRef stale-local origin fallback, extractCommitShas, pickBestLandingCommit ancestry) moved to landing-resolution.test.js (COORD-088, Wave 4 slice 4). The four GOV-012 rebuildBoardFromJournal behavior tests moved to board-rebuild.test.js (COORD-091, Wave 4 residual). The deep token-economics behavior tests (COORD-026/027/028/029/030/031 cost-ledger, precheck, context-pack, tier-policy, plan-waves, dispatch-plan) moved to token-economics.test.js and the COORD-033 wired-dispatch reference-harness tests moved to dispatch.test.js (COORD-096, residual split slice 1). The lower-level session/identity/lock-authority engine behavior tests (readAgentSessions/readAgentsRegistry migration, getOrCreateSessionToken minting+reaping, runtimeSessionFingerprint, resolveEffectiveThreadId, ensureCurrentAgentIdentity, the assert/ensure/repair mutation-ownership + describeTicketMutationOwnershipIssue + resolveOwnerIdentity cluster, isCompleteLockPayload/findDoingTicketForOwner/allocateAgentSimpleId, and the v2 writeLock/rebindTicketLock owner-authority cases) moved to governance-session.test.js (COORD-097, residual split slice 2). The validation/readiness behavior tests defined in governance-validation.js (deriveGovernanceReadiness, collectStartReadinessBlockers, evaluateReadiness, collectReviewPlanReadinessIssues, assertReviewPlanReady, submitRequiresReviewPlanCheck, deriveTestingInfrastructureAudit, deriveFeatureProofAudit, validateFeatureProofEntry, assertAlreadyLandedNoPrReconcileReady, assertLandingIntegrity, classifyLandingRecord, detectSupersedeLandingBypass, replaceSelfReviewCycles, inferRequiredReviewRound) moved to governance-validation.test.js (COORD-098, residual split slice 3). The config/path tests defined in coord/paths.js (createCoordPaths default + fixture derivation, normalizeProjectConfig/validateProjectConfig/loadProjectConfig/resolveProjectConfigPath, COORD_PROJECT_CONFIG override, repoIntegrationBranches map, allBoardRepoCodes) moved to paths.test.js, the prompt-coverage unit tests defined in prompt-coverage.js (hasPromptWaiver/buildPromptWaiverCommand, parsePromptLikelyFiles, parsePromptPreconditions, classifyPreconditionArtifact, verifyPromptPreconditions) moved to prompt-coverage.test.js, and the cli.js parseFlags flag-acceptance tests moved to lifecycle-flags.test.js (COORD-099, residual split slice 4). The COORD-007 verb-parity check now concatenates the split-out sibling test sources so relocated regression coverage still counts. COORD-100 (facade capstone) reduced governance.test.js to a facade/contract suite: the single-module helper unit tests for functions defined in lifecycle.js moved to lifecycle.test.js; state-io.js canonical write/sync-path tests to state-io.test.js; landing-gh.js gh/PR helper tests to landing-gh.test.js; followups.js id-allocation/relation/prompt tests to followups.test.js; governance-context.js stale-lock reclaim test to governance-context.test.js; plus plan-records/closeout/journal/repo-registry/agent-commands/governance-repair/prompt-coverage/worktree-ops siblings. The withRegisterPromptHarness fixture was lifted into governance-test-utils.js (shared by the staying register-prompt VERB tests and prompt-coverage.test.js). What remains is facade-level: the frozen __testing export-surface assertion, COORD-007 verb parity, executeCommand/dispatch contracts, CLI-vs-facade integration, and genuine cross-module lifecycle VERB flows (unstart/lock-abandon/open-followup/split-ticket/register-prompt/set-priority/set-type driven end-to-end).",
       "source_inventory": {
@@ -1151,13 +1535,115 @@
       }
     },
     {
-      "path": "coord/scripts/journal.js",
+      "path": "coord/scripts/journal-chain.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:a62d773cdcdd",
+      "version_stamp": "sha256:2bf76a4e58ff",
       "checksum": {
         "algo": "sha256",
-        "hex": "a62d773cdcdddab1942cb26b10222e9191b5aea992014371df720f51c63733e4",
-        "bytes": 52773
+        "hex": "2bf76a4e58ff7aa1647a42e7b6199f485f3a89e908e09e033d8114cb2dfa0caa",
+        "bytes": 5301
+      },
+      "rationale": "Extracted reusable governance engine module; downstream templates must receive this exact control-plane behavior.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T14:06:36.593Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/journal-repair.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:d9c6f61e4d36",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "d9c6f61e4d3609a472327a944159d81fd26875879ebffa0d0bfeae654774c947",
+        "bytes": 362
+      },
+      "rationale": "Extracted reusable governance engine module; downstream templates must receive this exact control-plane behavior.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T14:06:36.594Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/journal-retention.js",
+      "match_policy": "exact",
+      "rationale": "Journal retention health classifier is reusable governance operability code.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T14:26:11.243Z",
+        "template_head_sha": "local"
+      },
+      "version_stamp": "sha256:e1dd6896e7b6",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "e1dd6896e7b6428890c13bf906fd1a643e1e9323e7043f9f8a14d5f9b3ea80d0",
+        "bytes": 4225
+      }
+    },
+    {
+      "path": "coord/scripts/journal-retention.test.js",
+      "match_policy": "exact",
+      "rationale": "Journal retention health tests are reusable governance validation.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T14:26:11.243Z",
+        "template_head_sha": "local"
+      },
+      "version_stamp": "sha256:cc67790bea86",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "cc67790bea86b82c9c8aee0e2cc2f0e74f96908eb287205171cd55880b887a1d",
+        "bytes": 2627
+      }
+    },
+    {
+      "path": "coord/scripts/journal-seal.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:999a8109928b",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "999a8109928bbfec34973ad90510a6ed19333d92902c36e8345965232c6c684d",
+        "bytes": 316
+      },
+      "rationale": "Extracted reusable governance engine module; downstream templates must receive this exact control-plane behavior.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T14:06:36.594Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/journal-snapshots.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:c3d191aa1748",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "c3d191aa17484ce54ed0c825c9790cabc98a267292f88f7065615e540dddf3cf",
+        "bytes": 325
+      },
+      "rationale": "Extracted reusable governance engine module; downstream templates must receive this exact control-plane behavior.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T14:06:36.594Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/journal.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:fcceab45cfd7",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "fcceab45cfd73e2fb7aa01e29ba58ad0841c3f2226619a7012043f8bdd328d8a",
+        "bytes": 96823
       },
       "rationale": "Governance journal, snapshot, provenance drift, restore-point, and mutation wrapper runtime.",
       "source_inventory": {
@@ -1170,11 +1656,11 @@
     {
       "path": "coord/scripts/journal.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:a406e5fb8ffd",
+      "version_stamp": "sha256:1365b53369cd",
       "checksum": {
         "algo": "sha256",
-        "hex": "a406e5fb8ffd5a7a279bfe6e27f90b0593de576a8de8546ec3b17a916cb344a3",
-        "bytes": 68848
+        "hex": "1365b53369cd89e218973f5c34b263485c661bf488d164f2f85b0b9bca086b5e",
+        "bytes": 148691
       },
       "rationale": "Focused regression tests for governance journal atomic write and torn-tail repair behavior.",
       "source_inventory": {
@@ -1204,11 +1690,11 @@
     {
       "path": "coord/scripts/landing-audit.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:b9bda535b0d4",
+      "version_stamp": "sha256:a519f044996d",
       "checksum": {
         "algo": "sha256",
-        "hex": "b9bda535b0d438149a75debd5c7cbaf1256a04eeb9019ab4df2453c6d211765c",
-        "bytes": 23014
+        "hex": "a519f044996d5ddd3a0d1eb47a70755e7649eada088d7a9b2e24bf0550b0eeea",
+        "bytes": 23190
       },
       "rationale": "Module-owned landing-audit report/record/testing-infra-audit tests relocated from governance.test.js (COORD-070).",
       "source_inventory": {
@@ -1287,13 +1773,47 @@
       }
     },
     {
-      "path": "coord/scripts/lifecycle-flags.js",
+      "path": "coord/scripts/lifecycle-evidence.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:8421154ec137",
+      "version_stamp": "sha256:0c7c3f3221a7",
       "checksum": {
         "algo": "sha256",
-        "hex": "8421154ec137b474e058f57524c2a4e12b4be4f4b7bfadbfb739ed91374bb364",
-        "bytes": 7922
+        "hex": "0c7c3f3221a77c457344c155323c701cffcc3e25696137e5ed38fd7c30f3dcbc",
+        "bytes": 6237
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Lifecycle PR / EVIDENCE-RESOLUTION service (resolveTicketGitContext/resolvePrUrlForTicket/resolveLifecyclePrRefs) extracted from lifecycle.js as a DI factory (COORD-296, lifecycle decomposition slice #5 per the COORD-291 composition-root boundary contract \u2014 the last slice before the COORD-297 facade-shrink). Owns resolving a ticket's git context (repo root/branch/worktree/lock, lock-first with a worktree fallback) and the closeout PR-ref decision tree \u2014 distinct from landing-resolution.js (commit-ancestry/base-ref/source-commit resolution) and landing-audit.js (provenance landing records), which stay SEPARATE modules wired alongside it (296 sits beside them, does not absorb them). CRITICAL: NO behavior change \u2014 PR/no-PR evidence is byte-identical (the --no-pr X-lane and the PR-backed path resolve through the same resolveLifecyclePrRefs tree: explicit --pr refs -> existing board pr_index refs -> repo-backed branch PR discovery -> fail-closed; verifyPrEvidence INJECTED with allowNoPr:true, not reimplemented). The repo-registry/worktree-ops/landing-gh collaborators (isRepoBackedCode/getRepoRoot/listGitWorktrees/inferTicketIdFromPath/isGitHubPrUrl/ghPrListByBranch/verifyPrEvidence/mergeUniqueRefs/toArray) inject BY REFERENCE; the lifecycle-local hoisted findLockForTicket/fail inject as deferred (...a)=>fn(...a) wrappers. OWNERSHIP (COORD-088 re-confirmed via grep): readCommitSubject/commitSubjectAffiliatesWithTicket are review-STATE verification used by assertCommittedReviewState (and governance-validation.js), NOT consumed by the three moved functions, so they were LEFT in lifecycle.js \u2014 assertCommittedReviewState unchanged. lifecycle.js wires it after the repo-registry/worktree-ops/landing-gh destructures are live and re-destructures the three returns so the commands dispatch and the deferred wrappers other factories inject (landing-resolution/worktree-ops/pr-ops/ticket-commands) resolve byte-identically. lifecycle.js 4261 -> 4216 raw LOC."
+    },
+    {
+      "path": "coord/scripts/lifecycle-evidence.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:a55bfefaba57",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "a55bfefaba578bee1c81c80ba8e183880961b5eb7a59ba80b88d680706c568d2",
+        "bytes": 8279
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Behavior + DI wiring-guard coverage for the lifecycle-evidence.js extraction (COORD-296). Exercises the factory directly with injected fake deps: resolveTicketGitContext (non-repo-backed X short-circuit, lock-first resolution, worktree fallback), resolvePrUrlForTicket (single board pr_index ref, fail-closed on multiple GitHub PR refs, branch PR discovery, null when no branch/repo context), and the resolveLifecyclePrRefs PR/no-PR evidence-parity decision tree (explicit --pr verified with allowNoPr:true -> existing board pr_index refs -> repo-backed branch discovery -> fail-closed for an X-lane no-evidence ticket AND for a repo-backed ticket whose branch discovery finds nothing). Adds a DI wiring guard: the factory returns exactly the three public functions, and lifecycle.js still resolves the review-state helpers (readCommitSubject/commitSubjectAffiliatesWithTicket/assertCommittedReviewState, BRACKET-form, COORD-280 scanner-safe) through its facade \u2014 proving the COORD-088 ownership decision (those helpers stay in lifecycle.js) held."
+    },
+    {
+      "path": "coord/scripts/lifecycle-flags.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:cdb7bd7162be",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "cdb7bd7162beb1e9eeacdea563474b0f32d5ffe319b14d8f46f2a783544ffce2",
+        "bytes": 8194
       },
       "rationale": "CLI flag parsing for lifecycle subcommands (parseLifecycleFlags + helpers); extracted from lifecycle.js.",
       "source_inventory": {
@@ -1306,17 +1826,51 @@
     {
       "path": "coord/scripts/lifecycle-flags.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:cbc23e61c854",
+      "version_stamp": "sha256:b92a6427da94",
       "checksum": {
         "algo": "sha256",
-        "hex": "cbc23e61c85433d56f6a810013a7c5866b39bd7dae32a303c938fe5fa7f6b400",
-        "bytes": 5360
+        "hex": "b92a6427da94dabfd505746b90714384b0538ee0feedae1a5dc611c93bfbe6cd",
+        "bytes": 5530
       },
       "rationale": "Focused unit tests for lifecycle flag parsing, including the LEGAL_FINDING_STATUSES branch. Also hosts the cli.js parseFlags flag-acceptance tests (commit-ticket --all, audit-landings --write, finalize --already-landed, push/autofill-startup/-m aliases, --human-admin-override, agent-rebind --fresh, doctor --scope-self) relocated from governance.test.js (COORD-099, residual split slice 4): parseFlags is the CLI-facade flag parser, the deliberate data-parallel sibling of this module's parseLifecycleFlags, so both flag parsers' tests now live together. Exercised through the governance facade __testing.parseFlags.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
         "recorded_at": "2026-06-13T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/lifecycle-help.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:9d5e6913d2ab",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "9d5e6913d2abe8392e83186acc59c1bf2a8d19b14909289e7f9993e94d5cf629",
+        "bytes": 58910
+      },
+      "rationale": "The lifecycle CLI presentation + thin read-only command-wrapper surface (printHelp/buildInitiateSummary/printInitiate help+primer, plus the recall/insights/coverage-rollup/prework/closeout-summary/learned-rule/sign-journal thin wrappers over their own engines), extracted from lifecycle.js (COORD-281) to hold the composition root under the arch 5000 monolith/size budget. createLifecycleHelp(deps) factory; the only injected collaborators are fail, ensureCurrentAgentIdentity, GovernanceError, the live state config (by reference), and COORD_DIR \u2014 NO governance-mutation internals. lifecycle.js wires it and destructures the returns back into scope so the commands dispatch table and the __testing facade (buildInitiateSummary) resolve byte-identically.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-25T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/lifecycle-help.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:d3de4b06570e",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "d3de4b06570eea38a02e3279d24fd97d821de178f08e9b0b28618566e5e97eac",
+        "bytes": 3930
+      },
+      "rationale": "Module-owned smoke + behavior tests for lifecycle-help.js (COORD-281): exercises the createLifecycleHelp factory with stub deps \u2014 help/primer text emission, the buildInitiateSummary identity/degraded paths, and each thin command-wrapper's argument-validation routing through the injected fail. These functions had no direct unit tests before the extraction.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-25T00:00:00.000Z",
         "template_head_sha": null
       }
     },
@@ -1357,13 +1911,13 @@
     {
       "path": "coord/scripts/lifecycle.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:a24e4129604a",
+      "version_stamp": "sha256:e2e905f44c51",
       "checksum": {
         "algo": "sha256",
-        "hex": "a24e4129604a29b48b3be199baa9ae5ca7b91e0e3aeeb794704d7ea5329f7ea3",
-        "bytes": 242990
+        "hex": "e2e905f44c516767284c98bc76771efc7cbb0e579ec2c9e018a4944579a31ec7",
+        "bytes": 121118
       },
-      "rationale": "Governance lifecycle orchestration hub after lifecycle-utils, repo-registry, lifecycle-flags, worktree-ops, governance-repair, pr-ops, runtime-cleanup, gate-runtime, questions, plan-command, gates, landing-audit, ticket-transitions, closeout, doctor-recovery, doctor-report, ticket-guidance, agent-commands, and landing-resolution extraction. Factory wiring + the residual lifecycle surface remain the hub; the read-only doctor report now lives in doctor-report.js, the operator-guidance surface (buildTicketNextCommands/explainTicket/runTicketCycle) lives in ticket-guidance.js, the agent-command/claim-orchestration surface lives in agent-commands.js, and the landing commit-resolution surface (extractCommitShas/refreshLandingBaseRef/resolveLandingBaseRef/resolvePrLandingBaseRef/pickBestLandingCommit/resolveSourceCommitSha/resolveFulfilledByLandingCommit/resolveLandingCommitSha) lives in landing-resolution.js (COORD-088, Wave 4 slice 4). The board-rebuild-from-journal surface (rebuildBoardFromJournal/terminalJournalStatusForTicket/collectTicketsWithJournalDrift) now lives in board-rebuild.js (COORD-091, Wave 4 residual); the ENT conformance/engine-integrity CLI verb surface (gov conform ENT-002/ENT-010 + gov verify-engine ENT-011, plus their createConformanceAttestation/createEnginePin factory wiring) now lives in conformance-verbs.js (COORD-107, getting lifecycle.js back under the honest 5000 size ceiling by extraction, not a budget bump). lifecycle.js carries a justified arch-checks per-file size budget (5000) as the composition root.",
+      "rationale": "Governance lifecycle orchestration hub after lifecycle-utils, repo-registry, lifecycle-flags, worktree-ops, governance-repair, pr-ops, runtime-cleanup, gate-runtime, questions, plan-command, gates, landing-audit, ticket-transitions, closeout, doctor-recovery, doctor-report, ticket-guidance, agent-commands, and landing-resolution extraction. Factory wiring + the residual lifecycle surface remain the hub; the read-only doctor report now lives in doctor-report.js, the operator-guidance surface (buildTicketNextCommands/explainTicket/runTicketCycle) lives in ticket-guidance.js, the agent-command/claim-orchestration surface lives in agent-commands.js, and the landing commit-resolution surface (extractCommitShas/refreshLandingBaseRef/resolveLandingBaseRef/resolvePrLandingBaseRef/pickBestLandingCommit/resolveSourceCommitSha/resolveFulfilledByLandingCommit/resolveLandingCommitSha) lives in landing-resolution.js (COORD-088, Wave 4 slice 4). The board-rebuild-from-journal surface (rebuildBoardFromJournal/terminalJournalStatusForTicket/collectTicketsWithJournalDrift) now lives in board-rebuild.js (COORD-091, Wave 4 residual); the ENT conformance/engine-integrity CLI verb surface (gov conform ENT-002/ENT-010 + gov verify-engine ENT-011, plus their createConformanceAttestation/createEnginePin factory wiring) now lives in conformance-verbs.js (COORD-107, getting lifecycle.js back under the honest 5000 size ceiling by extraction, not a budget bump). The CLI presentation + thin command-wrapper surface (printHelp/buildInitiateSummary/printInitiate plus the recall/insights/coverage-rollup/prework/closeout-summary/learned-rule/sign-journal thin engine wrappers) now lives in lifecycle-help.js (COORD-281), and the dead requiresPrIndexGovernance copy was deleted \u2014 bringing lifecycle.js back under the 5000 budget (4950 code-LOC) by extraction. The testing-infrastructure audit/classification helper cluster (extractPackageScriptsFromCommands/buildTestingInfrastructureClassificationText/isTestingInfrastructureTicket/normalizeTestingInfraAuditPath/listCommitTouchedPaths/readJsonFileFromRef plus the private sanitizePackageScriptToken/isTestingInfrastructureClassificationPath helpers) now lives in testing-infra-audit.js (COORD-283, lifecycle refactor #3) \u2014 a behavior-preserving DI-factory extraction (function deps as deferred (...a)=>fn(...a) wrappers; REPO_ROOTS/PNPM_BUILTIN_COMMANDS/TESTING_INFRA_DESCRIPTION_PATTERN by reference) keeping the composition root under its 5000 ceiling by extraction. The sync/provenance-baseline service (runSyncCommand/commitCanonicalDelta/buildAutoSyncMessage/pushOnFinalizeEnabled/pushAfterLifecycleSync/lifecycleSyncScopePaths/advanceProvenanceBaselineAfterLifecycle/autoSyncAfterLifecycle) now lives in sync-provenance.js (COORD-292, lifecycle decomposition slice #1 per the COORD-291 boundary contract) \u2014 a behavior-preserving DI-factory extraction (function deps as deferred (...a)=>fn(...a) wrappers; COORD_DIR/DEFAULT_PATHS by reference). The COORD-275 scope-checked baseline advance is INJECTED (advanceGovernanceProvenanceBaseline from journal.js), NOT reimplemented; COORD-246 (no spurious post-finalize drift), COORD-196 (atomic terminal board-row commit) and ENT-001 (opt-in push) behavior unchanged; the eight names re-destructured back so the commands dispatch, the __testing facade, and cli.js resolve byte-identically. lifecycle.js 5162 -> 4930 raw LOC. The ticket QUEUE / ranking / recommendation service (listTickets/pickTickets/recommendTickets/recommendationModeForAgent/summarizeBusyActiveAgents/listIdleActiveAgentSessions/buildReleaseCandidates/scoreTicket/buildDownstreamCounts + private pick/recommend/score helpers) now lives in ticket-queue-service.js (COORD-294, lifecycle decomposition slice #3 per the COORD-291 boundary contract) \u2014 a behavior-preserving DI-factory extraction (state/STATUS by reference; every collaborator a deferred (...a)=>fn(...a) wrapper; compareSessionsMostRecentFirst STAYS here because governance-session also consumes it). gov counts/list/pick/recommend output byte-identical; the COORD-285 proposed exclusion preserved from BOTH buildDownstreamCounts AND the recommendation candidate set; the nine names re-destructured back so the commands dispatch + __testing facade resolve byte-identically. lifecycle.js 4875 -> 4473 raw LOC. The governance PLAN-SHAPE service (scaffoldSelfReviewCycle/buildDefaultGovernancePlan/normalizeGovernancePlanShape/formatGovernancePlanEntry/formatGovernanceReviewProfileEntry/formatGovernanceRepairEntry/parseGovernancePlanEntries/buildScaffoldPlanRecord/ensurePlanStub) now lives in governance-plan-shape.js (COORD-295, lifecycle decomposition slice #4 per the COORD-291 boundary contract) \u2014 a behavior-preserving DI-factory extraction (state/REPO_INTEGRATION_BRANCHES/DEFAULT_INTEGRATION_BRANCH/isRepoBackedCode/repoNameForCode/toArray + the state-io canonical readers/writers by reference; the plan-record IO collaborators readPlanRecord/extractPlanBlock/renderPlanRecordBlock/appendPlanBlock/syncPlanRecordFromBlock/planRecordPath/writePlanCompatibilityBlockFromRecord as deferred (...a)=>fn(...a) wrappers). Wired EARLY (before createGovernanceValidation/createPlanRecords, which inject these shape functions); plan JSON/markdown round-trips byte-stable and the COORD-007 live-REPO_INTEGRATION_BRANCHES base_ref seed is preserved (map injected by reference). The nine names re-destructured back so the commands dispatch, the __testing facade (buildDefaultGovernancePlan/ensurePlanStub) and the deferred wrappers other factories inject resolve byte-identically. lifecycle.js 4473 -> 4261 raw LOC. The lifecycle PR / EVIDENCE-RESOLUTION service (resolveTicketGitContext/resolvePrUrlForTicket/resolveLifecyclePrRefs) now lives in lifecycle-evidence.js (COORD-296, lifecycle decomposition slice #5 per the COORD-291 boundary contract \u2014 the last slice before the COORD-297 facade-shrink) \u2014 a behavior-preserving DI-factory extraction (repo-registry/worktree-ops/landing-gh collaborators isRepoBackedCode/getRepoRoot/listGitWorktrees/inferTicketIdFromPath/isGitHubPrUrl/ghPrListByBranch/verifyPrEvidence/mergeUniqueRefs/toArray by reference; the lifecycle-local hoisted findLockForTicket/fail as deferred (...a)=>fn(...a) wrappers). PR/no-PR evidence is byte-identical (the --no-pr X-lane and the PR-backed path resolve through the same decision tree; verifyPrEvidence INJECTED with allowNoPr:true). landing-resolution.js and landing-audit.js boundaries stay SEPARATE (296 sits beside them, does not absorb them). OWNERSHIP (COORD-088 re-confirmed): readCommitSubject/commitSubjectAffiliatesWithTicket are review-STATE verification used by assertCommittedReviewState (NOT consumed by the three moved functions) so they were LEFT in lifecycle.js \u2014 assertCommittedReviewState unchanged. The three names re-destructured back so the commands dispatch and the deferred wrappers other factories inject resolve byte-identically. lifecycle.js 4261 -> 4216 raw LOC. lifecycle.js carries a justified arch-checks per-file size budget (5000) as the composition root.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -1374,13 +1928,13 @@
     {
       "path": "coord/scripts/lifecycle.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:fdf57ac3b684",
+      "version_stamp": "sha256:bdbbad9a4e6a",
       "checksum": {
         "algo": "sha256",
-        "hex": "fdf57ac3b6840a80496063e2c3af14bfe101374498bcb27b71db3253c2aba2c8",
-        "bytes": 42541
+        "hex": "bdbbad9a4e6aa3d44dd23923133f2ad7715ea6d563aa9cb9645bece788c17918",
+        "bytes": 28305
       },
-      "rationale": "Module-owned behavior tests for lifecycle.js (plan/closeout-default builders, lock/worktree integrity helpers, the auto-claimed-stub reaper, autoSync orchestration, orchestrator/SLO report builders) relocated out of governance.test.js (COORD-100, facade capstone). Reached through the fully-wired governance __testing facade; behavior byte-identical.",
+      "rationale": "Module-owned behavior tests for lifecycle.js (plan/closeout-default builders, lock/worktree integrity helpers, the auto-claimed-stub reaper, orchestrator/SLO report builders) relocated out of governance.test.js (COORD-100, facade capstone). Reached through the fully-wired governance __testing facade; behavior byte-identical. COORD-292 relocated the sync/autoSync behavior tests (buildAutoSyncMessage/autoSyncAfterLifecycle/pushOnFinalizeEnabled/pushAfterLifecycleSync) to sync-provenance.test.js, co-located with the extracted module. COORD-295 relocated the buildDefaultGovernancePlan (repo-default + COORD-006/007 REPO_INTEGRATION_BRANCHES) tests and the ensurePlanStub canonical-record-seam tests to governance-plan-shape.test.js alongside the extracted plan-shape service.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -1408,11 +1962,11 @@
     {
       "path": "coord/scripts/otlp-export.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:fdfc2a3889ae",
+      "version_stamp": "sha256:98ddd7babbbd",
       "checksum": {
         "algo": "sha256",
-        "hex": "fdfc2a3889ae4a9e09b5f5ab8843350478272cef1316aacd43ae7bf334f93825",
-        "bytes": 8405
+        "hex": "98ddd7babbbdfb060601bb0ebb18c2f85d2668a2a3f8a992f173a86231a3ea89",
+        "bytes": 8581
       },
       "rationale": "Module-owned behavior tests for otlp-export.js (ENT-005): assert the OTLP/JSON structure (tickets-as-traces, lifecycle-verbs-as-spans, cost/tier/attribution span attributes, non-ticket events as log records), deterministic byte-identical re-runs, empty-journal graceful handling, the file/stdout sink, and CLI verb wiring. Hermetic \u2014 no live collector, no network.",
       "source_inventory": {
@@ -1442,11 +1996,11 @@
     {
       "path": "coord/scripts/plan-command.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:6277ff937a8f",
+      "version_stamp": "sha256:f76a89c28064",
       "checksum": {
         "algo": "sha256",
-        "hex": "6277ff937a8fff07ee8515fc96418646b7c45bb5f611726b4ceb78b3490edc58",
-        "bytes": 11742
+        "hex": "f76a89c28064f9d50d4111020f07a8ae62102c3fed7cc59b605823711d1b64a8",
+        "bytes": 12613
       },
       "rationale": "gov plan/update-plan commands plus the plan-block mutation verbs (review cycles, requirement closure, feature proofs), the start-seed builder, plan status/next-command payload builders, and the plan-mutation authority gate, extracted from lifecycle.js. The repo-gate attribution surface moved to gates.js (COORD-069).",
       "source_inventory": {
@@ -1459,11 +2013,11 @@
     {
       "path": "coord/scripts/plan-command.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:e21f7f55718c",
+      "version_stamp": "sha256:baaeef2bc20f",
       "checksum": {
         "algo": "sha256",
-        "hex": "e21f7f55718c3b83f7dc55756a69cadb0302c7e2794119dfa8ae048db91e63f6",
-        "bytes": 13908
+        "hex": "baaeef2bc20f83b9bbb7e246c2b99a28045bafac2e86cf9f247b238979bc76e2",
+        "bytes": 21698
       },
       "rationale": "Module-owned plan-command tests relocated from governance.test.js. The repo-gate attribution helper tests moved to gates.test.js (COORD-069).",
       "source_inventory": {
@@ -1476,11 +2030,11 @@
     {
       "path": "coord/scripts/plan-records.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:5cae5b74dd63",
+      "version_stamp": "sha256:abd69c0d7cd7",
       "checksum": {
         "algo": "sha256",
-        "hex": "5cae5b74dd632ea523ee2bfbe8d95297edfe3833105de2a82097d206662563f3",
-        "bytes": 70989
+        "hex": "abd69c0d7cd7f873e679aa1d5d374c1276107711d2160e6d2675043e289b1af7",
+        "bytes": 86066
       },
       "rationale": "Governance canonical plan-record helpers are reusable control-plane runtime.",
       "source_inventory": {
@@ -1493,11 +2047,11 @@
     {
       "path": "coord/scripts/plan-records.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:0ff2346b8fb6",
+      "version_stamp": "sha256:79445e40ca25",
       "checksum": {
         "algo": "sha256",
-        "hex": "0ff2346b8fb66e2be57954372a911c7181ac5a0ec332be715bf59660d7dfd864",
-        "bytes": 85118
+        "hex": "79445e40ca25740ae8900cbfce00775cfe5f59c64a00bdda6a7ca57834d162e5",
+        "bytes": 97325
       },
       "rationale": "Focused regression tests for governance plan-record parsing, rendering, and canonical JSON writes.",
       "source_inventory": {
@@ -1561,11 +2115,11 @@
     {
       "path": "coord/scripts/prompt-coverage.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:0dfb3d5ecaa2",
+      "version_stamp": "sha256:44b95376a9c2",
       "checksum": {
         "algo": "sha256",
-        "hex": "0dfb3d5ecaa24b4785d93c6a8f54b365f7c9825922874e3299f3ba51c53d8b57",
-        "bytes": 13969
+        "hex": "44b95376a9c2bdaa3f6ab393dfd20fdf09d651189901ab11c57debfc3fbbc613",
+        "bytes": 18510
       },
       "rationale": "Governance prompt coverage, prompt registration, likely-files seeding, and stale-prompt precondition checks are reusable control-plane runtime checks.",
       "source_inventory": {
@@ -1578,11 +2132,11 @@
     {
       "path": "coord/scripts/prompt-coverage.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:c1aa817b7591",
+      "version_stamp": "sha256:0ced2c8a2057",
       "checksum": {
         "algo": "sha256",
-        "hex": "c1aa817b7591784923af13604c6134c0bf9103c03e8d068faecd3d3b877532a8",
-        "bytes": 10453
+        "hex": "0ced2c8a20570b6f0f5a3786fce5c776f048feb3029cbaefc4912ee7174e3371",
+        "bytes": 13264
       },
       "rationale": "Module-owned prompt-coverage unit tests, every subject defined in prompt-coverage.js (the createPromptCoverage factory): hasPromptWaiver/buildPromptWaiverCommand, parsePromptLikelyFiles, parsePromptPreconditions, classifyPreconditionArtifact, verifyPromptPreconditions. Relocated from governance.test.js (COORD-099, residual split slice 4), exercised through the governance facade __testing surface. The register-prompt verb and start-gate (assertPromptPreconditionsResolve) integration tests stay in governance.test.js.",
       "source_inventory": {
@@ -1595,13 +2149,13 @@
     {
       "path": "coord/scripts/quality-scan.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:ea9f7e676b1c",
+      "version_stamp": "sha256:70372325dfab",
       "checksum": {
         "algo": "sha256",
-        "hex": "ea9f7e676b1c02f07e467670a35175ca8bc8acc99d8502162f8cb04f7185b6b1",
-        "bytes": 19925
+        "hex": "70372325dfab1cf80b718080e18f0d72f0305343b05a4da1b77abfef5beb997e",
+        "bytes": 25286
       },
-      "rationale": "Code-quality automation + periodic quality-ticket generator (COORD-083, QGATE capstone): runs the COORD-078 arch-checks library over a target repo, normalizes findings into proposed governed tickets with a STABLE per-finding key, dedups against open board tickets (via a [qkey:...] description marker), and (with --apply) files them through 'gov open-followup'. Safe-by-default: dry-run is the default; a per-run cap prevents board flooding; a severity floor limits filing. Exposed as the 'gov quality-scan' verb; schedulable via cron/CI per coord/product/QUALITY_AUTOMATION.md. QSCAN-001 wires the new arch-checks hardcoding/deadcode findings through the same proposal pipeline (stable qkey via stableDetail, title + fix-framing).",
+      "rationale": "Code-quality automation + periodic quality-ticket generator (COORD-083, QGATE capstone): runs the COORD-078 arch-checks library over a target repo, normalizes findings into proposed governed tickets with a STABLE per-finding key, dedups against open board tickets (via a [qkey:...] description marker), and (with --apply) files them through 'gov open-followup'. Safe-by-default: dry-run is the default; a per-run cap prevents board flooding; a severity floor limits filing. Exposed as the 'gov quality-scan' verb; schedulable via cron/CI per coord/product/QUALITY_AUTOMATION.md. QSCAN-001 wires the new arch-checks hardcoding/deadcode findings through the same proposal pipeline (stable qkey via stableDetail, title + fix-framing). COORD-286 adds --propose/--status proposed: files auto-debt as quarantined `proposed` via the COORD-285 single-writer create path `gov file-ticket --status proposed` (dedup counts proposed rows, so the cadence is idempotent); back-compat default stays `todo` via open-followup. Single-shot cadence runner: coord/scripts/quality-propose-cron.js.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -1612,13 +2166,13 @@
     {
       "path": "coord/scripts/quality-scan.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:acec692a4d0b",
+      "version_stamp": "sha256:5d4a8fa2b1b8",
       "checksum": {
         "algo": "sha256",
-        "hex": "acec692a4d0bbec6d6c51db642665dd2afa533aa26476691ca2ef2bcac20b910",
-        "bytes": 17327
+        "hex": "5d4a8fa2b1b85d9cb22a25c3854cdf0b18d19eb614d4a5a5c6b097daa7553d8e",
+        "bytes": 23699
       },
-      "rationale": "Module-owned tests for COORD-083 quality-scan: stable cross-run finding key (ignores volatile measured values), severity->priority mapping, severity floor, DEDUP against open tickets (incl. done/superseded re-file + within-run collapse), per-run cap with no silent drop, the --apply filing path (mocked gov runner, no real board touched), and the dry-run-by-default CLI guarantee. QSCAN-001 adds stable-key + proposal-mapping coverage for the new hardcoding/deadcode checks.",
+      "rationale": "Module-owned tests for COORD-083 quality-scan: stable cross-run finding key (ignores volatile measured values), severity->priority mapping, severity floor, DEDUP against open tickets (incl. done/superseded re-file + within-run collapse), per-run cap with no silent drop, the --apply filing path (mocked gov runner, no real board touched), and the dry-run-by-default CLI guarantee. QSCAN-001 adds stable-key + proposal-mapping coverage for the new hardcoding/deadcode checks. COORD-286 adds the --propose acceptance coverage: PROPOSE-FILES-PROPOSED (routes to file-ticket --status proposed), DEDUP-INCLUDES-PROPOSED (proposed rows count for idempotent dedup), BACKCOMPAT (default todo via open-followup), invalid --status rejection, and the single-shot quality-propose-cron runner.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -1646,11 +2200,11 @@
     {
       "path": "coord/scripts/questions.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:0a63e3c2d27e",
+      "version_stamp": "sha256:ca4e91704845",
       "checksum": {
         "algo": "sha256",
-        "hex": "0a63e3c2d27e3d19d5ba91c9089f70e11415e2c2d85032e2681e4c5b315dcbe1",
-        "bytes": 10715
+        "hex": "ca4e917048456b882a10cd53aed143f898cf1606175c80cf9b4cae2bd9b58b6e",
+        "bytes": 10891
       },
       "rationale": "Module-owned questions tests relocated from governance.test.js.",
       "source_inventory": {
@@ -1658,6 +2212,23 @@
         "status": "template-only",
         "recorded_at": "2026-06-14T00:00:00.000Z",
         "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/README.md",
+      "match_policy": "exact",
+      "rationale": "Reusable governance surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-29T14:26:11.242Z",
+        "template_head_sha": "local"
+      },
+      "version_stamp": "sha256:58131215bc07",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "58131215bc07ae3b44fede5ffbc9c966103d97438099181b73e0b594cdaae66e",
+        "bytes": 47837
       }
     },
     {
@@ -1680,11 +2251,11 @@
     {
       "path": "coord/scripts/repo-registry.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:9aee590f6c34",
+      "version_stamp": "sha256:53039ff8d366",
       "checksum": {
         "algo": "sha256",
-        "hex": "9aee590f6c349f3c99d083752e90b3b77dcc3436ba9bfd0c5ddafc1626d290bd",
-        "bytes": 8394
+        "hex": "53039ff8d366a89e18d5b7a4d8d598d6ef067660cf19ca7876aa2da3c9536c73",
+        "bytes": 8570
       },
       "rationale": "Focused unit tests for repo-registry resolution.",
       "source_inventory": {
@@ -1697,11 +2268,11 @@
     {
       "path": "coord/scripts/runtime-cleanup.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:5e42d239859b",
+      "version_stamp": "sha256:a4cb8b80647c",
       "checksum": {
         "algo": "sha256",
-        "hex": "5e42d239859b57788f8d6e333bbd0499268aded332e108df0b2e464b4736b49b",
-        "bytes": 10288
+        "hex": "a4cb8b80647cac0e4e699dbe58bed20f4cc5da9ff3d53f321359e945c15c1ac1",
+        "bytes": 11366
       },
       "rationale": "Runtime lock status/break, rollback-drift detection, and clean-runtime scratch collection/removal extracted from lifecycle.js.",
       "source_inventory": {
@@ -1714,34 +2285,17 @@
     {
       "path": "coord/scripts/runtime-cleanup.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:d58435aad08b",
+      "version_stamp": "sha256:449b51a43ddc",
       "checksum": {
         "algo": "sha256",
-        "hex": "d58435aad08b6c38c825f15df157ad75e48f86cf964c3d0ab568e76ec02ccf63",
-        "bytes": 9482
+        "hex": "449b51a43ddcb1a5ddcb5cfd16834182a897d217131dcfdca000400b9faac33a",
+        "bytes": 11977
       },
       "rationale": "Module-owned runtime-cleanup tests relocated from governance.test.js.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
         "recorded_at": "2026-06-13T00:00:00.000Z",
-        "template_head_sha": null
-      }
-    },
-    {
-      "path": "coord/scripts/runtime-evidence.test.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:942ce33a2c72",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "942ce33a2c7224f272ee54bb379b3cbd3f65a1ac598f9c4bf240a8f74c98c4bc",
-        "bytes": 5334
-      },
-      "rationale": "Focused tests for production/runtime evidence receipt validation, fail-closed bootstrap/deploy/live-MCP behavior, and receipt validation command helpers.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-06-22T00:00:00.000Z",
         "template_head_sha": null
       }
     },
@@ -1755,6 +2309,23 @@
         "bytes": 18863
       },
       "rationale": "Production/runtime evidence governance surface: production-MCP operation classes, receipt validators, server-bootstrap receipt validation, deployment identity assertion, runtime verification, and closure falsification. Public-safe core only; adapters own external production calls.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-22T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/runtime-evidence.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:942ce33a2c72",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "942ce33a2c7224f272ee54bb379b3cbd3f65a1ac598f9c4bf240a8f74c98c4bc",
+        "bytes": 5334
+      },
+      "rationale": "Focused tests for production/runtime evidence receipt validation, fail-closed bootstrap/deploy/live-MCP behavior, and receipt validation command helpers.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -1782,11 +2353,11 @@
     {
       "path": "coord/scripts/state-io.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:4f03387b050b",
+      "version_stamp": "sha256:7d708e21c480",
       "checksum": {
         "algo": "sha256",
-        "hex": "4f03387b050b4b6e3c4bc74c366becb1e59446fe2a59c8f181fb4689a0a9a851",
-        "bytes": 11717
+        "hex": "7d708e21c480e24eac2e317a77a19f306e0e83b75478338e734adbd05454900f",
+        "bytes": 11893
       },
       "rationale": "Module-owned behavior tests for state-io.js (writeCanonicalTextFile stale/fresh fencing, canonicalSyncablePaths surface) relocated out of governance.test.js (COORD-100, facade capstone).",
       "source_inventory": {
@@ -1795,6 +2366,40 @@
         "recorded_at": "2026-06-15T00:00:00.000Z",
         "template_head_sha": null
       }
+    },
+    {
+      "path": "coord/scripts/sync-provenance.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:75913bacaf63",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "75913bacaf630360f8f1401055c77284f63f5d9b31283789bc50c1a42891fd19",
+        "bytes": 18251
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Sync / provenance-baseline service (runSyncCommand/commitCanonicalDelta/buildAutoSyncMessage/pushOnFinalizeEnabled/pushAfterLifecycleSync/lifecycleSyncScopePaths/advanceProvenanceBaselineAfterLifecycle/autoSyncAfterLifecycle) extracted from lifecycle.js as a DI factory (COORD-292, lifecycle decomposition slice #1 per the COORD-291 composition-root boundary contract). Behavior-preserving move: every collaborator injected (runBoardSync/canonicalSyncablePaths/computeSyncDelta/isInsideGitWorkTree/relativeCoordPath/gitTry/fail as deferred (...a)=>fn(...a) wrappers; COORD_DIR/DEFAULT_PATHS by reference); path is a node builtin required directly. CRITICAL: the COORD-275 scope-checked baseline advance (advanceGovernanceProvenanceBaseline from journal.js) is INJECTED, NOT reimplemented \u2014 lifecycleSyncScopePaths derives the authorized canonical-derived + board-json scope and advanceProvenanceBaselineAfterLifecycle forwards it unchanged, so an out-of-scope concurrent edit stays preserved as detectable drift. COORD-246 (no spurious post-finalize drift), COORD-196 (atomic terminal board-row commit via includeBoardJson) and ENT-001 (opt-in push) behavior unchanged. Wired in lifecycle.js after the journal-factory destructure (advanceGovernanceProvenanceBaseline live); the eight names re-destructured back so the commands dispatch, the __testing facade, and cli.js resolve byte-identically. lifecycle.js 5162 -> 4930 raw LOC."
+    },
+    {
+      "path": "coord/scripts/sync-provenance.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:4b766580b420",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "4b766580b4207c92c1c9c360680c0a34edbb8863a0f604f2ce07f00cfcb4c200",
+        "bytes": 18225
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Behavior + DI wiring-guard coverage for the sync-provenance.js extraction (COORD-292). The sync/autoSync behavior tests (buildAutoSyncMessage determinism, autoSyncAfterLifecycle --no-sync/happy/COORD-196 includeBoardJson/best-effort-no-throw, ENT-001 push opt-in/precedence/upstream-skip) were relocated VERBATIM from lifecycle.test.js through the same fully-wired __testing facade (byte-identical assertions). Adds a DI wiring guard (factory returns the eight public functions; lifecycle commands + __testing re-export them) and a COORD-275/246 scope invariant proven through the extracted wrappers: lifecycleSyncScopePaths derives the canonical-derived + board-json scope and never wider, and autoSyncAfterLifecycle forwards that EXACT scope to the injected scope-checked advance so in-scope mutation output is absorbed while an out-of-scope concurrent edit is refused (preserved). The deep journal-level absorb/preserve behavior stays covered in journal.test.js (the injected seam)."
     },
     {
       "path": "coord/scripts/template-feedback.test.js",
@@ -1812,6 +2417,74 @@
         "recorded_at": "2026-06-13T00:00:00.000Z",
         "template_head_sha": null
       }
+    },
+    {
+      "path": "coord/scripts/testing-infra-audit.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:fd9cd56df6d6",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "fd9cd56df6d66cea5a2dda97a2cf01e78500414a390518a07b78e95bd9e3d814",
+        "bytes": 8221
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Testing-infrastructure audit/classification helper cluster (extractPackageScriptsFromCommands/buildTestingInfrastructureClassificationText/isTestingInfrastructureTicket/normalizeTestingInfraAuditPath/listCommitTouchedPaths/readJsonFileFromRef + the private sanitizePackageScriptToken/isTestingInfrastructureClassificationPath helpers) extracted from lifecycle.js as a DI factory (COORD-283, lifecycle refactor #3). Behavior-preserving move: buildTestingInfrastructureClassificationText is genuinely pure (no deps); the rest inject path/registry helpers (normalizePlanPathValue/repoPrefixesForCode/escapeRegex/splitPlanPathValues/isTestingInfrastructureFilePath), the shell tokenizer (tokenizeShellWords), and the git-ref read (gitTry) as deferred (...a)=>fn(...a) wrappers, with REPO_ROOTS/PNPM_BUILTIN_COMMANDS/TESTING_INFRA_DESCRIPTION_PATTERN injected by reference (REPO_ROOTS is mutated in place by the __testing registry setter, so the same object reference stays live). Wired in lifecycle.js after the createTicketCommands block; the six names re-destructured back so the commands dispatch, the __testing facade, and the audit call sites (deriveTestingInfrastructureAudit, extractFileReferencesFromCommands) resolve byte-identically. Holds the 5000 composition-root size ceiling by extraction."
+    },
+    {
+      "path": "coord/scripts/testing-infra-audit.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:2618289a9704",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "2618289a9704bfdeb7bec1beb5738cfc1288b7ad56a7250c980f8620e4b2ca68",
+        "bytes": 7091
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Unit + DI wiring-guard coverage for the testing-infra-audit.js extraction (COORD-283). Layer 1 (wiring guard): drives the two facade-exposed names (isTestingInfrastructureTicket, normalizeTestingInfraAuditPath) through the fully-wired lifecycle __testing facade so a dropped dep / typo'd deferred wrapper / broken re-destructure fails the suite \u2014 includes the normalizeTestingInfraAuditPath registry-prefix behavior test relocated from lifecycle.test.js. Layer 2 (factory unit): exercises the four non-facade helpers (extractPackageScriptsFromCommands/buildTestingInfrastructureClassificationText/listCommitTouchedPaths/readJsonFileFromRef) directly against createTestingInfraAudit with stubbed deps, asserting behavior-preserving logic."
+    },
+    {
+      "path": "coord/scripts/ticket-commands.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:57947f714fd5",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "57947f714fd550198dcb9d3332dba6285458f2f53d78d700dff489983d1d24b9",
+        "bytes": 29514
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Ticket state-mutation command surface (fileTicket/openFollowup/unstartTicket/lockAbandonTicket/commitTicket + the shared read-only collectUnstartEvidenceBlockers guard) extracted from lifecycle.js as a DI factory (COORD-282, lifecycle refactor #2). The create verbs keep riding the COORD-220 withBoardTransaction/single-writer path \u2014 reserveTicketId arrives from the injected transaction, NOT reimplemented; every collaborator + STATUS/ALLOWED_TICKET_TYPES/ALLOWED_PRIORITIES injected (function deps as deferred (...a)=>fn(...a) wrappers, value consts by reference), fs required directly. Wired in lifecycle.js after the ALLOWED_* consts; the six names re-destructured back so the commands dispatch table, the __testing facade, and splitTicket (which calls openFollowup) resolve byte-identically. lifecycle.js 4967 -> 4595 code-LOC."
+    },
+    {
+      "path": "coord/scripts/ticket-commands.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:0d11eea8cc57",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "0d11eea8cc57bcbe300cf28cbc936f5f8b0f3f9c831a0382797d68523d535cdc",
+        "bytes": 7312
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "DI wiring-guard for the ticket-commands.js extraction (COORD-282): drives fileTicket + openFollowup end-to-end through the lifecycle __testing facade (one journal event each, reserved ids \u2014 single-writer/withBoardTransaction intact), checks the unstart/lock-abandon/commit verbs reach their injected deps and fail closed with a GovernanceError (not a TypeError from a dropped deferred wrapper), and asserts collectUnstartEvidenceBlockers returns [] on a clean todo row. Uses the governance-test-utils withGovernedSurfaceSandbox seam."
     },
     {
       "path": "coord/scripts/ticket-guidance.js",
@@ -1848,13 +2521,81 @@
       }
     },
     {
-      "path": "coord/scripts/ticket-transitions.js",
+      "path": "coord/scripts/ticket-lock-service.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:0896178a9844",
+      "version_stamp": "sha256:b21dc1518035",
       "checksum": {
         "algo": "sha256",
-        "hex": "0896178a98442e801f55988a0a29fc226443197451293a5bad6f69c12700733d",
-        "bytes": 23745
+        "hex": "b21dc151803518c1d5e39371b07fbfe3101ba84b87e4aa136564b3cf9567181a",
+        "bytes": 7801
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Ticket-lock service (resolveLockHead/safeResolveLockHead/refreshLockHead/shouldUseLegacyLockCompatibility/existingLockDirs/resolveTicketLockPath/ensureDoingTicketLockIntegrity) extracted from lifecycle.js as a DI factory (COORD-293, lifecycle decomposition slice #2 per the COORD-291 composition-root boundary contract). Behavior-preserving move: the ticket-lock PATH resolution + legacy-lock compatibility/promotion, lock-HEAD resolution/refresh, and the doing-ticket lock-integrity invariant. CRITICAL: NO lock behavior change \u2014 the governance-context lock-dir primitive (state, holding LOCKS_DIR/LEGACY_LOCKS_DIR) is INJECTED BY REFERENCE so the path helpers read live values at call time, and the live-holder (COORD-270) + stale-lock primitives (mkdir-mutex/tryReclaimStaleDirectoryLock/writeDirectoryLockMetadata in governance-context.js; findLockForTicket/writeLock/moveFileIfNeeded in governance-session/lifecycle) are INJECTED, NOT moved/reimplemented. Every collaborator injected as a deferred (...a)=>fn(...a) wrapper; fs/path are node builtins required directly. Wired in lifecycle.js after the sync-provenance destructure; the seven names re-destructured back so the commands dispatch, the __testing facade (refreshLockHead/ensureDoingTicketLockIntegrity), and the deferred wrappers other factories inject resolve byte-identically. lifecycle.js 5010 -> 4875 raw LOC."
+    },
+    {
+      "path": "coord/scripts/ticket-lock-service.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:da2618ab722c",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "da2618ab722c1cbb10dde1818ed056833d404900fab57b24d50693161a28eacb",
+        "bytes": 8839
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Behavior + DI wiring-guard coverage for the ticket-lock-service.js extraction (COORD-293). The legacy-lock-path compatibility tests (refreshLockHead legacy-promote into runtime + corrupt-JSON fail-closed) were relocated VERBATIM from lifecycle.test.js, and the doing-lock-integrity recreation test (ensureDoingTicketLockIntegrity rebuilds a missing doing lock from the canonical worktree for the row's own owner) from governance.test.js \u2014 all through the same fully-wired __testing facade (byte-identical assertions), preserving the live-holder/stale-lock + legacy-path-compat + doing-lock-integrity coverage. Adds a DI wiring guard: the factory returns exactly the seven public functions, and lifecycle.js re-exports the two facade lock helpers (refreshLockHead/ensureDoingTicketLockIntegrity, BRACKET-form facade refs) unchanged."
+    },
+    {
+      "path": "coord/scripts/ticket-queue-service.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:7c07275b18d5",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "7c07275b18d55ef060d9a90a3ac0baab2dfd50b136f932ac52dd16f9eb4c8811",
+        "bytes": 20111
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Ticket QUEUE / ranking / recommendation service (listTickets/pickTickets/recommendTickets/recommendationModeForAgent/summarizeBusyActiveAgents/listIdleActiveAgentSessions/buildReleaseCandidates/scoreTicket/buildDownstreamCounts) extracted from lifecycle.js as a DI factory (COORD-294, lifecycle decomposition slice #3 per the COORD-291 composition-root boundary contract). Behavior-preserving move: ticket listing, the pick/recommend candidate ranking (private pick*/buildRecommendationSet/printRankedTicketList/formatRankedTicket/assignTicketsToAgents helpers), the scoring model (scoreTicket + modeBiasScore mode bias + inferModeFromRepo), the downstream/dependency unblocks counts, the mode-bias resolver, the idle/busy active-agent summaries, and agent-release-candidate planning. CRITICAL: NO behavior change \u2014 gov counts/list/pick/recommend output byte-identical and the COORD-285 proposed exclusion preserved from BOTH the downstream/unblocks count (buildDownstreamCounts skips DONE/SUPERSEDED/PROPOSED) AND the recommendation candidate set (buildRecommendationSet considers only STATUS.TODO); ranking moved verbatim. The governance-context primitive (state, holding BOARD_PATH) and the STATUS constant map are INJECTED BY REFERENCE; every collaborator (board/identity/agent-session/readiness readers, compareSessionsMostRecentFirst \u2014 which STAYS in lifecycle.js because governance-session also consumes it) injected as a deferred (...a)=>fn(...a) wrapper. Wired in lifecycle.js after the ticket-lock-service destructure; the nine names re-destructured back so the commands dispatch, the __testing facade (buildReleaseCandidates), and the deferred wrappers other factories inject resolve byte-identically. lifecycle.js 4875 -> 4473 raw LOC."
+    },
+    {
+      "path": "coord/scripts/ticket-queue-service.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:d759f63ecf21",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "d759f63ecf219d791344352fd359dd0ba1fb624e2b89a50fae35e56b4ef993e3",
+        "bytes": 9701
+      },
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-06-26T00:00:00.000Z",
+        "template_head_sha": null
+      },
+      "rationale": "Behavior + DI wiring-guard coverage for the ticket-queue-service.js extraction (COORD-294). Exercises the factory directly with injected fake deps: the scoring model (scoreTicket bonus sum + modeBiasScore off-lane penalty / design-on-X reward), the COORD-285 proposed-exclusion from buildDownstreamCounts, the mode-bias resolution precedence (recommendationModeForAgent), and the idle/busy active-agent summaries + buildReleaseCandidates current-thread flagging. The gov counts/list/pick/recommend OUTPUT-parity assertions stay exercised end-to-end through the fully-wired CLI in governance.test.js (unchanged by this move). Adds a DI wiring guard: the factory returns exactly the nine public functions, and lifecycle.js re-exports the three queue verbs (commands) + the buildReleaseCandidates facade helper (BRACKET-form, COORD-280 scanner-safe) unchanged."
+    },
+    {
+      "path": "coord/scripts/ticket-transitions.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:4b4a972228b3",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "4b4a972228b38916a397474f386120cf15b0c81a74318713b21ce808b42b05b2",
+        "bytes": 31572
       },
       "rationale": "Ticket state-machine transitions (start/submit/move-review/return-doing/mark-done/block/unblock/supersede) plus the applyMarkDone and persistReturnDoingState primitives, extracted from lifecycle.js as a DI factory. Consumed by lifecycle.js closeout/land and injected by COORD-062's closeout module.",
       "source_inventory": {
@@ -1867,11 +2608,11 @@
     {
       "path": "coord/scripts/ticket-transitions.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:30599cca843f",
+      "version_stamp": "sha256:ab48a57ce9c4",
       "checksum": {
         "algo": "sha256",
-        "hex": "30599cca843fd331218bdf2018b10027073dd6d34f6b50766b56955d8fcf4415",
-        "bytes": 7594
+        "hex": "ab48a57ce9c446fc02720ba50c261bcd347dd7eb0a301fd0ba63fe3b3f604375",
+        "bytes": 7770
       },
       "rationale": "Module-owned ticket-transitions tests (persistReturnDoingState + block/unblock state machine) relocated from governance.test.js.",
       "source_inventory": {
@@ -1884,11 +2625,11 @@
     {
       "path": "coord/scripts/token-economics.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:3924231587ee",
+      "version_stamp": "sha256:7b4689dd0032",
       "checksum": {
         "algo": "sha256",
-        "hex": "3924231587ee6cf2bf3456d225acb9ae440c4e453fd13b62b08cb16a882bf690",
-        "bytes": 48104
+        "hex": "7b4689dd00324871e19ea0c2e6e4b8bcefa514d5c1615fe537e3fb615cb84c23",
+        "bytes": 65579
       },
       "rationale": "Governance token economics, precheck, context-pack, plan-waves, and dispatch planning helpers are reusable control-plane runtime.",
       "source_inventory": {
@@ -1901,11 +2642,11 @@
     {
       "path": "coord/scripts/token-economics.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:141c222313bd",
+      "version_stamp": "sha256:0fddf6386eba",
       "checksum": {
         "algo": "sha256",
-        "hex": "141c222313bd48495ae5f7c84c23cb7e86ed9c0fcd0d5ad3f0df02f576511ab9",
-        "bytes": 51158
+        "hex": "0fddf6386ebaeaf80b2a400a4a04cc2a809349f7c4412f575eceb4ec1c52cdc4",
+        "bytes": 61515
       },
       "rationale": "Module-owned behavior tests for token-economics.js \u2014 cost-ledger, precheck, context-pack, tier-policy, plan-waves, and dispatch-plan levers (COORD-026/027/028/029/030/031), relocated verbatim from governance.test.js (COORD-096, residual split slice 1). Each assertion drives a function defined in token-economics.js, exercised through the governance facade executeCommand/__testing surface.",
       "source_inventory": {
@@ -1935,11 +2676,11 @@
     {
       "path": "coord/scripts/worktree-ops.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:d1557656fd24",
+      "version_stamp": "sha256:657123c92df7",
       "checksum": {
         "algo": "sha256",
-        "hex": "d1557656fd24d9ce7b6a94aca8af9b9c263b41c3e3ff4bf1e42bf6b8d1383672",
-        "bytes": 26878
+        "hex": "657123c92df700ce10193f1b7510e8b32a527fb703d4c77b17623e7474046aff",
+        "bytes": 29487
       },
       "rationale": "Git + worktree lifecycle (primitives, create/cleanup/audit, branch preflight/push) extracted from lifecycle.js.",
       "source_inventory": {
@@ -1952,11 +2693,11 @@
     {
       "path": "coord/scripts/worktree-ops.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:50a8aaf3ded9",
+      "version_stamp": "sha256:7c5741923f8c",
       "checksum": {
         "algo": "sha256",
-        "hex": "50a8aaf3ded961e1ebf3e909f580a5d0abc846effc9bf33ad30bd10a7579b088",
-        "bytes": 16100
+        "hex": "7c5741923f8c3108106f9af482cec8003202852869f8509b2385cff79681646d",
+        "bytes": 17579
       },
       "rationale": "Focused unit tests for worktree-ops pure helpers.",
       "source_inventory": {
@@ -1984,156 +2725,190 @@
       }
     },
     {
-      "path": "coord/scripts/coord",
+      "path": "coord/scripts/adoption-command-dispatch.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:3799dd0ab4b8",
+      "version_stamp": "sha256:0802ae1b11b7",
       "checksum": {
         "algo": "sha256",
-        "hex": "3799dd0ab4b8991480d20d2e38ba1a07582f1ffe82ad94810a3492347235292f",
-        "bytes": 134
+        "hex": "0802ae1b11b7a5c59b917e0306021ea26eb11887249cfe5ce5f7632525be7a94",
+        "bytes": 1051
       },
-      "rationale": "Product-facing `coord` CLI executable wrapper (COORD-116) over coord-cli.js; mirrors the `gov` engine wrapper. Reusable product entrypoint plumbing.",
+      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
-        "recorded_at": "2026-06-18T14:35:42.000Z",
-        "template_head_sha": null
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
       }
     },
     {
-      "path": "coord/scripts/coord-cli.js",
+      "path": "coord/scripts/governance-tier.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:e65f2991d7c3",
+      "version_stamp": "sha256:142de7e890ed",
       "checksum": {
         "algo": "sha256",
-        "hex": "e65f2991d7c325740f82faffafd5dfe242aa76a3cac71fe54f703249f027ea51",
-        "bytes": 3804
+        "hex": "142de7e890ed5eccb360f8257d5a485e1697e722f47abbf57de12203ac91440c",
+        "bytes": 3416
       },
-      "rationale": "Product `coord` CLI subcommand dispatcher (COORD-116): extensible command registry (init + conformance + upgrade as of COORD-118) with a pure-ish `dispatch` for routing/help/unknown-command. Distinct from the `gov`/cli.js engine verb surface.",
+      "rationale": "Reusable adoption-friction governance command surface.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
-        "recorded_at": "2026-06-18T14:35:42.000Z",
-        "template_head_sha": null
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
       }
     },
     {
-      "path": "coord/scripts/coord-init.js",
+      "path": "coord/scripts/governance-tier.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:16eefe010d20",
+      "version_stamp": "sha256:79614414b076",
       "checksum": {
         "algo": "sha256",
-        "hex": "16eefe010d20e5b6a11791bc0d0640a4886c1c09989ab20c523c64d8a06b0040",
-        "bytes": 9099
+        "hex": "79614414b0767cec77218f1d84a18d97c70219a441a73682ec8657bc44b39f6c",
+        "bytes": 899
       },
-      "rationale": "`coord init` (COORD-116): idempotent no-clobber zero->governed-board bootstrap for a target repo (scaffold project.config.js seam, seed starter board if absent, ensure product spec stubs). DI-factory; --dry-run writes nothing; never overwrites existing files.",
+      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
-        "recorded_at": "2026-06-18T14:35:42.000Z",
-        "template_head_sha": null
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
       }
     },
     {
-      "path": "coord/scripts/coord-init-starter-board.js",
+      "path": "coord/scripts/guided-closeout.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:bf3c57685dad",
+      "version_stamp": "sha256:d819c14d0011",
       "checksum": {
         "algo": "sha256",
-        "hex": "bf3c57685dadfecc11b462e2ea1cf0342a604498d727b1111df4f1dd6370e8b9",
-        "bytes": 3329
+        "hex": "d819c14d001190ee011ba93eb5e222c142a364293a9379bf1f8c6a583dcd38e3",
+        "bytes": 7293
       },
-      "rationale": "Canonical CLEAN STARTER BOARD shape (SETUP-001/SAMPLE-001) \u2014 single source of truth reused by both `coord init` and the public release builder's clean-board step (COORD-116) so init and the release cut never disagree.",
+      "rationale": "Reusable adoption-friction governance command surface.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
-        "recorded_at": "2026-06-18T14:35:42.000Z",
-        "template_head_sha": null
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
       }
     },
     {
-      "path": "coord/scripts/coord-cli.test.js",
+      "path": "coord/scripts/guided-closeout.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:bfaf3d6af6d4",
+      "version_stamp": "sha256:6deba159adbb",
       "checksum": {
         "algo": "sha256",
-        "hex": "bfaf3d6af6d4cbeb63b614a4ab3eef54fbbcd0f446057e7ad79ec0821c476d43",
-        "bytes": 7634
+        "hex": "6deba159adbbbf7faafc7f9fc89ce61c79ec19ac771bbe42e9064edbbe7dbcab",
+        "bytes": 6556
       },
-      "rationale": "Module-owned tests for the `coord` CLI dispatcher (routing/help/unknown-command) and `coord init` (fresh-dir create, idempotent re-run, --dry-run, existing-config preservation) using os.tmpdir scratch dirs.",
+      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
-        "recorded_at": "2026-06-18T14:35:42.000Z",
-        "template_head_sha": null
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
       }
     },
     {
-      "path": "coord/scripts/coord-conformance.js",
+      "path": "coord/scripts/onboard.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:9bcbc482da03",
+      "version_stamp": "sha256:83a62a072fcf",
       "checksum": {
         "algo": "sha256",
-        "hex": "9bcbc482da03cdefd2b7939b96b7a96f2f6d1b0c335f75e262eb6418d70671c3",
-        "bytes": 10174
+        "hex": "83a62a072fcfd48b881ae17e7d7136d0be8bdfbeb6aace646269a14856524900",
+        "bytes": 4586
       },
-      "rationale": "`coord conformance` (COORD-117): product-facing packaging command that COMPOSES the existing conformance engine (conformance-verbs.js conform/verifyEngine + conformance-attestation.js + engine-pin.js) into one fail-closed entrypoint (--json/--attest/--verify). Zero crypto/conformance reimplementation; DI-factory so tests inject the engine + an ephemeral keypair.",
+      "rationale": "Reusable adoption-friction governance command surface.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
-        "recorded_at": "2026-06-18T14:35:42.000Z",
-        "template_head_sha": null
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
       }
     },
     {
-      "path": "coord/scripts/coord-conformance.test.js",
+      "path": "coord/scripts/onboard.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:97f870f1a8a5",
+      "version_stamp": "sha256:af9182ad15e4",
       "checksum": {
         "algo": "sha256",
-        "hex": "97f870f1a8a5acd0287e51fdfe975f9664199d34d1c892a8bef1feb1d40c6687",
-        "bytes": 9879
+        "hex": "af9182ad15e497bc2ddcb7058031e5141213479cf774a66ee53f73b6bbf79f8e",
+        "bytes": 1644
       },
-      "rationale": "Module-owned tests for `coord conformance` (COORD-117): pass/fail exit codes, --json, an --attest/--verify round-trip over an EPHEMERAL in-test ed25519 keypair, tamper detection, and a wrapper-digest==engine-digest proof that the command reuses the engine. os.tmpdir scratch coordDir; no committed keys.",
+      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
-        "recorded_at": "2026-06-18T14:35:42.000Z",
-        "template_head_sha": null
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
       }
     },
     {
-      "path": "coord/scripts/coord-upgrade.js",
+      "path": "coord/scripts/publishability-check.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:c3d64c19ba57",
+      "version_stamp": "sha256:7052b1e053c1",
       "checksum": {
         "algo": "sha256",
-        "hex": "c3d64c19ba57a6fb22f7eae4cfe11b4397afa7ea3fc5f091e1da500657b22818",
-        "bytes": 14143
+        "hex": "7052b1e053c18a88575b1d8dcaa6c4f8e523773b302aa6116dd710f584aa8d97",
+        "bytes": 3531
       },
-      "rationale": "`coord upgrade` (COORD-118): managed engine-upgrade automation. Applies a new engine surface (--from <dir|bundle>) into an adopter repo, re-pins via engine-pin.js, then verifies; idempotent, --dry-run, and exact byte-rollback on verify failure. Builds ON engine-pin.js (no fingerprint/verify reimplementation); only ever writes manifest-tracked reusable surface, never project-local files. DI-factory so tests inject fs/log/engine-pin.",
+      "rationale": "Reusable adoption-friction governance command surface.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
-        "recorded_at": "2026-06-18T14:35:42.000Z",
-        "template_head_sha": null
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
       }
     },
     {
-      "path": "coord/scripts/coord-upgrade.test.js",
+      "path": "coord/scripts/publishability-check.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:79f2fed5c0c6",
+      "version_stamp": "sha256:0723d827492a",
       "checksum": {
         "algo": "sha256",
-        "hex": "79f2fed5c0c6d62fdda1085bf6b1499f03b1c62d656007fc8b8aead0b5460523",
-        "bytes": 12242
+        "hex": "0723d827492ab5bc958e677480e69c50e8d20056ba015527ae9a2e95ec59bd63",
+        "bytes": 1270
       },
-      "rationale": "Module-owned tests for `coord upgrade` (COORD-118): apply (update changed + add new surface file, regenerate engine-pin.json, real-engine verify pass), idempotent re-run no-op, --dry-run no-writes, forced-verify-failure exact byte-rollback (incl. removing added files), surface-only guarantee (board/project.config.js never touched), and dispatcher routing. os.tmpdir scratch source+target trees.",
+      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
-        "recorded_at": "2026-06-18T14:35:42.000Z",
-        "template_head_sha": null
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
+      }
+    },
+    {
+      "path": "coord/scripts/track-presets.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:dad150a297b3",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "dad150a297b3dda016626a9f29a2df68a0124187e6094085f8016d8184e660a0",
+        "bytes": 3062
+      },
+      "rationale": "Reusable adoption-friction governance command surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
+      }
+    },
+    {
+      "path": "coord/scripts/track-presets.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:dcab1ab7b727",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "dcab1ab7b7272c9deb20ec18d01eb5dca80dfd0b03b23f32f231d8764b87e789",
+        "bytes": 792
+      },
+      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
       }
     }
   ]

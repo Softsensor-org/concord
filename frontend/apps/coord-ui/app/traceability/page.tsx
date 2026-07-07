@@ -10,6 +10,8 @@ const TRACE_CLASS: Record<TraceState, string> = {
   unknown: 'trace-pill'
 };
 
+export const dynamic = 'force-dynamic';
+
 export default function TraceabilityPage() {
   const t = loadTraceability();
   return (

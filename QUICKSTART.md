@@ -1,6 +1,18 @@
 # Softsensor Concord — Quickstart (First 5 Minutes)
 
 > Concord installs as the `coord/` directory and is driven by the `gov` CLI.
+> It is an overlay for existing repos, CI, tickets, PRD/URS documents, and agent
+> workflows — not a replacement for your SDLC.
+
+For a fuller existing-repo adoption path, see
+`coord/product/EXISTING_REPO_ADOPTION_QUICKSTART.md`.
+
+For teams running multiple humans and agents, use the fleet runbook in
+`coord/docs/FLEET_GOLDEN_PATH.md` or run:
+
+```bash
+coord/scripts/gov fleet-golden-path <ticket-id>
+```
 
 ## 0. See the cockpit first (2-minute demo)
 
@@ -9,9 +21,7 @@ looks like — a real board, requirement traceability, a timeline, and a
 control-mapped evidence export:
 
 ```bash
-cd frontend/apps/coord-ui
-npm install
-npm run demo        # opens the cockpit on http://localhost:3002 against examples/demo/coord
+npm --prefix frontend/apps/coord-ui install && npm --prefix frontend/apps/coord-ui run demo
 ```
 
 You'll see one fully-evidenced `done` ticket, one in review, and one queued —
@@ -25,7 +35,39 @@ node coord/scripts/evidence-export.mjs --coord-dir examples/demo/coord --format 
 
 When you're ready to use it on your own project, continue below.
 
-## 1. Copy the template
+## 1. Install Concord
+
+**Recommended — one command (vendors the engine in-tree, no global install):**
+
+```bash
+# New project (fresh governed board):
+npx create-concord my-project
+cd my-project
+
+# OR overlay onto an EXISTING repo — detects the repo shape, proposes a
+# governance tier + track preset, and writes a tailored coord/project.config.js
+# plus 3 starter tickets (skip step 2 below — onboarding already did it):
+cd my-existing-repo
+npx create-concord . --from-existing
+```
+
+No Node on the box (devcontainer, WSL, CI, minimal image)? Use the standalone
+Linux binary from the GitHub Release — same result, no runtime required:
+
+```bash
+concord init .            # or: concord init my-project
+```
+
+`create-concord` vendors `coord/` in-tree (GCV-4), pins the engine version in
+`coord/.coord-engine.json`, writes the commit-vs-gitignore split + the
+`coord/WORKSPACE.md` runtime guide, and wires `npm run gov` /
+`npm run concord` / `npm run coord-ui`. Upgrade later with
+`npm run gov -- upgrade`.
+
+From the scaffolded app root, `npm run coord-ui` launches that app's own bundled
+read-only cockpit against that app's `coord/`.
+
+<details><summary>Manual copy (no npm/binary) — fallback</summary>
 
 ```bash
 # From your project root (parent of your product repos)
@@ -36,8 +78,20 @@ cp /path/to/coord-template/CODEX.md ./CODEX.md
 cp /path/to/coord-template/GEMINI.md ./GEMINI.md
 cp /path/to/coord-template/AGENTS.md ./AGENTS.md
 ```
+</details>
 
 ## 2. Configure repo names
+
+> `npx create-concord . --from-existing` already did this — skip to step 3.
+
+Prefer the guided scanner first. It inspects the repo shape, recommends an
+adoption tier and track preset, and writes nothing unless you explicitly ask it
+to:
+
+```bash
+npm run concord -- onboard . --dry-run
+npm run concord -- track-presets
+```
 
 If your repos are not using the template defaults, update the canonical repo map:
 
@@ -50,7 +104,27 @@ coord/product/REPOS.md  # Update repo descriptions to match
 For the complete adoption checklist (prompts, validation hooks, starter process
 notes), see `coord/SCAFFOLD_TAILORING_CHECKLIST.md`.
 
-## 3. Create your first ticket
+## 3. Point Concord at your existing requirements
+
+Use the specification stubs when you are starting fresh. If you already have a
+PRD, URS, architecture doc, Jira epic, or regulated requirements pack, keep that
+source and make Concord reference it:
+
+```bash
+# Common starting points:
+coord/product/REQUIREMENTS.md  # PRD/URS or links to the source of truth
+coord/product/ARCHITECTURE.md  # architecture decisions and constraints
+coord/product/REPOS.md         # repo map and ownership
+```
+
+The goal is traceability: requirement -> ticket -> plan -> gate evidence ->
+review -> runtime/deploy evidence when needed -> closeout.
+
+## 4. Create your first ticket
+
+> A fresh `create-concord` scaffold already seeds `SETUP-001` (and a `SAMPLE-001`
+> example) on the board — you can skip straight to step 5 for your first run and
+> come back here when you author your own tickets.
 
 Authoring a **new backlog row** by hand is the supported way to create a
 ticket. This is the one allowed hand-edit of `coord/board/tasks.json`: add a
@@ -88,7 +162,16 @@ Then sync:
 node coord/board/board.js sync
 ```
 
-## 4. Start your first governed session
+Before submitting the first real ticket, run the closeout guide. It reports the
+exact missing evidence and ready-to-paste `gov` commands instead of forcing a
+new team to discover closeout ceremony by trial and error:
+
+```bash
+coord/scripts/gov guided-closeout SETUP-001
+coord/scripts/gov publishability-check SETUP-001
+```
+
+## 5. Start your first governed session
 
 ```bash
 # In Claude Code:
@@ -101,16 +184,19 @@ This will:
 - Show the board summary
 - Recommend the next ticket
 
-## 5. Work on a ticket
+## 6. Work on a ticket
 
 ```bash
 /planner SETUP-001     # Plan the approach
 /code-writer SETUP-001  # Implement it
 ```
 
-## 6. Populate spec stubs (when ready)
+## 7. Populate or link spec stubs (when ready)
 
-The `coord/` directory has stub files for requirements, architecture, domain model, etc. Fill in the ones relevant to your project before starting feature work. See `coord/README.md` for the full list.
+The `coord/` directory has stub files for requirements, architecture, domain
+model, etc. Fill in the ones relevant to your project, or link them to existing
+PRD/URS/specification sources before major feature work. See `coord/README.md`
+for the full list.
 
 ## Available Skills
 
@@ -146,7 +232,7 @@ The `coord/` directory has stub files for requirements, architecture, domain mod
 | `/db-status` | Database health check |
 | `/health-check` | Check all services |
 
-## 7. Configure MCP integrations (optional)
+## 8. Configure MCP integrations (optional)
 
 The template includes `.mcp.json` pre-configured for Sentry and Datadog. Fill in your credentials to connect:
 
@@ -165,7 +251,7 @@ Exact repo names come from `coord/project.config.js` and `coord/product/REPOS.md
 ```
 your-project/
 ├── .claude/
-│   ├── commands/           ← Governance skills (19 slash commands)
+│   ├── commands/           ← Governance skills (27 slash commands)
 │   └── skills/             ← Operations skills (5 slash commands)
 │       ├── deploy/
 │       ├── migrate/

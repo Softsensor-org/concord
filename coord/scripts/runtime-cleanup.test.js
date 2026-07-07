@@ -12,7 +12,7 @@ const path = require("path");
 const { __testing, GovernanceError, withCleanRuntimeFixture } = require("./governance-test-utils.js");
 
 test("describeDirectoryLockHolder reports pid liveness and age for runtime lock diagnostics", () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-lock-holder-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "coord-governance-lock-holder-"));
   const lockDir = path.join(tempDir, "governance.lock");
   fs.mkdirSync(lockDir, { recursive: true });
   fs.writeFileSync(path.join(lockDir, "lock-owner.json"), JSON.stringify({
@@ -30,7 +30,7 @@ test("describeDirectoryLockHolder reports pid liveness and age for runtime lock 
 });
 
 test("runtimeLockStatus reports a wedged governance lock without mutating it", () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-runtime-lock-status-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "coord-governance-runtime-lock-status-"));
   const runtimeDir = path.join(tempDir, ".runtime");
   const lockDir = path.join(runtimeDir, "governance.lock");
   fs.mkdirSync(lockDir, { recursive: true });
@@ -65,8 +65,41 @@ test("runtimeLockStatus reports a wedged governance lock without mutating it", (
   }
 });
 
+test("runtimeLockStatus does not mark unknown-owner governance runtime locks reclaimable by age", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "coord-governance-runtime-lock-unknown-"));
+  const runtimeDir = path.join(tempDir, ".runtime");
+  const lockDir = path.join(runtimeDir, "governance.lock");
+  fs.mkdirSync(lockDir, { recursive: true });
+  const oldAt = new Date(Date.now() - 600_000);
+  fs.utimesSync(lockDir, oldAt, oldAt);
+
+  const originalRuntimeDir = __testing.paths.RUNTIME_DIR;
+  const originalLockDir = __testing.paths.GOVERNANCE_EVENT_LOCK_DIR;
+  __testing.paths.RUNTIME_DIR = runtimeDir;
+  __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = lockDir;
+
+  const originalLog = console.log;
+  let output = "";
+  console.log = (value) => {
+    output += `${String(value)}\n`;
+  };
+  try {
+    __testing.runtimeLockStatus();
+    const payload = JSON.parse(output.trim());
+    assert.equal(payload.exists, true);
+    assert.equal(payload.holder, null);
+    assert.equal(payload.live_local_holder, false);
+    assert.equal(payload.reclaimable_now, false);
+    assert.equal(fs.existsSync(lockDir), true);
+  } finally {
+    console.log = originalLog;
+    __testing.paths.RUNTIME_DIR = originalRuntimeDir;
+    __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = originalLockDir;
+  }
+});
+
 test("breakRuntimeLock removes the runtime lock directory only with explicit yes", () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-runtime-lock-break-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "coord-governance-runtime-lock-break-"));
   const runtimeDir = path.join(tempDir, ".runtime");
   const lockDir = path.join(runtimeDir, "governance.lock");
   fs.mkdirSync(lockDir, { recursive: true });
@@ -86,6 +119,35 @@ test("breakRuntimeLock removes the runtime lock directory only with explicit yes
     );
     assert.equal(fs.existsSync(lockDir), true);
     __testing.breakRuntimeLock({ yes: true });
+    assert.equal(fs.existsSync(lockDir), false);
+  } finally {
+    __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = originalLockDir;
+  }
+});
+
+test("breakRuntimeLock refuses to remove a live local holder unless force-live is explicit", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "coord-governance-runtime-lock-live-break-"));
+  const runtimeDir = path.join(tempDir, ".runtime");
+  const lockDir = path.join(runtimeDir, "governance.lock");
+  fs.mkdirSync(lockDir, { recursive: true });
+  fs.writeFileSync(path.join(lockDir, "lock-owner.json"), JSON.stringify({
+    pid: process.pid,
+    host: os.hostname(),
+    cwd: "/tmp/runtime-lock-live-break",
+    kind: "governance-runtime",
+    created_at: new Date().toISOString(),
+  }, null, 2));
+
+  const originalLockDir = __testing.paths.GOVERNANCE_EVENT_LOCK_DIR;
+  __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = lockDir;
+  try {
+    assert.throws(
+      () => __testing.breakRuntimeLock({ yes: true }),
+      (error) => error instanceof GovernanceError && /refuses to remove a live local holder/i.test(error.message)
+    );
+    assert.equal(fs.existsSync(lockDir), true);
+
+    __testing.breakRuntimeLock({ yes: true, forceLive: true });
     assert.equal(fs.existsSync(lockDir), false);
   } finally {
     __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = originalLockDir;

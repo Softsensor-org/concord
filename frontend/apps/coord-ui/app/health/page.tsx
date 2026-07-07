@@ -13,6 +13,8 @@ const LEVEL_LABEL: Record<CheckLevel, string> = {
   fail: 'FAIL'
 };
 
+export const dynamic = 'force-dynamic';
+
 export default function HealthPage() {
   const h = loadHealth();
   return (

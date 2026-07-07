@@ -126,6 +126,13 @@ function setupRepoXReviewReadyFixture(prefix, ticketId, owner) {
   }));
   fs.writeFileSync(recordPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
 
+  // COORD-273: this fixture edits the board (repo/status/pr_index) and plan record
+  // out-of-band after the harness anchored its journal baseline. Re-anchor the
+  // baseline to the review-ready fixture state so the closeout commands under test
+  // run over a consistent journal (intent: exercise the finish/finalize seam, not
+  // the out-of-band coordination-state seal).
+  __testing.advanceGovernanceProvenanceBaseline("coord066-review-ready-fixture");
+
   return ctx;
 }
 

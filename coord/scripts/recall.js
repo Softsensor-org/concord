@@ -45,6 +45,19 @@ const ROOT_DIR = path.resolve(__dirname, "..", "..");
 const COORD_DIR = path.join(ROOT_DIR, "coord");
 const DEFAULT_DECISIONS_PATH = path.join(COORD_DIR, "memory", "decisions.ndjson");
 const DEFAULT_JOURNAL_PATH = path.join(COORD_DIR, ".runtime", "governance-events.ndjson");
+const DEFAULT_ADR_DIR = path.join(COORD_DIR, "docs", "decisions");
+
+// COORD-300: resolve the memory corpus location from the governed, sandboxable
+// MEMORY_DIR at CALL TIME (not module-load time). `state.MEMORY_DIR` defaults to
+// the live coord/memory tree, so production behaviour is byte-identical to the
+// old constant; but a test that redirects __testing.paths.MEMORY_DIR (see
+// governance-test-utils.sandboxProcessRuntimeLocks) now reads/rebuilds the corpus
+// in an os.tmpdir() sandbox instead of writing the live coord/memory tree — which
+// lets recall.test.js drop out of the test-isolation-guard runtime allowlist.
+const { state } = require("./governance-context.js");
+function defaultDecisionsPath() {
+  return path.join(state.MEMORY_DIR, "decisions.ndjson");
+}
 
 // The decision-extractor (COORD-140) is the Phase-0 substrate. We reuse its
 // journal-provenance indexer + sha1 so recall and extraction pin citations the
@@ -65,6 +78,7 @@ const classification = require("./memory-classification.js");
 // so the Phase-1 deterministic contract + tests are byte-for-byte unchanged.
 const memoryGraph = require("./memory-graph.js");
 const memoryVector = require("./memory-vector.js");
+const adrRegistry = require("./adr-validator.js");
 
 // Memory-relevant repo files that are first-class citation targets (`type:file`)
 // for file-citation questions (e.g. "which files define conformance signing?").
@@ -391,6 +405,68 @@ function buildDecisionSnippet(ticketId, rc, invariants) {
   return parts.join("\n");
 }
 
+function readAdrDocs(rootDir, adrDir, journalProvenance) {
+  const docs = [];
+  const root = adrDir || DEFAULT_ADR_DIR;
+  if (!fs.existsSync(root)) {
+    return docs;
+  }
+  for (const file of fs.readdirSync(root).filter((name) => /^[0-9]{4}-.+\.md$/.test(name)).sort()) {
+    const filePath = path.join(root, file);
+    let adr;
+    try {
+      adr = adrRegistry.parseAdr(filePath, root);
+    } catch (error) {
+      continue;
+    }
+    if (adr.status !== "Accepted" || adr.superseded_by) {
+      continue;
+    }
+    const id = `ADR-${adr.id}`;
+    const rel = path.relative(rootDir || ROOT_DIR, filePath).split(path.sep).join("/");
+    const text = [
+      id,
+      adr.title,
+      adr.status,
+      (adr.tickets || []).join(" "),
+      (adr.requirement_ids || []).join(" "),
+      adr.linked_scope,
+      adr.decision,
+      adr.alternatives_rejected,
+      adr.consequences,
+      adr.revisit_trigger,
+      adr.raw,
+    ].filter(Boolean).join("\n");
+    docs.push({
+      key: `adr:${id}`,
+      type: "adr",
+      id,
+      path: rel,
+      text,
+      tokens: tokenize(text),
+      source: {
+        type: "adr",
+        id,
+        path: rel,
+        event_hash: adr.content_hash,
+        chain_head: journalProvenance.chainHead || null,
+        verified: true,
+      },
+      snippet: buildAdrSnippet(id, adr),
+    });
+  }
+  return docs;
+}
+
+function buildAdrSnippet(id, adr) {
+  const parts = [`${id} (${adr.status}) ${adr.title}`];
+  if (adr.decision) parts.push(`Decision: ${adr.decision}`);
+  if (adr.alternatives_rejected) parts.push(`Rejected alternatives: ${adr.alternatives_rejected}`);
+  if (adr.consequences) parts.push(`Consequences: ${adr.consequences}`);
+  if (adr.revisit_trigger) parts.push(`Revisit trigger: ${adr.revisit_trigger}`);
+  return parts.join("\n");
+}
+
 function readFileDocs(rootDir, journalProvenance) {
   const docs = [];
   for (const rel of INDEXED_FILES) {
@@ -471,15 +547,49 @@ function buildFileEvidenceSnippet(doc, queryTokens) {
 }
 
 function buildCorpus(options = {}) {
-  const decisionsPath = options.decisionsPath || DEFAULT_DECISIONS_PATH;
+  const decisionsPath = options.decisionsPath || defaultDecisionsPath();
   const journalPath = options.journalPath || DEFAULT_JOURNAL_PATH;
   const rootDir = options.rootDir || ROOT_DIR;
   const journalProvenance = extractor.indexJournalProvenance(journalPath);
+  const derived = memoryGraph.checkDerivedIndexes({
+    ...options,
+    rootDir,
+    decisionsPath,
+    journalPath,
+  });
   const docs = [
     ...readDecisionDocs(decisionsPath),
+    ...readAdrDocs(rootDir, options.adrDir || path.join(rootDir, "coord", "docs", "decisions"), journalProvenance),
     ...readFileDocs(rootDir, journalProvenance),
   ];
-  return { docs, chainHead: journalProvenance.chainHead || null };
+  return {
+    docs,
+    chainHead: journalProvenance.chainHead || null,
+    memory_generation: derived.memory_generation,
+    index_generation: derived.index_generation,
+    index_warnings: derived.warnings,
+  };
+}
+
+function retrievalRecordForDoc(doc) {
+  return {
+    artifact_type: doc.type === "decision" || doc.type === "adr" ? "decision" : "memory_claim",
+    ...(doc.source || {}),
+    ...(doc.memory || {}),
+    ...(doc.claim || {}),
+  };
+}
+
+function filterDocsForActiveRetrieval(corpus, options = {}) {
+  const filtered = (corpus.docs || []).filter((doc) => (
+    classification.isClaimActiveForRetrieval(retrievalRecordForDoc(doc), {
+      includePrivate: options.includePrivateMemory === true,
+      includeLocal: options.includeLocalMemory === true,
+      teamId: options.teamId || null,
+      humanId: options.humanId || null,
+    })
+  ));
+  return { ...corpus, docs: filtered };
 }
 
 // --- ranking -----------------------------------------------------------------
@@ -487,6 +597,7 @@ function buildCorpus(options = {}) {
 // weight (verified > unverified), then journal recency proxy, then stable id.
 const EXACT_BOOST = 1000;
 const PROVENANCE_VERIFIED_WEIGHT = 0.5; // tie-breaker bump for chained-verified
+const FILE_QUERY_BOOST = 2; // file-citation queries should surface file sources before adjacent decisions
 
 // Deterministic sort over scored docs: score desc, then verified first, then
 // stable key order. Shared by the deterministic baseline and the semantic path.
@@ -509,6 +620,7 @@ function rankDocs(query, corpus) {
   const queryTokens = tokenize(query);
   const queryIds = extractQueryIds(query);
   const queryPaths = extractQueryPaths(query);
+  const asksForFiles = queryTokens.includes("file") || queryTokens.includes("files");
   const index = buildBm25Index(corpus.docs);
 
   const scored = corpus.docs.map((doc) => {
@@ -522,6 +634,9 @@ function rankDocs(query, corpus) {
     if (queryPaths.length && queryPaths.some((p) => doc.path && doc.path.endsWith(p))) {
       score += EXACT_BOOST;
       exact = true;
+    }
+    if (score > 0 && asksForFiles && doc.type === "file") {
+      score += FILE_QUERY_BOOST;
     }
     // Provenance weighting: chained-verified outranks legacy-unverified for
     // otherwise-equal relevance (only when the doc actually matched something).
@@ -554,6 +669,7 @@ function rankDocsSemantic(query, corpus, semantic = {}) {
   const queryTokens = tokenize(query);
   const queryIds = extractQueryIds(query);
   const queryPaths = extractQueryPaths(query);
+  const asksForFiles = queryTokens.includes("file") || queryTokens.includes("files");
   const index = buildBm25Index(corpus.docs);
 
   // 1. Baseline lexical score per doc (identical math to rankDocs).
@@ -567,6 +683,9 @@ function rankDocsSemantic(query, corpus, semantic = {}) {
     if (queryPaths.length && queryPaths.some((p) => doc.path && doc.path.endsWith(p))) {
       score += EXACT_BOOST;
       exact = true;
+    }
+    if (score > 0 && asksForFiles && doc.type === "file") {
+      score += FILE_QUERY_BOOST;
     }
     if (score > 0 && doc.source.verified) {
       score += PROVENANCE_VERIFIED_WEIGHT;
@@ -675,7 +794,7 @@ function recall(query, options = {}) {
   const topK = Number.isInteger(options.topK) && options.topK > 0 ? options.topK : DEFAULT_TOP_K;
   const role = options.role || null;
   const redaction = resolveRedaction(role, options.rbacPolicy);
-  const corpus = options.corpus || buildCorpus(options);
+  const corpus = filterDocsForActiveRetrieval(options.corpus || buildCorpus(options), options);
   // DEFAULT: deterministic Phase-1 ranking (unchanged). The semantic-augmented
   // pipeline (graph + vector) is reached ONLY when a caller passes an explicit
   // `semantic` option — it is OFF by default until the eval harness measures it
@@ -695,6 +814,9 @@ function recall(query, options = {}) {
       sources: [],
       confidence: "low",
       staleness: "fresh",
+      memory_generation: corpus.memory_generation || memoryGraph.buildMemoryGeneration(options),
+      index_generation: corpus.index_generation || memoryGraph.checkDerivedIndexes(options).index_generation,
+      index_warnings: corpus.index_warnings || [],
     };
   }
 
@@ -727,6 +849,58 @@ function recall(query, options = {}) {
     sources,
     confidence: computeConfidence(ranked),
     staleness: computeStaleness(sources, corpus.chainHead),
+    memory_generation: corpus.memory_generation || memoryGraph.buildMemoryGeneration(options),
+    index_generation: corpus.index_generation || memoryGraph.checkDerivedIndexes(options).index_generation,
+    index_warnings: corpus.index_warnings || [],
+  };
+}
+
+function recallForWarmStart(ticket, options = {}) {
+  const query = options.query || [
+    ticket,
+    options.scope || "",
+    "plan prework ADR requirements open decisions prior work",
+  ].filter(Boolean).join(" ");
+  const result = recall(query, options);
+  const continuitySeed = options.continuitySeed === false
+    ? null
+    : memoryGraph.buildContinuitySeed(options);
+  const ticketId = String(ticket || "");
+  const ticketFacts = continuitySeed
+    ? continuitySeed.facts
+      .filter((fact) => !ticketId || fact.ticket_id === ticketId || fact.ticket_id === null)
+      .slice(0, Number.isInteger(options.seedFactLimit) && options.seedFactLimit > 0 ? options.seedFactLimit : 12)
+    : [];
+  return {
+    kind: "concord.continuity_warm_start_recall",
+    schema_version: "continuity-bridge-mvp/v1",
+    ticket: ticketId,
+    query: result.query,
+    available: result.sources.length > 0,
+    confidence: result.confidence,
+    staleness: result.staleness,
+    answer: result.answer,
+    sources: result.sources,
+    memory_generation: result.memory_generation,
+    index_generation: result.index_generation,
+    index_warnings: result.index_warnings,
+    continuity_seed: continuitySeed
+      ? {
+          kind: continuitySeed.kind,
+          schema_version: continuitySeed.schema_version,
+          authority: continuitySeed.authority,
+          mode: continuitySeed.mode,
+          memory_generation: continuitySeed.memory_generation,
+          index_generation: continuitySeed.index_generation,
+          sparse_memory_warning: continuitySeed.sparse_memory_warning,
+          missing_context: continuitySeed.missing_context,
+          counts: continuitySeed.counts,
+          facts: ticketFacts,
+        }
+      : null,
+    missing_reason: result.sources.length > 0
+      ? null
+      : "No governed recall source matched; continue from board, plan, prompt, questions, ADRs, and requirement docs.",
   };
 }
 
@@ -738,12 +912,39 @@ function recall(query, options = {}) {
 // caller/UI sees the artifact's sensitivity. secret-prohibited fields are
 // refused regardless of role/cut. `path` (internal) is the field most often
 // redacted on a citation; id/type/verified (public) always survive.
+// COORD-288: the FIXED citation fields recall has always surfaced. They get the
+// existing role-aware classification redaction (path is `internal`, etc.).
+const FIXED_REDACTED_KEYS = Object.freeze(["path", "event_hash", "chain_head"]);
+
 function applyRedactionToSource(source, redaction, role) {
   const policy = redaction.policy || null;
   const out = { ...source };
-  for (const key of ["path", "event_hash", "chain_head"]) {
+  // 1. Existing fixed-key redaction — role-aware, unchanged from COORD-141/144.
+  //    (A fixed key that itself looks like a secret is already caught here:
+  //    classifyField returns `secret-prohibited` and redactClassifiedField
+  //    collapses it to the refusal marker.)
+  for (const key of FIXED_REDACTED_KEYS) {
     if (out[key] == null) {
       continue;
+    }
+    const cls = classification.classifyField(key, out[key]);
+    out[key] = classification.redactClassifiedField(cls, key, out[key], role, policy);
+  }
+  // 2. COORD-288: close the classify->redact loop for ARBITRARY (incl. nested,
+  //    non-string, high-entropy) source fields. COORD-276 made classifySource
+  //    LABEL a source whose nested/non-standard field holds a secret as
+  //    secret-prohibited, but recall previously surfaced those non-fixed fields
+  //    VERBATIM — so a labeled secret could still leak at surface time. Re-run
+  //    the per-field classification over every remaining field; when it flags a
+  //    secret, DEEP-redact via the COORD-276 redactClassifiedField/redactSecretsDeep
+  //    helper so the offending leaf (at any depth) collapses to the refusal marker
+  //    while benign sibling fields survive. We only touch secret-prohibited fields
+  //    here, so benign content is NOT over-redacted. Fail-closed: redactSecretsDeep
+  //    collapses cyclic / over-depth branches to the marker rather than surfacing
+  //    them raw, so a source that can't be fully processed is withheld, not leaked.
+  for (const key of Object.keys(out)) {
+    if (FIXED_REDACTED_KEYS.includes(key) || out[key] == null) {
+      continue; // fixed keys already handled above; skip empty fields
     }
     const cls = classification.classifyField(key, out[key]);
     out[key] = classification.redactClassifiedField(cls, key, out[key], role, policy);
@@ -810,6 +1011,7 @@ module.exports = {
   buildBm25Index,
   bm25Score,
   buildCorpus,
+  filterDocsForActiveRetrieval,
   rankDocs,
   rankDocsSemantic,
   sortScored,
@@ -822,8 +1024,12 @@ module.exports = {
   scrubSecrets,
   classification,
   recall,
+  recallForWarmStart,
   INDEXED_FILES,
   DEFAULT_DECISIONS_PATH,
+  DEFAULT_ADR_DIR,
+  readAdrDocs,
+  defaultDecisionsPath,
   DEFAULT_JOURNAL_PATH,
 };
 

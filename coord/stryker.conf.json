@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "COORD-131 mutation dimension — FIRST scored baseline on the engine. repoRoot for mutation-policy.js detectTool is this dir (coord/), because the Stryker binary installs at coord/node_modules/.bin/stryker (devDep in coord/package.json) and detectTool requires config + binary at the SAME root. All paths here are relative to coord/ (Stryker's cwd). TARGET SET INTENTIONALLY SCOPED to the highest-value core module first (journal.js — the hash-chain integrity core). It EXPANDS over time as the maturity evolution proceeds: add scripts/plan-records.js, then scripts/governance-validation.js in later passes. The command runner re-runs the test command once PER MUTANT, so we run ONLY the matching test file to keep the baseline minutes, not hours.",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "env -u COORD_SESSION_ID node --test scripts/journal.test.js"
+  },
+  "mutate": [
+    "scripts/journal.js"
+  ],
+  "reporters": [
+    "json",
+    "clear-text",
+    "progress"
+  ],
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "thresholds": {
+    "break": 60
+  },
+  "concurrency": 4,
+  "tempDirName": ".stryker-tmp",
+  "cleanTempDir": true
+}

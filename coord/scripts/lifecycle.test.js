@@ -1,3 +1,5 @@
+// COORD-299 / COORD-390: relocate this worker's full runtime + seal surfaces to an os.tmpdir() sandbox
+require("./governance-test-utils.js").sandboxProcessRuntime();
 "use strict";
 
 const test = require("node:test");
@@ -31,32 +33,9 @@ test("buildInitiateSummary explains the session primer and claim syntax", () => 
   assert.match(summary, /Do not directly edit `coord\/board\/tasks\.json`/);
 });
 
-test("buildDefaultGovernancePlan seeds repo-specific closeout defaults", () => {
-  // COORD-006: derive the expected integration branch from the live registry
-  // instead of hardcoding "dev" — this assertion must hold under ANY repo
-  // registry (e.g. acme's "devx"), not only the coord-template default.
-  const expectedRepoBaseRef = __testing.paths.REPO_INTEGRATION_BRANCHES.F || "dev";
-  assert.deepEqual(__testing.buildDefaultGovernancePlan("F"), {
-    expected_closeout: {
-      method: "pr",
-      base_ref: expectedRepoBaseRef,
-      provenance_note: null,
-    },
-    review_profile: "standard",
-    ticket_local_repairs: [],
-  });
-
-  // Repo "X" (coord / cross-repo) is registry-independent: always no_pr / main.
-  assert.deepEqual(__testing.buildDefaultGovernancePlan("X"), {
-    expected_closeout: {
-      method: "no_pr",
-      base_ref: "main",
-      provenance_note: null,
-    },
-    review_profile: "standard",
-    ticket_local_repairs: [],
-  });
-});
+// COORD-295: the buildDefaultGovernancePlan repo-default / REPO_INTEGRATION_BRANCHES
+// (COORD-006/007) tests and the ensurePlanStub canonical-record-seam tests moved to
+// governance-plan-shape.test.js alongside the extracted plan-shape service.
 
 // COORD-099: the GCV-4 / COORD-010 config-seam tests (createCoordPaths fixture
 // derivation, normalizeProjectConfig / validateProjectConfig / loadProjectConfig
@@ -64,19 +43,6 @@ test("buildDefaultGovernancePlan seeds repo-specific closeout defaults", () => {
 // handling) relocated to paths.test.js — every subject is defined in
 // coord/paths.js. paths.test.js is matched by the same runner glob, so the
 // COORD-010 config matrix continues to re-run them under both registries.
-
-test("buildDefaultGovernancePlan seeds closeout base_ref from REPO_INTEGRATION_BRANCHES (COORD-007)", () => {
-  const original = { ...__testing.paths.REPO_INTEGRATION_BRANCHES };
-  __testing.paths.REPO_INTEGRATION_BRANCHES = { B: "development", F: "dev" };
-  try {
-    assert.equal(__testing.buildDefaultGovernancePlan("B").expected_closeout.base_ref, "development");
-    assert.equal(__testing.buildDefaultGovernancePlan("F").expected_closeout.base_ref, "dev");
-    // Non-repo-backed work stays on "main".
-    assert.equal(__testing.buildDefaultGovernancePlan("X").expected_closeout.base_ref, "main");
-  } finally {
-    __testing.paths.REPO_INTEGRATION_BRANCHES = original;
-  }
-});
 
 test("splitGovernanceProvenanceDrift downgrades runtime session drift to warnings while preserving blocking drift", () => {
   const split = __testing.splitGovernanceProvenanceDrift([
@@ -224,88 +190,24 @@ test("buildStartPlanBootstrapCommand recommends gov plan --seed", () => {
   assert.equal(coordTicket, "coord/scripts/gov plan DEBT-041 --seed");
 });
 
-test("normalizeTestingInfraAuditPath strips canonical and legacy repo prefixes", () => {
-  const originalRegistry = { ...__testing.paths.repoRegistry };
-  const originalAliases = Object.fromEntries(
-    Object.entries(__testing.paths.legacyRepoAliases).map(([code, aliases]) => [code, [...aliases]])
-  );
-  try {
-    __testing.paths.repoRegistry = { ...originalRegistry, B: "msrv" };
-    __testing.paths.legacyRepoAliases = { ...originalAliases, B: ["backend"] };
+// COORD-283: the normalizeTestingInfraAuditPath registry-prefix behavior test
+// moved to testing-infra-audit.test.js alongside the extracted module.
 
-    assert.equal(
-      __testing.normalizeTestingInfraAuditPath("B", "MSRV-100", "msrv/vitest.config.ts"),
-      "vitest.config.ts"
-    );
-    assert.equal(
-      __testing.normalizeTestingInfraAuditPath("B", "MSRV-100", "backend/vitest.config.ts"),
-      "vitest.config.ts"
-    );
-    assert.equal(
-      __testing.normalizeTestingInfraAuditPath("B", "MSRV-100", "msrv/.worktrees/codexa00/MSRV-100/vitest.config.ts"),
-      "vitest.config.ts"
-    );
-    // Paths from a different repo should be rejected. COORD-006: derive the
-    // foreign-repo prefix from the live registry (F repo) so this holds under
-    // any registry, not only the template default where F maps to "frontend".
-    const foreignRepoPrefix = __testing.repoNameForCode("F");
-    assert.equal(
-      __testing.normalizeTestingInfraAuditPath("B", "MSRV-100", `${foreignRepoPrefix}/vitest.config.ts`),
-      null
-    );
-  } finally {
-    __testing.paths.repoRegistry = originalRegistry;
-    __testing.paths.legacyRepoAliases = originalAliases;
-  }
-});
-
-test("refreshLockHead promotes a legacy lock into runtime before rewriting it", () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-runtime-lock-"));
-  const runtimeLocksDir = path.join(tempDir, ".runtime", "locks");
-  const legacyLocksDir = path.join(tempDir, "locks");
-  const runtimeLockPath = path.join(runtimeLocksDir, "IMP-311.lock");
-  const legacyLockPath = path.join(legacyLocksDir, "IMP-311.lock");
-  const original = {
-    LOCKS_DIR: __testing.paths.LOCKS_DIR,
-    LEGACY_LOCKS_DIR: __testing.paths.LEGACY_LOCKS_DIR,
-  };
-
-  fs.mkdirSync(legacyLocksDir, { recursive: true });
-  fs.writeFileSync(legacyLockPath, JSON.stringify({
-    owner: "codexa00",
-    ticket: "IMP-311",
-    status: "doing",
-    repo: "coord",
-    branch: "agent/codexa00-imp-311-runtime",
-    head: "stale-head",
-    worktree: path.join(tempDir, "coord-worktree"),
-    started_at_utc: "2026-03-29T12:00:00.000Z",
-    heartbeat_utc: "2026-03-29T12:00:00.000Z",
-  }, null, 2), "utf8");
-
-  __testing.paths.LOCKS_DIR = runtimeLocksDir;
-  __testing.paths.LEGACY_LOCKS_DIR = legacyLocksDir;
-
-  try {
-    __testing.refreshLockHead("IMP-311");
-    assert.equal(fs.existsSync(runtimeLockPath), true);
-    assert.equal(fs.existsSync(legacyLockPath), false);
-    assert.equal(JSON.parse(fs.readFileSync(runtimeLockPath, "utf8")).head, "coord-no-git-head");
-  } finally {
-    __testing.paths.LOCKS_DIR = original.LOCKS_DIR;
-    __testing.paths.LEGACY_LOCKS_DIR = original.LEGACY_LOCKS_DIR;
-  }
-});
+// COORD-293: the refreshLockHead legacy-promote + corrupt-JSON lock tests moved
+// to ticket-lock-service.test.js alongside the extracted ticket-lock service.
 
 test("collectTicketWorktreeResidue only reports matching governed product worktrees", () => {
+  const coordWorktreePath = path.join(process.cwd(), "coord", ".worktrees", "codexa04", "IMP-185");
   const residue = __testing.collectTicketWorktreeResidue("IMP-185", {
     B: [
-      { path: "/tmp/backend/.worktrees/codexa04/IMP-185", branch: "agent/codexa04-imp-185" },
-      { path: "/tmp/backend/.worktrees/codexa04/IMP-999", branch: "agent/codexa04-imp-999" },
+      { path: `/tmp/${__testing.repoNameForCode("B")}/.worktrees/codexa04/IMP-185`, branch: "agent/codexa04-imp-185" },
+      { path: `/tmp/${__testing.repoNameForCode("B")}/.worktrees/codexa04/IMP-999`, branch: "agent/codexa04-imp-999" },
+      { path: coordWorktreePath, branch: "agent/codexa04-imp-185" },
     ],
     F: [
-      { path: "/tmp/frontend/.worktrees/codexa04/IMP-185", branch: "agent/codexa04-imp-185" },
-      { path: "/tmp/frontend/dev", branch: "dev" },
+      { path: `/tmp/${__testing.repoNameForCode("F")}/.worktrees/codexa04/IMP-185`, branch: "agent/codexa04-imp-185" },
+      { path: `/tmp/${__testing.repoNameForCode("F")}/dev`, branch: "dev" },
+      { path: coordWorktreePath, branch: "agent/codexa04-imp-185" },
     ],
   });
 
@@ -315,13 +217,13 @@ test("collectTicketWorktreeResidue only reports matching governed product worktr
       {
         repoCode: "B",
         repoLabel: __testing.repoNameForCode("B"),
-        path: "/tmp/backend/.worktrees/codexa04/IMP-185",
+        path: `/tmp/${__testing.repoNameForCode("B")}/.worktrees/codexa04/IMP-185`,
         branch: "agent/codexa04-imp-185",
       },
       {
         repoCode: "F",
         repoLabel: __testing.repoNameForCode("F"),
-        path: "/tmp/frontend/.worktrees/codexa04/IMP-185",
+        path: `/tmp/${__testing.repoNameForCode("F")}/.worktrees/codexa04/IMP-185`,
         branch: "agent/codexa04-imp-185",
       },
     ]
@@ -350,31 +252,6 @@ test("assertCurrentTicketLockIntegrity rejects non-canonical current-ticket work
     );
   } finally {
     __testing.paths.REPO_ROOTS = originalRoots;
-  }
-});
-
-test("refreshLockHead fails explicitly when the governed lock JSON is corrupted", () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-corrupt-lock-"));
-  const locksDir = path.join(tempDir, "locks");
-  const original = {
-    LOCKS_DIR: __testing.paths.LOCKS_DIR,
-    LEGACY_LOCKS_DIR: __testing.paths.LEGACY_LOCKS_DIR,
-  };
-
-  fs.mkdirSync(locksDir, { recursive: true });
-  fs.writeFileSync(path.join(locksDir, "IMP-311.lock"), "{not json}\n", "utf8");
-
-  __testing.paths.LOCKS_DIR = locksDir;
-  __testing.paths.LEGACY_LOCKS_DIR = path.join(tempDir, "legacy-locks");
-
-  try {
-    assert.throws(
-      () => __testing.refreshLockHead("IMP-311"),
-      (error) => error instanceof GovernanceError && /not valid JSON/i.test(error.message)
-    );
-  } finally {
-    __testing.paths.LOCKS_DIR = original.LOCKS_DIR;
-    __testing.paths.LEGACY_LOCKS_DIR = original.LEGACY_LOCKS_DIR;
   }
 });
 
@@ -684,94 +561,8 @@ test("recentEvents defaults to a compact journal view and materializes snapshots
   }
 });
 
-test("ensurePlanStub does not overwrite an existing canonical record from a stale markdown stub", () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-ensure-plan-stub-"));
-  const planPath = path.join(tempDir, "PLAN.md");
-  const recordsDir = path.join(tempDir, "plans");
-  fs.mkdirSync(recordsDir, { recursive: true });
-
-  fs.writeFileSync(planPath, `## DEBT-021 — 2026-03-25T22:13:17.979Z
-
-- Startup checklist:
-  - TODO: completed
-- Traceability gate:
-  - TODO: verified | closing-gap | exempt
-`, "utf8");
-
-  const recordPath = path.join(recordsDir, "DEBT-021.json");
-  fs.writeFileSync(recordPath, JSON.stringify({
-    schema_version: 1,
-    ticket_id: "DEBT-021",
-    markdown_heading: "## DEBT-021 — 2026-03-25T22:13:17.979Z",
-    startup_checklist: ["completed"],
-    traceability_gate: ["closing-gap"],
-    review_round: 1,
-    baseline_reproduction: ["Command: not-required", "Outcome: canonical record already normalized"],
-    prior_findings: [],
-    intended_files: ["coord/.worktrees/codexa02/DEBT-021/*"],
-    change_summary: ["Retire markdown parser enforcement."],
-    verification_commands: ["node coord/scripts/governance.test.js"],
-    critical_invariants: ["Canonical record must win over stale markdown."],
-    requirement_closure: ["Ticket ask: preserve canonical record", "Implemented: preserve canonical record", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
-    repo_gates: ["not-required"],
-    self_review_cycles: [],
-    rollback_strategy: ["revert"],
-    security_surface: "no",
-    synced_from_markdown_at: "2026-03-25T22:13:17.983Z",
-  }, null, 2), "utf8");
-
-  const planBefore = fs.readFileSync(planPath, "utf8");
-  const recordBefore = fs.readFileSync(recordPath, "utf8");
-
-  const originalPlanPath = __testing.paths.PLAN_PATH;
-  const originalRecordsDir = __testing.paths.PLAN_RECORDS_DIR;
-  __testing.paths.PLAN_PATH = planPath;
-  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
-  try {
-    __testing.ensurePlanStub("DEBT-021", "X", "codexa02");
-  } finally {
-    __testing.paths.PLAN_PATH = originalPlanPath;
-    __testing.paths.PLAN_RECORDS_DIR = originalRecordsDir;
-  }
-
-  assert.equal(fs.readFileSync(planPath, "utf8"), planBefore);
-  assert.equal(fs.readFileSync(recordPath, "utf8"), recordBefore);
-});
-
-test("ensurePlanStub seeds a canonical scaffold record before rendering compatibility markdown", () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-scaffold-record-"));
-  const planPath = path.join(tempDir, "PLAN.md");
-  const recordsDir = path.join(tempDir, "plans");
-  fs.mkdirSync(recordsDir, { recursive: true });
-  fs.writeFileSync(planPath, "", "utf8");
-
-  const originalPlanPath = __testing.paths.PLAN_PATH;
-  const originalRecordsDir = __testing.paths.PLAN_RECORDS_DIR;
-  __testing.paths.PLAN_PATH = planPath;
-  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
-  try {
-    __testing.ensurePlanStub("DEBT-043", "X", "codexa00");
-
-    const record = __testing.readPlanRecord("DEBT-043", { recordsDir });
-    const planRaw = fs.readFileSync(planPath, "utf8");
-
-    assert.equal(record.ticket_id, "DEBT-043");
-    assert.deepEqual(record.startup_checklist, ["TODO: completed"]);
-    assert.deepEqual(record.traceability_gate, ["TODO: verified | closing-gap | exempt"]);
-    assert.deepEqual(record.scaffold_placeholders, {
-      intended_files: ["coord/.worktrees/codexa00/DEBT-043/*"],
-    });
-    assert.deepEqual(record.intended_files, ["coord/.worktrees/codexa00/DEBT-043/*"]);
-    assert.equal(record.self_review_cycles.length, 3);
-    assert.match(record.self_review_cycles[0].raw, /lens=TODO contract\/state invariants/);
-    assert.match(planRaw, /## DEBT-043 — /);
-    assert.match(planRaw, /coord\/\.worktrees\/codexa00\/DEBT-043/);
-    assert.match(planRaw, /TODO: describe the intended change\./);
-  } finally {
-    __testing.paths.PLAN_PATH = originalPlanPath;
-    __testing.paths.PLAN_RECORDS_DIR = originalRecordsDir;
-  }
-});
+// COORD-295: the two ensurePlanStub tests (stale-stub no-overwrite + scaffold-record
+// seeding) moved to governance-plan-shape.test.js with the extracted service.
 
 test("appendReviewFollowupPlan seeds a canonical repair scaffold and compatibility block", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-review-scaffold-"));
@@ -877,179 +668,5 @@ test("appendReviewFollowupPlan preserves canonical evidence while resetting only
   } finally {
     __testing.paths.PLAN_PATH = originalPlanPath;
     __testing.paths.PLAN_RECORDS_DIR = originalRecordsDir;
-  }
-});
-
-test("GCV-3 slice 2: buildAutoSyncMessage is deterministic on (verb, ticket)", () => {
-  assert.equal(
-    __testing.buildAutoSyncMessage("land", "FE-385"),
-    "chore(coord): sync canonical derived artifacts (post-land FE-385)"
-  );
-  assert.equal(
-    __testing.buildAutoSyncMessage("finalize", "X-12"),
-    "chore(coord): sync canonical derived artifacts (post-finalize X-12)"
-  );
-  // Ticket-less form (verb only)
-  assert.equal(
-    __testing.buildAutoSyncMessage("mark-done", ""),
-    "chore(coord): sync canonical derived artifacts (post-mark-done)"
-  );
-  // Same inputs -> same string (determinism is the whole point).
-  assert.equal(
-    __testing.buildAutoSyncMessage("land", "FE-385"),
-    __testing.buildAutoSyncMessage("land", "FE-385")
-  );
-});
-
-test("GCV-3 slice 2: --no-sync skips autoSyncAfterLifecycle without invoking sync", () => {
-  let called = false;
-  const result = __testing.autoSyncAfterLifecycle({
-    verb: "land",
-    ticketId: "FE-385",
-    options: { noSync: true },
-    syncFn: () => {
-      called = true;
-      return { faked: true };
-    },
-  });
-  assert.equal(result.skipped, true);
-  assert.equal(result.reason, "--no-sync");
-  assert.equal(called, false, "--no-sync must not invoke the sync function");
-});
-
-test("GCV-3 slice 2: happy path invokes syncFn with the deterministic message + quiet:true", () => {
-  let captured = null;
-  const result = __testing.autoSyncAfterLifecycle({
-    verb: "land",
-    ticketId: "FE-385",
-    options: {},
-    syncFn: (opts) => {
-      captured = opts;
-      return { committed: true, message: opts.commit, delta: ["rendered/TASKS.md"] };
-    },
-  });
-  assert.equal(result.skipped, false);
-  assert.equal(result.failed, undefined);
-  assert.equal(
-    captured.commit,
-    "chore(coord): sync canonical derived artifacts (post-land FE-385)"
-  );
-  assert.equal(captured.quiet, true, "auto-trigger must run sync quietly");
-  assert.equal(result.result.committed, true);
-});
-
-test("COORD-196: autoSyncAfterLifecycle (every terminal boundary) passes includeBoardJson:true so the board row transition is committed atomically", () => {
-  let captured = null;
-  const result = __testing.autoSyncAfterLifecycle({
-    verb: "finalize",
-    ticketId: "COORD-196",
-    options: {},
-    syncFn: (opts) => {
-      captured = opts;
-      return { committed: true, message: opts.commit, delta: ["board/tasks.json", "rendered/TASKS.md"] };
-    },
-  });
-  assert.equal(result.skipped, false);
-  assert.equal(
-    captured.includeBoardJson,
-    true,
-    "terminal-boundary auto-sync must opt the canonical board json into the scope-limited sync commit"
-  );
-  assert.equal(captured.quiet, true);
-});
-
-test("ENT-001: push-on-finalize is OPT-IN — default does NOT push", () => {
-  let pushed = false;
-  const result = __testing.autoSyncAfterLifecycle({
-    verb: "finalize",
-    ticketId: "ENT-001",
-    options: {},
-    syncFn: () => ({ committed: true, delta: [".runtime/governance-events.ndjson"] }),
-    pushFn: () => {
-      pushed = true;
-      return { status: 0 };
-    },
-  });
-  assert.equal(pushed, false, "default behavior must not push");
-  assert.equal(result.push.pushed, false);
-  assert.equal(result.push.reason, "not-requested");
-});
-
-test("ENT-001: --push-after-sync pushes ONLY when the sync actually committed", () => {
-  let pushCalls = 0;
-  const pushFn = () => {
-    pushCalls += 1;
-    return { status: 0 };
-  };
-  const committed = __testing.autoSyncAfterLifecycle({
-    verb: "finalize",
-    ticketId: "ENT-001",
-    options: { pushAfterSync: true },
-    syncFn: () => ({ committed: true }),
-    pushFn,
-  });
-  assert.equal(committed.push.pushed, true);
-  assert.equal(pushCalls, 1);
-
-  const noCommit = __testing.autoSyncAfterLifecycle({
-    verb: "finalize",
-    ticketId: "ENT-001",
-    options: { pushAfterSync: true },
-    syncFn: () => ({ committed: false, note: "nothing to commit" }),
-    pushFn,
-  });
-  assert.equal(noCommit.push.pushed, false);
-  assert.equal(noCommit.push.reason, "no-commit-to-push");
-  assert.equal(pushCalls, 1, "a no-op sync must not push");
-});
-
-test("ENT-001: COORD_PUSH_ON_FINALIZE env enables push; pushOnFinalizeEnabled honors flag/env precedence", () => {
-  assert.equal(__testing.pushOnFinalizeEnabled({}), false);
-  assert.equal(__testing.pushOnFinalizeEnabled({ pushAfterSync: true }), true);
-  const prev = process.env.COORD_PUSH_ON_FINALIZE;
-  try {
-    process.env.COORD_PUSH_ON_FINALIZE = "1";
-    assert.equal(__testing.pushOnFinalizeEnabled({}), true);
-    process.env.COORD_PUSH_ON_FINALIZE = "0";
-    assert.equal(__testing.pushOnFinalizeEnabled({}), false);
-    process.env.COORD_PUSH_ON_FINALIZE = "false";
-    assert.equal(__testing.pushOnFinalizeEnabled({}), false);
-  } finally {
-    if (prev === undefined) delete process.env.COORD_PUSH_ON_FINALIZE;
-    else process.env.COORD_PUSH_ON_FINALIZE = prev;
-  }
-});
-
-test("ENT-001: push is best-effort — a missing upstream skips quietly, never throws", () => {
-  const result = __testing.pushAfterLifecycleSync({
-    verb: "finalize",
-    pushFn: () => ({ status: 1, stderr: "fatal: The current branch has no upstream branch." }),
-  });
-  assert.equal(result.pushed, false);
-  assert.equal(result.reason, "no-upstream-or-remote");
-  assert.equal(result.failed, undefined);
-});
-
-test("GCV-3 slice 2: best-effort — sync failure does NOT throw out (lifecycle action stays committed)", () => {
-  let warned = false;
-  const originalWarn = console.warn;
-  console.warn = () => {
-    warned = true;
-  };
-  try {
-    const result = __testing.autoSyncAfterLifecycle({
-      verb: "land",
-      ticketId: "FE-999",
-      options: {},
-      syncFn: () => {
-        throw new Error("simulated git failure during sync");
-      },
-    });
-    assert.equal(result.skipped, false);
-    assert.equal(result.failed, true);
-    assert.match(result.error, /simulated git failure/);
-    assert.equal(warned, true, "best-effort failures must emit a clear warning");
-  } finally {
-    console.warn = originalWarn;
   }
 });

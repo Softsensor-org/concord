@@ -18,6 +18,7 @@ const fs = require("fs");
 const path = require("path");
 const { GovernanceError, defaultFail, ROOT_DIR } = require("./governance-context.js");
 const { STATUS, FINDING_STATUS } = require("./governance-constants.js");
+const { stableIdempotencyKey } = require("./idempotency.js");
 
 module.exports = function createTicketTransitions(deps = {}) {
   const fail = deps.fail || defaultFail;
@@ -36,14 +37,19 @@ module.exports = function createTicketTransitions(deps = {}) {
     isLegalStatus,
     runBoardSync,
     runBoardValidate,
+    withBoardTransaction,
     withCoordStateLock,
     // journal-produced (must be wired after createJournal)
     withGovernanceMutation,
     inferTicketStatus,
     // identity / ownership
     resolveOwnerIdentity,
+    ensureCurrentAgentIdentity,
     ensureTicketMutationOwnership,
     assertTicketMutationOwnership,
+    detectColocatedForeignSessions,
+    buildColocatedForeignSessionMessage,
+    recordGovernanceCollision,
     // locks / worktrees
     findLockForTicket,
     resolveTicketLockPath,
@@ -94,6 +100,94 @@ module.exports = function createTicketTransitions(deps = {}) {
     integerOrDefault,
     isDoingStatus,
   } = deps;
+
+  // COORD-285: approval-gated intake. `proposed` tickets are machine-proposed
+  // debt that a human must triage before they become schedulable work. These
+  // verbs ride the board transaction path so create -> approve/reject remains a
+  // single-writer, journaled transition.
+  function approveTicket(ticketId, options = {}) {
+    const mutation = {
+      command: "approve",
+      ticket: ticketId,
+      beforeStatus: inferTicketStatus(ticketId),
+      idempotencyKey: stableIdempotencyKey("approve", ticketId, { owner: options.owner || null }),
+    };
+    return withBoardTransaction(mutation, ({ board }) => {
+      if (!ticketId) {
+        fail("approve requires <ticket-id>.");
+      }
+      const identity = options.owner
+        ? resolveOwnerIdentity(options.owner, { allowAutoClaim: false, touchSession: false })
+        : ensureCurrentAgentIdentity({ allowAutoClaim: false, touchSession: false });
+      mutation.identity = identity;
+
+      const ref = getTicketRef(board, ticketId);
+      if (!ref) {
+        fail(`Unknown ticket "${ticketId}".`);
+      }
+      if (ref.row.Status !== STATUS.PROPOSED) {
+        fail(
+          `approve only promotes a "proposed" ticket to todo; ${ticketId} is currently "${ref.row.Status}". ` +
+          `Nothing to approve.`
+        );
+      }
+
+      withCoordStateLock(() => {
+        applyTicketStatus(ref, STATUS.TODO);
+        writeBoard(board);
+        runBoardSync({ ignoreActiveTicketLockErrors: true });
+      });
+
+      mutation.afterStatus = STATUS.TODO;
+      mutation.details = { previous_status: STATUS.PROPOSED };
+      console.log(`Approved ${ticketId}: proposed -> todo. It is now schedulable work.`);
+    });
+  }
+
+  function rejectTicket(ticketId, options = {}) {
+    const reason = String(options.reason || "").trim();
+    const mutation = {
+      command: "reject",
+      ticket: ticketId,
+      beforeStatus: inferTicketStatus(ticketId),
+      idempotencyKey: stableIdempotencyKey("reject", ticketId, { reason: reason || null, owner: options.owner || null }),
+      details: { reason: reason || null },
+    };
+    return withBoardTransaction(mutation, ({ board }) => {
+      if (!ticketId) {
+        fail("reject requires <ticket-id>.");
+      }
+      if (!reason) {
+        fail('reject requires --reason "<why the proposal is declined>".');
+      }
+      const identity = options.owner
+        ? resolveOwnerIdentity(options.owner, { allowAutoClaim: false, touchSession: false })
+        : ensureCurrentAgentIdentity({ allowAutoClaim: false, touchSession: false });
+      mutation.identity = identity;
+
+      const ref = getTicketRef(board, ticketId);
+      if (!ref) {
+        fail(`Unknown ticket "${ticketId}".`);
+      }
+      if (ref.row.Status !== STATUS.PROPOSED) {
+        fail(
+          `reject only declines a "proposed" ticket (-> superseded); ${ticketId} is currently "${ref.row.Status}". ` +
+          `Use \`coord/scripts/gov supersede ${ticketId} --reason "<why>"\` to retire non-proposed work.`
+        );
+      }
+
+      withCoordStateLock(() => {
+        applyTicketStatus(ref, STATUS.SUPERSEDED);
+        ref.row["Supersede Reason"] = reason;
+        writeBoard(board);
+        runBoardSync({ ignoreActiveTicketLockErrors: true });
+      });
+
+      mutation.afterStatus = STATUS.SUPERSEDED;
+      mutation.details = { previous_status: STATUS.PROPOSED, reason };
+      console.log(`Rejected ${ticketId}: proposed -> superseded. Reason: ${reason}`);
+    });
+  }
 
   function submitTicket(ticketId, options) {
     if (!ticketId) {
@@ -161,6 +255,12 @@ module.exports = function createTicketTransitions(deps = {}) {
       command: "mark-done",
       ticket: ticketId,
       beforeStatus: inferTicketStatus(ticketId),
+      idempotencyKey: stableIdempotencyKey("mark-done", ticketId, {
+        landed: options.landed || null,
+        sourceCommit: options.sourceCommit || null,
+        fulfilledByTicket: options.fulfilledByTicket || null,
+        fulfilledByCommit: options.fulfilledByCommit || null,
+      }),
     };
     return withGovernanceMutation(mutation, () => {
       if (!ticketId) {
@@ -187,6 +287,11 @@ module.exports = function createTicketTransitions(deps = {}) {
       command: "supersede",
       ticket: ticketId,
       beforeStatus: inferTicketStatus(ticketId),
+      idempotencyKey: stableIdempotencyKey("supersede", ticketId, {
+        reason: options.reason || null,
+        consolidatedInto: options.consolidatedInto || null,
+        deleteBranch: Boolean(options.deleteBranch),
+      }),
       details: {
         reason: options.reason || null,
         consolidated_into: options.consolidatedInto || null,
@@ -273,11 +378,16 @@ module.exports = function createTicketTransitions(deps = {}) {
     console.log(`Marked ${ticketId} review -> done and synced board artifacts.`);
   }
 
-  function moveReview(ticketId, options) {
+  function moveReview(ticketId, options = {}) {
     const mutation = {
       command: "move-review",
       ticket: ticketId,
       beforeStatus: inferTicketStatus(ticketId),
+      idempotencyKey: stableIdempotencyKey("move-review", ticketId, {
+        pr: toArray(options.pr),
+        alreadyLanded: Boolean(options.alreadyLanded),
+        noPr: Boolean(options.noPr),
+      }),
     };
     return withGovernanceMutation(mutation, () => {
       if (!ticketId) {
@@ -336,6 +446,12 @@ module.exports = function createTicketTransitions(deps = {}) {
       command: "return-doing",
       ticket: ticketId,
       beforeStatus: inferTicketStatus(ticketId),
+      idempotencyKey: stableIdempotencyKey("return-doing", ticketId, {
+        summary: options.summary || null,
+        severity: options.severity || null,
+        qref: options.qref || null,
+        round: options.round || null,
+      }),
     };
     return withGovernanceMutation(mutation, () => {
       if (!ticketId) {
@@ -410,6 +526,14 @@ module.exports = function createTicketTransitions(deps = {}) {
       command: "start",
       ticket: ticketId,
       beforeStatus: inferTicketStatus(ticketId),
+      idempotencyKey: stableIdempotencyKey("start", ticketId, {
+        owner: options.owner || null,
+        branch: options.branch || null,
+        worktree: options.worktree || null,
+        topic: options.topic || null,
+        base: options.base || null,
+        allowSharedWorktree: Boolean(options.allowSharedWorktree),
+      }),
     };
     return withGovernanceMutation(mutation, () => {
       if (!ticketId) {
@@ -419,12 +543,51 @@ module.exports = function createTicketTransitions(deps = {}) {
       mutation.identity = identity;
       const owner = identity.agent.handle;
 
+      // COORD-222: enforce the documented "one governed writer per
+      // checkout/runtime" rule in CODE. Before binding a NEW ticket, refuse if
+      // another heartbeat-fresh governed session is already bound to this runtime
+      // on a different thread (a co-located second writer would interleave writes
+      // into the hash-chained journal). The caller's own session never trips this,
+      // so the common lone-session start is frictionless. An operator deliberately
+      // running the orchestrator-spawns-N-subagents topology passes
+      // --allow-shared-worktree to proceed.
+      if (options.allowSharedWorktree !== true) {
+        const currentThreadId = identity.session?.thread_id || undefined;
+        const colocated = detectColocatedForeignSessions(
+          currentThreadId !== undefined ? { currentThreadId } : {},
+        );
+        if (colocated.present) {
+          // COORD-223: journal the co-located-session refusal as an auditable
+          // collision so the contending sessions are queryable after the process exits.
+          recordGovernanceCollision({
+            ticket: ticketId,
+            conflictType: "co-located-session",
+            verb: "start",
+            identity,
+            contenders: colocated.foreign_sessions,
+            extra: { current_thread_id: colocated.current_thread_id },
+          });
+          fail(buildColocatedForeignSessionMessage("start", colocated));
+        }
+      }
+
       const board = readBoard();
       const ref = getTicketRef(board, ticketId);
       if (!ref) {
         fail(`Unknown ticket "${ticketId}".`);
       }
 
+      // COORD-285: a `proposed` ticket is quarantined intake — it must be
+      // human-accepted (`gov approve` -> todo) before any work begins. Fail
+      // closed with a message that directs the operator to the approve verb
+      // instead of the generic ownership-race message.
+      if (ref.row.Status === STATUS.PROPOSED) {
+        fail(
+          `Ticket ${ticketId} is "proposed" (machine-proposed debt awaiting human triage); ` +
+          `it cannot be started directly. Run \`coord/scripts/gov approve ${ticketId}\` to promote it ` +
+          `to todo first, or \`coord/scripts/gov reject ${ticketId} --reason "<why>"\` to decline it.`
+        );
+      }
       if (![STATUS.TODO, STATUS.DEFERRED].includes(ref.row.Status)) {
         fail(buildStartOwnershipRaceMessage(ticketId, ref.row));
       }
@@ -495,6 +658,16 @@ module.exports = function createTicketTransitions(deps = {}) {
         defaultWorktreePath(repoCode, owner, ticketId);
       const lockPath = resolveTicketLockPath(ticketId, { promoteLegacy: true });
       if (fs.existsSync(lockPath)) {
+        // COORD-223: a per-ticket lock already exists — a second writer is fencing
+        // against an in-flight owner. Journal the contended lock as an auditable
+        // collision before refusing.
+        recordGovernanceCollision({
+          ticket: ticketId,
+          conflictType: "stale-write-fence",
+          verb: "start",
+          identity,
+          contenders: [{ ticket_id: ticketId, lock_path: path.relative(ROOT_DIR, lockPath), contender_owner: owner }],
+        });
         fail(`Lock file already exists for ${ticketId}: ${path.relative(ROOT_DIR, lockPath)}`);
       }
       const repoName = repoNameForCode(repoCode);
@@ -525,6 +698,9 @@ module.exports = function createTicketTransitions(deps = {}) {
       command: "block",
       ticket: ticketId,
       beforeStatus: inferTicketStatus(ticketId),
+      idempotencyKey: stableIdempotencyKey("block", ticketId, {
+        reason: options.reason || null,
+      }),
     };
     return withGovernanceMutation(mutation, () => {
       if (!ticketId) {
@@ -575,6 +751,7 @@ module.exports = function createTicketTransitions(deps = {}) {
       command: "unblock",
       ticket: ticketId,
       beforeStatus: inferTicketStatus(ticketId),
+      idempotencyKey: stableIdempotencyKey("unblock", ticketId),
     };
     return withGovernanceMutation(mutation, () => {
       if (!ticketId) {
@@ -636,6 +813,8 @@ module.exports = function createTicketTransitions(deps = {}) {
   }
 
   return {
+    approveTicket,
+    rejectTicket,
     startTicket,
     submitTicket,
     moveReview,

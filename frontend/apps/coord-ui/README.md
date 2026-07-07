@@ -14,15 +14,27 @@ sync by `coord/scripts/coord-ui-nav-readme-sync.test.js`.
 - `/agents` — agent/session liveness
 - `/timeline` — event log viewer
 - `/gates` — gate artifact summaries
+- `/tracks` — read-only multi-track governance profile: development, marketing, devops, product-engineering, and data-analytics tracks; gate procs, lanes, operators, prefixes, skills, required artifacts, risk-class evidence thresholds, data-contract/DQ/reconciliation checks, and bootstrap/backfill overlay
 - `/quality` — code-quality / architecture-check cockpit (per-repo scope)
+- `/triage` — read-only review queue of `proposed` tickets (machine-proposed debt awaiting approval): id, title, type/priority, finding/`[qkey:…]` marker, and suggested fix, with copyable `gov approve`/`gov reject` CLI hints. Display only — the cockpit never approves, rejects, or mutates governance state (SEC-001/002).
 - `/dispatch` — agent dispatch queue and next-command guidance
 - `/tests` — testing maturity and evidence
 - `/health` — derived governance health
+- `/onboarding` — guided read-only onboarding cockpit: "ready for governed work?" verdict plus a step checklist (init workspace, map repos, setup decisions, run readiness, file first tickets) with copyable gov commands, coord setup checks, pilot blockers, and suggested first tickets (never mutates)
+- `/readiness` — read-only adoption/readiness cockpit from `coord/.runtime/readiness-report.json`
 - `/runtime` — runtime snapshot, locks, and live-session state
 - `/pipeline` — landing and PR pipeline
 - `/urs` — configured requirements document
 - `/configuration` — read-only config-as-code view (current config + the governed command to change each setting)
 - `/screens` — screen/requirement index and unlinked-requirement worklist
+- `/requirements` — read-only requirements-assurance index: the assurance views, each view's data-source availability, missing sources, and the copyable command to (re)generate it (complements `/urs` and `/screens`)
+- `/requirements/[slug]` — read-only requirements-assurance drill-down for each contract-named cockpit view (`sources`, `profile`, `traceability`, `conformance`, `surfaces`, `domain-boundary`, `workflows`, `donor-reuse`, `generalization`, `deviations-waivers`, `controlled-documents`, `sequencing`, `stale-impact`): declared source artifacts, missing runtime inputs, and the exact copyable regeneration command
+- `/adrs` — read-only ADR (decision-record) cockpit: decision coverage, status mix, linked tickets/requirements, affected scope, supersession chains, revisit triggers, and non-terminal decision-required tickets missing an accepted ADR
+- `/continuity` — read-only continuity readout: the defined warm-start/cold-finish object shapes (from the engine contract), plan-record + journal coverage, and an honest adoption note (today: shapes defined, no records yet)
+- `/discovery` — read-only self-learning knowledge extraction: what coord discovered from the existing repo (facts with confidence, sources, context graph, evidence-by-authority, decisions/workarounds/preservation candidates, and open questions awaiting human acceptance) from the persisted business-discovery synthesis; advisory/derived, never authority
+- `/knowledge` — read-only memory / knowledge-compiler cockpit: continuity ladder, current memory substrate counts, classification scopes, derived-index warnings, eval benchmark command, vector role, and the observed facts feeding future context packs; memory recommends, governance decides
+- `/insights` — read-only strategic-execution insights mined from real history (repeated failure themes, architectural debt by subsystem, churn-instead-of-value, gate/review/recovery health by repo) via the gov insights report; recommends-only, never authority
+- `/human-agent` — read-only human-agent platform cockpit: governed human-write path, requirements draft/feedback intents, proposal-only grooming pipeline, product-screen feedback bridge, loop orchestration, evidence return, hosted control-plane readiness, and the writer seam that keeps business-user input on the coord verb layer
 - `/traceability` — closure and feature-proof traceability
 - `/evidence` — exported evidence bundles and conformance artifacts
 - `/live-mcp` — read-only live-MCP cockpit (per-ticket adapter, environment, operation class, approval/redaction/receipt/cleanup/promotion status + unresolved closeout blockers; viewer sees redacted summaries, operator/admin see operational detail)
@@ -37,7 +49,13 @@ sync by `coord/scripts/coord-ui-nav-readme-sync.test.js`.
 ## Run locally
 
 The app is a standalone Next.js 15 / React 19 project (no workspace tooling
-required). From this directory:
+required). From the repository root, launch the bundled demo with:
+
+```bash
+npm --prefix frontend/apps/coord-ui install && npm --prefix frontend/apps/coord-ui run demo
+```
+
+For normal local development from this directory:
 
 ```bash
 npm install
@@ -118,6 +136,29 @@ All under `COORD_DIR`:
   `board/plans`; missing files render as empty states.
 - Gate artifacts: `<repo>/artifacts/gates/<lane>.latest.json`
 - `.runtime/screen-index.json` — derived screen/requirement index
+- `.runtime/readiness-report.json` — generated adoption/readiness report for the
+  `/readiness` cockpit. Generate it outside the UI with
+  `coord/scripts/coord doctor --dir . --json --output coord/.runtime/readiness-report.json`.
+- `product/demo/requirements-cockpit-demo.json` — public-safe requirements
+  cockpit demo payload. It illustrates coverage, persona blockers, screen
+  links, donor-derived provenance, stale impacts, and ticket/evidence closeout
+  over an existing repo plus existing URS. It is not canonical requirements
+  evidence.
+
+## Requirements cockpit demo
+
+The reusable requirements cockpit story is documented and data-backed without
+making the web tier a writer:
+
+- `coord requirements-cockpit-model --json` lists requirement cockpit views,
+  source artifacts, copyable commands, and whether the demo payload exists.
+- `coord/product/demo/requirements-cockpit-demo.json` is the public-safe demo
+  payload for walkthroughs.
+- Demo rows keep explicit and inferred links separate.
+- Donor/legacy provenance is represented as scrubbed summaries or
+  `private://` pointers only.
+- Stale-impact and ticket/evidence closeout examples are illustrative unless
+  regenerated from live project artifacts.
 
 ## Access control & deployment modes (SEC-001)
 

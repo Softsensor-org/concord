@@ -57,6 +57,7 @@ module.exports = function createPlanRecords(deps = {}) {
     "change_summary",
     "verification_commands",
     "critical_invariants",
+    "adr_refs",
     "requirement_closure",
     "feature_proof",
     "repo_gates",
@@ -210,11 +211,65 @@ module.exports = function createPlanRecords(deps = {}) {
     return undefined;
   }
 
+  function readPlanDecisionRequiredField(block) {
+    const values = readPlanListField(block, "Decision required");
+    const encoded = values.find((value) => String(value || "").trim());
+    if (!encoded) {
+      return undefined;
+    }
+    try {
+      const parsed = JSON.parse(encoded);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch (error) {
+      fail(`Could not parse plan record "Decision required" JSON line: ${error.message}`);
+    }
+    return undefined;
+  }
+
+  function readPlanContextPackAckField(block) {
+    const values = readPlanListField(block, "Context pack acknowledgement");
+    const encoded = values.find((value) => String(value || "").trim());
+    if (!encoded) {
+      return undefined;
+    }
+    try {
+      const parsed = JSON.parse(encoded);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch (error) {
+      fail(`Could not parse plan record "Context pack acknowledgement" JSON line: ${error.message}`);
+    }
+    return undefined;
+  }
+
+  function readPlanGatePlanField(block) {
+    const values = readPlanListField(block, "Gate plan");
+    const encoded = values.find((value) => String(value || "").trim());
+    if (!encoded) {
+      return undefined;
+    }
+    try {
+      const parsed = JSON.parse(encoded);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch (error) {
+      fail(`Could not parse plan record "Gate plan" JSON line: ${error.message}`);
+    }
+    return undefined;
+  }
+
   function parsePlanBlockToRecord(ticketId, block) {
     const repoCode = resolveRepoCodeForTicket(ticketId);
     const heading = String(block || "").split("\n")[0] || `## ${ticketId}`;
     const bootstrapRisk = readPlanBootstrapRiskField(block);
     const liveMcp = readPlanLiveMcpField(block);
+    const decisionRequired = readPlanDecisionRequiredField(block);
+    const contextPackAck = readPlanContextPackAckField(block);
+    const gatePlan = readPlanGatePlanField(block);
     return {
       schema_version: 1,
       ticket_id: ticketId,
@@ -229,6 +284,7 @@ module.exports = function createPlanRecords(deps = {}) {
       change_summary: readPlanListField(block, "Change summary"),
       verification_commands: readPlanListField(block, "Verification commands").map(stripMarkdownCodeTicks),
       critical_invariants: readPlanListField(block, "Critical invariants"),
+      adr_refs: readPlanListField(block, "ADR refs").map(stripMarkdownCodeTicks),
       requirement_closure: readPlanListField(block, "Requirement closure"),
       feature_proof: readPlanListField(block, "Feature proof"),
       repo_gates: readPlanListField(block, "Repo gates").map(stripMarkdownCodeTicks),
@@ -249,6 +305,9 @@ module.exports = function createPlanRecords(deps = {}) {
       rollback_strategy: readPlanListField(block, "Rollback strategy"),
       ...(bootstrapRisk !== undefined ? { bootstrap_risk: bootstrapRisk } : {}),
       ...(liveMcp !== undefined ? { live_mcp: liveMcp } : {}),
+      ...(decisionRequired !== undefined ? { decision_required: decisionRequired } : {}),
+      ...(contextPackAck !== undefined ? { context_pack_ack: contextPackAck } : {}),
+      ...(gatePlan !== undefined ? { gate_plan: gatePlan } : {}),
       security_surface: readPlanScalarField(block, "Security surface"),
       synced_from_markdown_at: new Date().toISOString(),
     };
@@ -312,6 +371,7 @@ module.exports = function createPlanRecords(deps = {}) {
     pushPlanListSection(lines, "Change summary", record.change_summary || []);
     pushPlanListSection(lines, "Verification commands", record.verification_commands || [], (value) => `\`${value}\``);
     pushPlanListSection(lines, "Critical invariants", record.critical_invariants || []);
+    pushPlanListSection(lines, "ADR refs", record.adr_refs || [], (value) => `\`${value}\``);
     pushPlanListSection(lines, "Requirement closure", record.requirement_closure || []);
     pushPlanListSection(lines, "Feature proof", record.feature_proof || []);
     pushPlanListSection(lines, "Repo gates", record.repo_gates || []);
@@ -336,6 +396,18 @@ module.exports = function createPlanRecords(deps = {}) {
     if (record.live_mcp !== undefined && record.live_mcp !== null) {
       lines.push("- Live-MCP:");
       lines.push(`  - ${JSON.stringify(record.live_mcp)}`);
+    }
+    if (record.decision_required !== undefined && record.decision_required !== null) {
+      lines.push("- Decision required:");
+      lines.push(`  - ${JSON.stringify(record.decision_required)}`);
+    }
+    if (record.context_pack_ack !== undefined && record.context_pack_ack !== null) {
+      lines.push("- Context pack acknowledgement:");
+      lines.push(`  - ${JSON.stringify(record.context_pack_ack)}`);
+    }
+    if (record.gate_plan !== undefined && record.gate_plan !== null) {
+      lines.push("- Gate plan:");
+      lines.push(`  - ${JSON.stringify(record.gate_plan)}`);
     }
     lines.push("- Security surface:");
     if (record.security_surface !== null && record.security_surface !== undefined && String(record.security_surface).trim()) {
@@ -379,6 +451,7 @@ module.exports = function createPlanRecords(deps = {}) {
       "change_summary",
       "verification_commands",
       "critical_invariants",
+      "adr_refs",
       "requirement_closure",
       "feature_proof",
       "repo_gates",
@@ -386,6 +459,9 @@ module.exports = function createPlanRecords(deps = {}) {
       "rollback_strategy",
       "bootstrap_risk",
       "live_mcp",
+      "decision_required",
+      "context_pack_ack",
+      "gate_plan",
       "security_surface",
       "synced_from_markdown_at",
     ]);
@@ -412,6 +488,7 @@ module.exports = function createPlanRecords(deps = {}) {
       "change_summary",
       "verification_commands",
       "critical_invariants",
+      "adr_refs",
       "requirement_closure",
       "feature_proof",
       "repo_gates",
@@ -518,6 +595,187 @@ module.exports = function createPlanRecords(deps = {}) {
     }
     if (record.live_mcp !== undefined) {
       assertValidLiveMcp(record.live_mcp);
+    }
+    if (record.decision_required !== undefined) {
+      assertValidDecisionRequired(record.decision_required);
+    }
+    if (record.context_pack_ack !== undefined) {
+      assertValidContextPackAck(record.context_pack_ack);
+    }
+    if (
+      record.gate_plan !== undefined &&
+      (
+        !record.gate_plan ||
+        typeof record.gate_plan !== "object" ||
+        Array.isArray(record.gate_plan)
+      )
+    ) {
+      fail('Plan record field "gate_plan" must be an object when present.');
+    }
+  }
+
+  const CONTEXT_PACK_ACK_ALLOWED_KEYS = new Set([
+    "refs",
+    "considered",
+    "authority",
+    "closeout_learning",
+    "notes",
+  ]);
+  const CONTEXT_PACK_ACK_CONSIDERED_KEYS = new Set([
+    "active_constraints",
+    "adrs",
+    "business_rules",
+    "conflicts",
+    "stale_warnings",
+    "open_questions",
+  ]);
+  const CONTEXT_PACK_ACK_AUTHORITY_KEYS = new Set([
+    "constraints",
+    "advisory_only",
+    "rejected_authority",
+  ]);
+  const CONTEXT_PACK_ACK_CLOSEOUT_KEYS = new Set([
+    "decision",
+    "promote",
+    "demote",
+    "scratch_only",
+    "rationale",
+  ]);
+  const CONTEXT_PACK_ACK_CLOSEOUT_DECISIONS = new Set([
+    "promote",
+    "demote",
+    "scratch-only",
+    "mixed",
+    "none",
+  ]);
+
+  function assertStringArrayOrString(value, fieldName) {
+    if (typeof value === "string") {
+      return;
+    }
+    if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) {
+      return;
+    }
+    fail(`Plan record context_pack_ack.${fieldName} must be a string or an array of strings.`);
+  }
+
+  function assertObjectWithAllowedKeys(value, fieldName, allowedKeys) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      fail(`Plan record context_pack_ack.${fieldName} must be an object when present.`);
+    }
+    for (const key of Object.keys(value)) {
+      if (!allowedKeys.has(key)) {
+        fail(`Plan record context_pack_ack.${fieldName} contains unknown field "${key}".`);
+      }
+    }
+  }
+
+  function assertValidContextPackAck(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      fail('Plan record field "context_pack_ack" must be an object when present.');
+    }
+    for (const key of Object.keys(value)) {
+      if (!CONTEXT_PACK_ACK_ALLOWED_KEYS.has(key)) {
+        fail(`Plan record context_pack_ack contains unknown field "${key}".`);
+      }
+    }
+    if (
+      value.refs !== undefined &&
+      (
+        !Array.isArray(value.refs) ||
+        value.refs.some((entry) => typeof entry !== "string")
+      )
+    ) {
+      fail("Plan record context_pack_ack.refs must be an array of strings when present.");
+    }
+    if (value.considered !== undefined) {
+      assertObjectWithAllowedKeys(value.considered, "considered", CONTEXT_PACK_ACK_CONSIDERED_KEYS);
+      for (const key of Object.keys(value.considered)) {
+        assertStringArrayOrString(value.considered[key], `considered.${key}`);
+      }
+    }
+    if (value.authority !== undefined) {
+      assertObjectWithAllowedKeys(value.authority, "authority", CONTEXT_PACK_ACK_AUTHORITY_KEYS);
+      for (const key of Object.keys(value.authority)) {
+        assertStringArrayOrString(value.authority[key], `authority.${key}`);
+      }
+    }
+    if (value.closeout_learning !== undefined) {
+      assertObjectWithAllowedKeys(value.closeout_learning, "closeout_learning", CONTEXT_PACK_ACK_CLOSEOUT_KEYS);
+      if (
+        value.closeout_learning.decision !== undefined &&
+        !CONTEXT_PACK_ACK_CLOSEOUT_DECISIONS.has(String(value.closeout_learning.decision))
+      ) {
+        fail(`Plan record context_pack_ack.closeout_learning.decision must be one of ${[...CONTEXT_PACK_ACK_CLOSEOUT_DECISIONS].join(", ")}.`);
+      }
+      for (const key of ["promote", "demote", "scratch_only"]) {
+        if (
+          value.closeout_learning[key] !== undefined &&
+          (
+            !Array.isArray(value.closeout_learning[key]) ||
+            value.closeout_learning[key].some((entry) => typeof entry !== "string")
+          )
+        ) {
+          fail(`Plan record context_pack_ack.closeout_learning.${key} must be an array of strings when present.`);
+        }
+      }
+      if (
+        value.closeout_learning.rationale !== undefined &&
+        value.closeout_learning.rationale !== null &&
+        typeof value.closeout_learning.rationale !== "string"
+      ) {
+        fail("Plan record context_pack_ack.closeout_learning.rationale must be a string or null when present.");
+      }
+    }
+    if (value.notes !== undefined) {
+      assertStringArrayOrString(value.notes, "notes");
+    }
+  }
+
+  const DECISION_REQUIRED_STATUSES = new Set(["required", "not-required", "waived", "investigating", "deferred"]);
+  const DECISION_REQUIRED_ALLOWED_KEYS = new Set([
+    "required",
+    "status",
+    "reason",
+    "risk_class",
+    "waiver",
+    "owner",
+    "expires",
+    "adr_refs",
+  ]);
+
+  function assertValidDecisionRequired(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      fail('Plan record field "decision_required" must be an object when present.');
+    }
+    for (const key of Object.keys(value)) {
+      if (!DECISION_REQUIRED_ALLOWED_KEYS.has(key)) {
+        fail(`Plan record decision_required contains unknown field "${key}".`);
+      }
+    }
+    if (value.required !== undefined && typeof value.required !== "boolean") {
+      fail('Plan record decision_required.required must be a boolean when present.');
+    }
+    if (
+      value.status !== undefined &&
+      value.status !== null &&
+      !DECISION_REQUIRED_STATUSES.has(String(value.status))
+    ) {
+      fail(`Plan record decision_required.status must be one of ${[...DECISION_REQUIRED_STATUSES].join(", ")}.`);
+    }
+    for (const key of ["reason", "risk_class", "waiver", "owner", "expires"]) {
+      if (value[key] !== undefined && value[key] !== null && typeof value[key] !== "string") {
+        fail(`Plan record decision_required.${key} must be a string or null when present.`);
+      }
+    }
+    if (
+      value.adr_refs !== undefined &&
+      (
+        !Array.isArray(value.adr_refs) ||
+        value.adr_refs.some((entry) => typeof entry !== "string")
+      )
+    ) {
+      fail('Plan record decision_required.adr_refs must be an array of strings when present.');
     }
   }
 
@@ -714,22 +972,48 @@ module.exports = function createPlanRecords(deps = {}) {
       readFromCanonical
         ? (typeof record?.[BOARD_RAW_SYMBOL] === "string" ? record[BOARD_RAW_SYMBOL] : fs.readFileSync(filePath, "utf8"))
         : (fs.existsSync(canonicalPath) ? fs.readFileSync(canonicalPath, "utf8") : "");
+    const { record: normalized } = normalizeLegacyPlanRecordShape(ticketId, record);
+    assertValidPlanRecord(normalized);
+    // COORD-373: reads are PURE. Normalization happens IN MEMORY and is returned,
+    // but a read NEVER persists — migrating a legacy/under-normalized record forward
+    // is an EXPLICIT store operation (repairPlanRecord), not a hidden side effect of
+    // reading. This removes the read-that-writes hazard (COORD-371/372) by
+    // construction: readPlanRecord has no write path. We still track the canonical
+    // write target's current raw so a caller passing BOARD_RAW_SYMBOL as
+    // `expectedRaw` compares against the file it will write (when the record was
+    // read from a legacy path, the not-yet-created runtime file is "").
+    attachTrackedRaw(normalized, BOARD_RAW_SYMBOL, canonicalRawNow());
+    return normalized;
+  }
+
+  // COORD-373: the EXPLICIT migration/repair that was formerly a hidden side effect
+  // of readPlanRecord. Reads a record, normalizes it, and PERSISTS the normalized
+  // form ONLY if it changed (migrating off the legacy path forward). This is the
+  // sole sanctioned read->write path; callers/doctor invoke it deliberately. Returns
+  // { record, changed, persisted } (null when the record is absent).
+  function repairPlanRecord(ticketId, options = {}) {
+    const filePath = options.recordsDir
+      ? planRecordPath(ticketId, options.recordsDir)
+      : resolvePlanRecordReadPath(ticketId);
+    const record = readCanonicalJsonFile(filePath, { allowMissing: options.allowMissing });
+    if (!record) {
+      return null;
+    }
+    const canonicalPath = options.recordsDir ? filePath : planRecordPath(ticketId);
+    const readFromCanonical = canonicalPath === filePath;
+    const canonicalRawNow = () =>
+      readFromCanonical
+        ? (typeof record?.[BOARD_RAW_SYMBOL] === "string" ? record[BOARD_RAW_SYMBOL] : fs.readFileSync(filePath, "utf8"))
+        : (fs.existsSync(canonicalPath) ? fs.readFileSync(canonicalPath, "utf8") : "");
     const { record: normalized, changed } = normalizeLegacyPlanRecordShape(ticketId, record);
     assertValidPlanRecord(normalized);
-    if (changed && !options.skipRepairWrite) {
-      // Repair-writes always land in the runtime location so the canonical copy
-      // migrates forward off the legacy (tracked) path during transition.
+    if (changed) {
       writeCanonicalJsonFile(canonicalPath, normalized, { expectedRaw: canonicalRawNow() });
       attachTrackedRaw(normalized, BOARD_RAW_SYMBOL, `${JSON.stringify(normalized, null, 2)}\n`);
     } else {
-      // No repair-write was performed (record already normalized, or the caller
-      // asked to skip it). Track the canonical write target's current raw so a
-      // caller passing BOARD_RAW_SYMBOL as `expectedRaw` compares against the
-      // file it will write — which, when the record was read from a legacy path,
-      // is a not-yet-created runtime file ("").
       attachTrackedRaw(normalized, BOARD_RAW_SYMBOL, canonicalRawNow());
     }
-    return normalized;
+    return { record: normalized, changed, persisted: changed };
   }
   
   function synthesizeHistoricalPlanRecord(ticketId, row, board) {
@@ -782,6 +1066,7 @@ module.exports = function createPlanRecords(deps = {}) {
         "Backfill must remain idempotent so reruns do not duplicate or weaken canonical ticket history.",
         "Synthesized records must preserve available PR, landing, and finding references from board state.",
       ],
+      adr_refs: [],
       requirement_closure: [
         "Ticket ask: historical backfill from surviving board/task text",
         "Implemented: synthesized canonical plan record from surviving governance evidence",
@@ -825,12 +1110,21 @@ module.exports = function createPlanRecords(deps = {}) {
   
   function syncPlanRecordFromBlock(ticketId, block, recordsDir = state.PLAN_RECORDS_DIR) {
     const filePath = planRecordPath(ticketId, recordsDir);
+    // COORD-373: canonical JSON is the AUTHORITY; the PLAN.md block is a derived
+    // VIEW. When a canonical record already exists, do NOT replace it from a
+    // (possibly narrower / older-schema) markdown block — that round-trip silently
+    // drops JSON-only or newer-schema fields (markdown_heading, startup_checklist,
+    // traceability_gate, ...). Markdown-sync only BOOTSTRAPS a record when none
+    // exists yet; every current caller invokes it precisely in that case.
+    if (fs.existsSync(filePath)) {
+      const existing = readCanonicalJsonFile(filePath, { allowMissing: true });
+      if (existing && typeof existing === "object") {
+        return;
+      }
+    }
     const nextRecord = parsePlanBlockToRecord(ticketId, block);
     assertValidPlanRecord(nextRecord);
-    const currentRaw = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
-    writeCanonicalJsonFile(filePath, nextRecord, {
-      expectedRaw: currentRaw,
-    });
+    writeCanonicalJsonFile(filePath, nextRecord, { expectedRaw: "" });
   }
   
   function readPlanState(ticketId) {
@@ -1282,6 +1576,67 @@ module.exports = function createPlanRecords(deps = {}) {
     for (const file of toArray(options.files)) {
       appendListValue("intended_files", file);
     }
+    for (const adrRef of toArray(options.adrRef)) {
+      appendListValue("adr_refs", adrRef);
+    }
+    if (options.decisionRequired !== undefined) {
+      const raw = String(options.decisionRequired || "").trim();
+      if (!raw || raw.toLowerCase() === "none") {
+        delete nextRecord.decision_required;
+      } else {
+        let parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch (error) {
+          fail(`--decision-required expects a JSON object (or "none"): ${error.message}`);
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          fail('--decision-required expects a JSON object (or "none").');
+        }
+        nextRecord.decision_required = parsed;
+      }
+    }
+    if (options.contextPackAck !== undefined) {
+      const raw = String(options.contextPackAck || "").trim();
+      if (!raw || raw.toLowerCase() === "none") {
+        delete nextRecord.context_pack_ack;
+      } else {
+        let parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch (error) {
+          fail(`--context-pack-ack expects a JSON object (or "none"): ${error.message}`);
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          fail('--context-pack-ack expects a JSON object (or "none").');
+        }
+        nextRecord.context_pack_ack = parsed;
+      }
+    }
+    if (options.gatePlan !== undefined) {
+      const raw = typeof options.gatePlan === "string"
+        ? String(options.gatePlan || "").trim()
+        : options.gatePlan;
+      if (!raw || (typeof raw === "string" && raw.toLowerCase() === "none")) {
+        delete nextRecord.gate_plan;
+      } else if (typeof raw === "string") {
+        let parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch (error) {
+          fail(`--gate-plan expects a JSON object (or "none"): ${error.message}`);
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          fail('--gate-plan expects a JSON object (or "none").');
+        }
+        nextRecord.gate_plan = parsed;
+      } else {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+          fail('gatePlan update expects a JSON object (or "none").');
+        }
+        nextRecord.gate_plan = raw;
+      }
+    }
     if (options.security) {
       nextRecord.security_surface = String(options.security).trim();
     }
@@ -1316,6 +1671,16 @@ module.exports = function createPlanRecords(deps = {}) {
     }
     for (const item of toArray(options.invariant)) {
       appendListValue("critical_invariants", item);
+    }
+    // COORD-198: --supersede (replaceClosure) REPLACES the prior
+    // requirement_closure block instead of appending. requirement_closure is
+    // append-only by default; a re-closure otherwise accumulates contradictory
+    // blocks (e.g. a superseded "Closeout verdict: partial" alongside the newer
+    // "Closeout verdict: complete"). The derived verdict/debt read uses recency
+    // so the contradiction is harmless, but --supersede keeps the record clean.
+    if (options.replaceClosure === true && toArray(options.closure).length > 0) {
+      nextRecord.requirement_closure = [];
+      writePlanRecordScaffoldPlaceholders(nextRecord, "requirement_closure", []);
     }
     for (const item of toArray(options.closure)) {
       validateRequirementClosureEntry(item);
@@ -1651,6 +2016,28 @@ module.exports = function createPlanRecords(deps = {}) {
     return intendedFiles.every((value) => value === "coord" || value.startsWith("coord/"));
   }
 
+  function listPlanRecordIds(recordsDir = state.PLAN_RECORDS_DIR) {
+    if (!fs.existsSync(recordsDir)) {
+      return [];
+    }
+    return fs.readdirSync(recordsDir)
+      .filter((name) => /^[A-Z]+-\d+\.json$/.test(name))
+      .map((name) => name.replace(/\.json$/, ""))
+      .sort();
+  }
+
+  function readPlanRecordsReadonly(options = {}) {
+    const recordsDir = options.recordsDir || state.PLAN_RECORDS_DIR;
+    return listPlanRecordIds(recordsDir)
+      .map((ticketId) => readPlanRecord(ticketId, {
+        recordsDir,
+        allowMissing: true,
+        skipRepairWrite: true,
+      }))
+      .filter(Boolean)
+      .sort((a, b) => String(a.ticket_id || "").localeCompare(String(b.ticket_id || "")));
+  }
+
   return {
     legacyPlanRecordDefaults,
     normalizeLegacyPlanRecordShape,
@@ -1666,6 +2053,7 @@ module.exports = function createPlanRecords(deps = {}) {
     appendPlanBlock,
     assertValidPlanRecord,
     readPlanRecord,
+    repairPlanRecord,
     synthesizeHistoricalPlanRecord,
     syncPlanRecordFromBlock,
     readPlanState,
@@ -1699,5 +2087,7 @@ module.exports = function createPlanRecords(deps = {}) {
     isPlanSectionBoundary,
     normalizePlanPathValue,
     planTargetsCoordOnlyArtifacts,
+    listPlanRecordIds,
+    readPlanRecordsReadonly,
   };
 };

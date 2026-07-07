@@ -36,6 +36,26 @@
             "description": "Advise when a landed ticket has no test files in its diff"
           }
         ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node coord/scripts/gov code-index --git 2>/dev/null || true",
+            "description": "Auto-refresh code symbol index after every file edit (git-mode: only changed files, <100ms)"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node coord/scripts/gov code-index --git 2>/dev/null || true",
+            "description": "Auto-refresh code symbol index after every file write (git-mode: only changed files, <100ms)"
+          }
+        ]
       }
     ],
     "PreToolUse": [

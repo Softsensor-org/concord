@@ -30,6 +30,7 @@ function createPromptCoverage(deps) {
     writeCanonicalJsonFile,
     writePlanCompatibilityBlockFromRecord,
     writePlanRecordScaffoldPlaceholders,
+    getPromptsDir = () => path.join(COORD_DIR, "prompts"),
   } = deps;
 
   function buildPromptWaiverCommand(ticketId) {
@@ -41,7 +42,11 @@ function createPromptCoverage(deps) {
   }
 
   function defaultTicketPromptRelPath(ticketId) {
-    const abs = path.join(COORD_DIR, "prompts", "tickets", `${ticketId}.md`);
+    const abs = path.join(getPromptsDir(), "tickets", `${ticketId}.md`);
+    const canonicalAbs = path.join(COORD_DIR, "prompts", "tickets", `${ticketId}.md`);
+    if (abs !== canonicalAbs && !fs.existsSync(abs) && fs.existsSync(canonicalAbs)) {
+      return path.relative(ROOT_DIR, canonicalAbs).replace(/\\/g, "/");
+    }
     return path.relative(ROOT_DIR, abs).replace(/\\/g, "/");
   }
 
@@ -52,6 +57,114 @@ function createPromptCoverage(deps) {
     } catch {
       return false;
     }
+  }
+
+  function normalizePromptRelPath(ticketId, options = {}) {
+    const rawPath = options.path || options.prompt || null;
+    if (!rawPath) {
+      return defaultTicketPromptRelPath(ticketId);
+    }
+    const raw = String(rawPath).trim();
+    if (!raw) {
+      fail("prompt path cannot be blank.");
+    }
+    const abs = path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
+    return path.relative(ROOT_DIR, abs).replace(/\\/g, "/");
+  }
+
+  function normalizeTemplateName(templateName) {
+    const value = String(templateName || "ticket").trim().toLowerCase();
+    if (!value || value === "default") {
+      return "ticket";
+    }
+    if (value !== "ticket") {
+      fail(`Unsupported prompt template "${templateName}". Supported templates: ticket.`);
+    }
+    return value;
+  }
+
+  function buildTicketPromptTemplate(ticketId, row = {}, options = {}) {
+    normalizeTemplateName(options.template || options.promptTemplate);
+    const title = String(row.Description || `${ticketId} implementation prompt`).trim();
+    const repo = String(row.Repo || "X").trim();
+    const type = String(row.Type || "task").trim();
+    const pri = String(row.Pri || "P2").trim();
+    return [
+      `# ${ticketId}: ${title}`,
+      "",
+      "## Assignment",
+      "",
+      title,
+      "",
+      "## Context",
+      "",
+      `- Repo: ${repo}`,
+      `- Type: ${type}`,
+      `- Priority: ${pri}`,
+      "",
+      "## Scope",
+      "",
+      "- Follow the ticket description and repo governance.",
+      "- Keep edits limited to the files required for this ticket.",
+      "",
+      "## Non-goals",
+      "",
+      "- Do not broaden the ticket beyond the filed scope.",
+      "",
+      "## Acceptance Criteria",
+      "",
+      "- Ticket scope is implemented.",
+      "- Focused verification is recorded in the governed plan.",
+      "",
+      "## Likely Files",
+      "",
+      "- TODO: add likely files before start when known.",
+      "",
+      "## Verification",
+      "",
+      "- TODO: add focused verification command.",
+      "",
+    ].join("\n");
+  }
+
+  function createPromptCoverageForTicket(board, ticketId, row, options = {}) {
+    const relPath = normalizePromptRelPath(ticketId, options);
+    const absPath = path.isAbsolute(relPath) ? relPath : path.join(ROOT_DIR, relPath);
+    if (!board.prompt_index || typeof board.prompt_index !== "object") {
+      board.prompt_index = {};
+    }
+
+    const existing = board.prompt_index[ticketId];
+    if (existing && existing !== relPath && !options.force) {
+      fail(
+        `prompt creation/register: ${ticketId} is already registered to ${existing}. ` +
+        `Pass --force to overwrite with ${relPath}.`
+      );
+    }
+
+    const fileExists = ticketPromptRelPathExists(relPath);
+    const replace = Boolean(options.replace);
+    if (fileExists && replace && !options.force) {
+      fail(`prompt creation/register: ${relPath} already exists. Pass --force with --replace to overwrite it.`);
+    }
+
+    let created = false;
+    let overwritten = false;
+    if (!fileExists || replace) {
+      fs.mkdirSync(path.dirname(absPath), { recursive: true });
+      fs.writeFileSync(absPath, buildTicketPromptTemplate(ticketId, row, options), "utf8");
+      created = !fileExists;
+      overwritten = fileExists && replace;
+    }
+
+    board.prompt_index[ticketId] = relPath;
+    return {
+      ticket: ticketId,
+      prompt: relPath,
+      created,
+      overwritten,
+      registered: existing !== relPath,
+    };
   }
 
   function ensurePromptCoverageOrDiscover(board, ticketId) {
@@ -93,26 +206,39 @@ function createPromptCoverage(deps) {
         fail(`Unknown ticket "${ticketId}".`);
       }
 
-      let relPath;
-      if (options.path) {
-        const raw = String(options.path).trim();
-        const abs = path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
-        relPath = path.relative(ROOT_DIR, abs).replace(/\\/g, "/");
-      } else {
-        relPath = defaultTicketPromptRelPath(ticketId);
+      const existing = board.prompt_index?.[ticketId];
+      const hasExplicitPath = Boolean(options.path || options.prompt);
+      const relPath = !hasExplicitPath && existing
+        ? existing
+        : normalizePromptRelPath(ticketId, options);
+
+      if (options.create || options.promptTemplate || options.replace) {
+        const result = createPromptCoverageForTicket(board, ticketId, ref.row, {
+          ...options,
+          create: true,
+          template: options.template || options.promptTemplate,
+        });
+        withCoordStateLock(() => {
+          writeBoard(board);
+          runBoardSync({ ignoreActiveTicketLockErrors: true });
+        });
+        mutation.details = result;
+        console.log(
+          `${result.created ? "Created and registered" : "Registered"} prompt for ${ticketId}: ${result.prompt}.`
+        );
+        return result;
       }
 
       if (!ticketPromptRelPathExists(relPath)) {
         fail(
           `register-prompt: prompt file not found for ${ticketId} at ${relPath}. ` +
-          "Create the prompt on disk first, or pass an existing path."
+          "Create the prompt on disk first, pass an existing path, or use --create."
         );
       }
 
       if (!board.prompt_index || typeof board.prompt_index !== "object") {
         board.prompt_index = {};
       }
-      const existing = board.prompt_index[ticketId];
       if (existing) {
         if (existing === relPath) {
           console.log(`register-prompt: ${ticketId} already registered to ${relPath} (idempotent).`);
@@ -131,7 +257,9 @@ function createPromptCoverage(deps) {
         writeBoard(board);
         runBoardSync({ ignoreActiveTicketLockErrors: true });
       });
+      mutation.details = { ticket: ticketId, prompt: relPath, created: false, overwritten: false };
       console.log(`Registered prompt for ${ticketId}: ${relPath}.`);
+      return { ticket: ticketId, prompt: relPath, created: false, overwritten: false };
     });
   }
 
@@ -410,7 +538,9 @@ function createPromptCoverage(deps) {
   return {
     assertPromptPreconditionsResolve,
     buildPromptWaiverCommand,
+    buildTicketPromptTemplate,
     classifyPreconditionArtifact,
+    createPromptCoverageForTicket,
     defaultTicketPromptRelPath,
     ensurePromptCoverageOrDiscover,
     hasPromptWaiver,

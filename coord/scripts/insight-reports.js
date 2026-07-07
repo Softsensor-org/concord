@@ -433,8 +433,14 @@ function detectArchDebtBySubsystem(tickets, plansById, boardRel, chainHead) {
     }
     const plan = plansById.get(t.id);
     if (plan) {
+      // COORD-198: gate on the recency-correct not_implemented_is_none flag
+      // (shared none-class interpretation). requirement_closure is append-only, so
+      // a re-closed ticket (partial -> complete) keeps the superseded "Not
+      // implemented: X" line in the array; the parse already resolves to the LAST
+      // line, and this flag treats "none — ..." as none, so a ticket that landed
+      // complete is no longer mis-flagged as a not-implemented carve-out.
       const ni = plan.closure.not_implemented;
-      if (ni && ni.toLowerCase() !== "none") {
+      if (ni && !plan.closure.not_implemented_is_none) {
         agg.not_implemented_tickets.push(t.id);
         agg.citations.push(planCitation(plan, chainHead));
         contributes = true;

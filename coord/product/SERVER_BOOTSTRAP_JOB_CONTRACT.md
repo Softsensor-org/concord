@@ -1,7 +1,8 @@
 # Server Bootstrap Job Contract
 
-> Status: design contract. Enforcement is tracked by COORD-158 through
-> COORD-164.
+> Status: contract with selective enforcement. High-risk declared classes are
+> checked by the gate-plan/track-evidence policy; broader rollout status is
+> tracked in `coord/product/POLICY_ENFORCEMENT_MATRIX.md`.
 
 This contract governs application work that initializes, repairs, backfills, or
 generates data in a deployed environment. It is intentionally separate from the

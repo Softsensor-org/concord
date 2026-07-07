@@ -42,7 +42,8 @@ const LIFECYCLE_VALUE_FLAGS = Object.freeze({
   "--answer": "answer", "--security": "security", "--startup": "startup",
   "--traceability": "traceability", "--closeout-method": "closeoutMethod",
   "--closeout-base-ref": "closeoutBaseRef", "--provenance-note": "provenanceNote",
-  "--review-profile": "reviewProfile", "--source-commit": "sourceCommit",
+  "--review-profile": "reviewProfile", "--context-pack-ack": "contextPackAck",
+  "--source-commit": "sourceCommit",
   "--fulfilled-by-ticket": "fulfilledByTicket",
   "--fulfilled-by-commit": "fulfilledByCommit", "--prompt": "prompt",
   "--section-heading": "sectionHeading", "--consolidated-into": "consolidatedInto",
@@ -71,7 +72,10 @@ const LIFECYCLE_BOOL_FLAGS = Object.freeze({
   "--clear": "clear", "--yes": "yes", "--include-blocked": "includeBlocked",
   "--full": "full", "--write": "write", "--dry-run": "dryRun",
   "--scope-self": "scopeSelf", "--json": "json", "--md": "md",
-  "--record": "record",
+  "--record": "record", "--force-live": "forceLive",
+  // COORD-222: opt out of the fail-closed "one governed writer per
+  // checkout/runtime" guard on `gov start` / `gov claim` (default fail-closed).
+  "--allow-shared-worktree": "allowSharedWorktree",
 });
 
 module.exports = function createLifecycleFlags(deps = {}) {

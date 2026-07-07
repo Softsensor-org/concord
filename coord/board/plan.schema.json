@@ -126,6 +126,32 @@
       "type": "array",
       "items": { "type": "string" }
     },
+    "adr_refs": {
+      "description": "Optional accepted/proposed ADR references relevant to this ticket's decision surface (COORD-322).",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "decision_required": {
+      "description": "Optional decision/ADR readiness metadata for high-impact tickets (COORD-322).",
+      "type": "object",
+      "properties": {
+        "required": { "type": "boolean" },
+        "status": {
+          "type": ["string", "null"],
+          "enum": ["required", "not-required", "waived", "investigating", "deferred", null]
+        },
+        "reason": { "type": ["string", "null"] },
+        "risk_class": { "type": ["string", "null"] },
+        "waiver": { "type": ["string", "null"] },
+        "owner": { "type": ["string", "null"] },
+        "expires": { "type": ["string", "null"] },
+        "adr_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
     "repo_gates": {
       "type": "array",
       "items": { "type": "string" }
@@ -228,6 +254,91 @@
         "receipt": { "type": ["object", "null"] }
       },
       "additionalProperties": false
+    },
+    "context_pack_ack": {
+      "description": "Optional structured context-pack usage acknowledgement (COORD-348). Records which memory/context sections were considered, which items were treated as authority vs advisory only, and how closeout learning should be handled.",
+      "type": "object",
+      "properties": {
+        "refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "considered": {
+          "type": "object",
+          "properties": {
+            "active_constraints": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "adrs": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "business_rules": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "conflicts": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "stale_warnings": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "open_questions": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "authority": {
+          "type": "object",
+          "properties": {
+            "constraints": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "advisory_only": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "closeout_learning": {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "type": ["string", "null"],
+              "enum": ["promote", "demote", "scratch-only", "mixed", "none", null]
+            },
+            "promote": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "demote": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "scratch_only": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "rationale": {
+              "type": ["string", "null"]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "gate_plan": {
+      "description": "Optional deterministic gate-plan receipt (COORD-379). Produced by gov gate-plan <ticket>; records selected/skipped gates, affected-target fallback, risk class, and required evidence. The receipt is planning evidence only and does not execute gates.",
+      "type": "object",
+      "additionalProperties": true
     },
     "security_surface": {
       "type": ["string", "null"]

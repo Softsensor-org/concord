@@ -54,6 +54,8 @@ const recall = require("./recall.js");
 const extractor = require("./decision-extractor.js");
 const memoryGraph = require("./memory-graph.js");
 const memoryVector = require("./memory-vector.js");
+const contextPack = require("./business-context-pack.js");
+const claimCompiler = require("./knowledge-claim-compiler.js");
 
 const DEFAULT_TOP_K = 5;
 
@@ -236,6 +238,228 @@ function decideGate(baseline, semantic, options = {}) {
   };
 }
 
+function flattenSectionIds(pack, names) {
+  const ids = [];
+  for (const name of names) {
+    for (const item of pack.sections?.[name]?.items || []) {
+      if (item.id) {
+        ids.push(item.id);
+      }
+    }
+  }
+  return ids;
+}
+
+function activeSectionNames(pack) {
+  const special = new Set(["conflicts", "history", "stale_sources", "open_questions", "approvals"]);
+  return Object.keys(pack.sections || {}).filter((name) => !special.has(name));
+}
+
+function fraction(found, expected) {
+  if (!expected.length) {
+    return 1;
+  }
+  const foundSet = new Set(found);
+  return expected.filter((id) => foundSet.has(id)).length / expected.length;
+}
+
+function precision(found, expected) {
+  if (!found.length) {
+    return expected.length ? 0 : 1;
+  }
+  const expectedSet = new Set(expected);
+  return found.filter((id) => expectedSet.has(id)).length / found.length;
+}
+
+function idsForOutcomes(outcomes, statuses) {
+  const statusSet = new Set(statuses);
+  return outcomes
+    .filter((outcome) => statusSet.has(outcome.outcome))
+    .map((outcome) => outcome.claim_id)
+    .filter(Boolean);
+}
+
+function claimEvidenceGrounded(claim) {
+  const evidence = Array.isArray(claim.evidence) ? claim.evidence : [];
+  if (evidence.length === 0) return false;
+  return evidence.some((source) => {
+    const authority = source.authority || source.authority_class || source.evidence_role;
+    return authority && authority !== "summary";
+  });
+}
+
+function falseAuthorityPromoted(outcome) {
+  return outcome.outcome === "accepted" && outcome.computed_confidence === "confirmed";
+}
+
+function scoreClaimPromotionCase(testCase) {
+  const compileResult = claimCompiler.compileClaims({
+    claims: testCase.claims || [],
+    policy: testCase.policy || {},
+    context: testCase.context || {},
+  });
+  const expectations = testCase.expectations || {};
+  const outcomes = compileResult.outcomes || [];
+  const outcomeById = new Map(outcomes.map((outcome) => [outcome.claim_id, outcome]));
+  const claimById = new Map((testCase.claims || []).map((claim) => [claim.id || claim.candidate_id, claim]));
+
+  const reviewable = idsForOutcomes(outcomes, ["accepted", "candidate", "review-required"]);
+  const accepted = idsForOutcomes(outcomes, ["accepted"]);
+  const rejected = idsForOutcomes(outcomes, ["rejected"]);
+  const conflicted = idsForOutcomes(outcomes, ["conflicted"]);
+  const expectedReviewable = expectations.expected_reviewable || [
+    ...(expectations.expected_accepted || []),
+    ...(expectations.expected_candidate || []),
+    ...(expectations.expected_review_required || []),
+  ];
+  const expectedAccepted = expectations.expected_accepted || [];
+  const expectedAutoRejected = expectations.expected_auto_rejected || expectations.expected_rejected || [];
+  const expectedConflicted = expectations.expected_conflicted || [];
+  const expectedGrounded = expectations.expected_grounded || expectedReviewable;
+  const falseAuthority = expectations.false_authority_claims || [];
+  const falseAuthorityPromotions = falseAuthority
+    .map((id) => outcomeById.get(id))
+    .filter(Boolean)
+    .filter(falseAuthorityPromoted)
+    .map((outcome) => outcome.claim_id);
+  const groundedFound = expectedGrounded.filter((id) => claimEvidenceGrounded(claimById.get(id) || {}));
+  const reviewRequired = idsForOutcomes(outcomes, ["review-required"]);
+  const maxReviewRequired =
+    Number.isInteger(expectations.max_review_required)
+      ? expectations.max_review_required
+      : compileResult.policy?.max_claims_per_reviewer || claimCompiler.DEFAULT_POLICY.max_claims_per_reviewer;
+
+  return {
+    id: testCase.id,
+    proposed_claim_precision: precision(reviewable, expectedReviewable),
+    promoted_claim_precision: precision(accepted, expectedAccepted),
+    auto_reject_accuracy: fraction(rejected, expectedAutoRejected),
+    reviewer_load_budget: reviewRequired.length <= maxReviewRequired ? 1 : 0,
+    review_required_count: reviewRequired.length,
+    max_review_required: maxReviewRequired,
+    conflict_detection: fraction(conflicted, expectedConflicted),
+    groundedness: fraction(groundedFound, expectedGrounded),
+    false_authority_rate: falseAuthority.length ? falseAuthorityPromotions.length / falseAuthority.length : 0,
+    false_authority_promotions: falseAuthorityPromotions,
+    accepted,
+    reviewable,
+    rejected,
+    conflicted,
+  };
+}
+
+function decideClaimPromotionGate(metrics, options = {}) {
+  const thresholds = {
+    ...claimCompiler.DEFAULT_POLICY.extraction_precision_thresholds,
+    ...(options.thresholds || {}),
+  };
+  const failures = [];
+  if (metrics.proposed_claim_precision < thresholds.min_proposed_claim_precision) failures.push("proposed_claim_precision");
+  if (metrics.promoted_claim_precision < thresholds.min_promoted_claim_precision) failures.push("promoted_claim_precision");
+  if (metrics.auto_reject_accuracy < thresholds.min_auto_reject_accuracy) failures.push("auto_reject_accuracy");
+  if (metrics.conflict_detection < thresholds.min_conflict_detection) failures.push("conflict_detection");
+  if (metrics.groundedness < thresholds.min_groundedness) failures.push("groundedness");
+  if (metrics.false_authority_rate > thresholds.max_false_authority_rate) failures.push("false_authority_rate");
+  if (metrics.max_review_required_per_case > thresholds.max_review_required_per_case) failures.push("reviewer_load_budget");
+  const pass = failures.length === 0;
+  return {
+    broad_extractor_rollout_allowed: pass,
+    pass,
+    failures,
+    thresholds,
+    rationale: pass
+      ? "claim promotion precision thresholds met; broad extractor rollout may proceed."
+      : `claim promotion precision thresholds failed [${failures.join(", ")}]; broad extractor rollout remains blocked.`,
+  };
+}
+
+function evaluateClaimPromotion(benchmark, options = {}) {
+  const cases = benchmark.claim_promotion_cases || [];
+  const perCase = cases.map(scoreClaimPromotionCase);
+  const metrics = {
+    claim_promotion_cases: perCase.length,
+    proposed_claim_precision: mean(perCase.map((c) => c.proposed_claim_precision)),
+    promoted_claim_precision: mean(perCase.map((c) => c.promoted_claim_precision)),
+    auto_reject_accuracy: mean(perCase.map((c) => c.auto_reject_accuracy)),
+    reviewer_load_budget_rate: mean(perCase.map((c) => c.reviewer_load_budget)),
+    max_review_required_per_case: perCase.reduce((max, c) => Math.max(max, c.review_required_count), 0),
+    conflict_detection: mean(perCase.map((c) => c.conflict_detection)),
+    groundedness: mean(perCase.map((c) => c.groundedness)),
+    false_authority_rate: mean(perCase.map((c) => c.false_authority_rate)),
+  };
+  return {
+    cases: perCase,
+    metrics,
+    gate: decideClaimPromotionGate(metrics, options),
+  };
+}
+
+// COORD-343: Temporal-validity benchmark cases test the safety contract around
+// stale/superseded/conflicted memory. They are separate from recall@k because a
+// high-recall system can still be unsafe if it emits old knowledge as an active
+// constraint. Each case builds the normal context pack and scores:
+//   - active_constraint_safety: no stale/superseded/conflicted ids appear in
+//     active sections, and expected current ids do appear there.
+//   - warning_coverage: every expected stale/history/conflict warning appears
+//     in its mandatory section.
+//   - current_authority_preference: current authoritative records appear active
+//     while old/invalid records do not, even if they share stronger words with
+//     the query.
+function scoreTemporalValidityCase(testCase) {
+  const pack = contextPack.buildPack(testCase.synthesis, {
+    ticket: testCase.ticket,
+    scope: testCase.scope || "",
+    touchedFiles: testCase.touched_files || [],
+    requirements: testCase.requirements || [],
+    limit: testCase.limit || 10,
+  });
+  const expectations = testCase.expectations || {};
+  const activeIds = flattenSectionIds(pack, activeSectionNames(pack));
+  const activeSet = new Set(activeIds);
+  const activeInclude = expectations.active_include || [];
+  const activeExclude = expectations.active_exclude || [];
+  const missingActive = activeInclude.filter((id) => !activeSet.has(id));
+  const activeViolations = activeExclude.filter((id) => activeSet.has(id));
+
+  const warningSections = expectations.warning_sections || {};
+  let warningExpected = 0;
+  let warningFound = 0;
+  for (const [section, ids] of Object.entries(warningSections)) {
+    const sectionIds = flattenSectionIds(pack, [section]);
+    warningExpected += ids.length;
+    warningFound += ids.filter((id) => sectionIds.includes(id)).length;
+  }
+
+  const current = expectations.current_authoritative || activeInclude;
+  const invalid = expectations.old_or_invalid || activeExclude;
+  const currentAuthorityPreference =
+    fraction(activeIds, current) === 1 && invalid.every((id) => !activeSet.has(id)) ? 1 : 0;
+
+  return {
+    id: testCase.id,
+    active_constraint_safety: missingActive.length === 0 && activeViolations.length === 0 ? 1 : 0,
+    warning_coverage: warningExpected ? warningFound / warningExpected : 1,
+    current_authority_preference: currentAuthorityPreference,
+    missing_active: missingActive,
+    active_violations: activeViolations,
+    pack_summary: pack.summary,
+  };
+}
+
+function evaluateTemporalValidity(benchmark) {
+  const cases = benchmark.temporal_validity_cases || [];
+  const perCase = cases.map(scoreTemporalValidityCase);
+  return {
+    cases: perCase,
+    metrics: {
+      temporal_cases: perCase.length,
+      active_constraint_safety_rate: mean(perCase.map((c) => c.active_constraint_safety)),
+      warning_coverage: mean(perCase.map((c) => c.warning_coverage)),
+      current_authority_preference_rate: mean(perCase.map((c) => c.current_authority_preference)),
+    },
+  };
+}
+
 // Run the full comparison: baseline vs semantic + the gate verdict.
 function evaluate(options = {}) {
   const benchmarkPath = options.benchmarkPath || DEFAULT_BENCHMARK_PATH;
@@ -245,13 +469,19 @@ function evaluate(options = {}) {
   // so the harness measures against current repo history without a committed
   // artifact — mirroring recall.test.js.
   if (!options.skipRebuild) {
-    extractor.rebuild({ outputPath: options.decisionsPath || DEFAULT_DECISIONS_PATH });
+    // COORD-300: rebuild into the governed, sandboxable MEMORY_DIR (via recall's
+    // shared resolver) so a redirected __testing.paths.MEMORY_DIR writes the
+    // derived corpus to an os.tmpdir() sandbox instead of the live coord/memory
+    // tree. The benchmark above stays a LIVE read (the committed ground truth).
+    extractor.rebuild({ outputPath: options.decisionsPath || recall.defaultDecisionsPath() });
   }
 
   const baseline = runConfig(benchmark, {}, options);
   const semanticOptions = buildSemanticOptions(options);
   const semantic = runConfig(benchmark, semanticOptions, options);
   const gate = decideGate(baseline, semantic, options);
+  const temporalValidity = evaluateTemporalValidity(benchmark);
+  const claimPromotion = evaluateClaimPromotion(benchmark, options);
 
   return {
     benchmark_cases: benchmark.cases.length,
@@ -260,6 +490,11 @@ function evaluate(options = {}) {
     semantic: semantic.metrics,
     baseline_per_case: baseline.per_case,
     semantic_per_case: semantic.per_case,
+    temporal_validity: temporalValidity.metrics,
+    temporal_validity_per_case: temporalValidity.cases,
+    claim_promotion: claimPromotion.metrics,
+    claim_promotion_per_case: claimPromotion.cases,
+    claim_promotion_gate: claimPromotion.gate,
     gate,
   };
 }
@@ -303,6 +538,30 @@ function formatReport(report) {
     `GATE: semantic_better=${report.gate.semantic_better} enable_by_default=${report.gate.enable_by_default}`,
     `  ${report.gate.rationale}`,
   ];
+  if (report.temporal_validity && report.temporal_validity.temporal_cases > 0) {
+    out.push(
+      "",
+      `Temporal validity — ${report.temporal_validity.temporal_cases} case(s)`,
+      `  active_constraint_safety_rate=${fmt(report.temporal_validity.active_constraint_safety_rate)}`,
+      `  warning_coverage=${fmt(report.temporal_validity.warning_coverage)}`,
+      `  current_authority_preference_rate=${fmt(report.temporal_validity.current_authority_preference_rate)}`
+    );
+  }
+  if (report.claim_promotion && report.claim_promotion.claim_promotion_cases > 0) {
+    out.push(
+      "",
+      `Claim promotion precision — ${report.claim_promotion.claim_promotion_cases} case(s)`,
+      `  proposed_claim_precision=${fmt(report.claim_promotion.proposed_claim_precision)}`,
+      `  promoted_claim_precision=${fmt(report.claim_promotion.promoted_claim_precision)}`,
+      `  auto_reject_accuracy=${fmt(report.claim_promotion.auto_reject_accuracy)}`,
+      `  reviewer_load_budget_rate=${fmt(report.claim_promotion.reviewer_load_budget_rate)}`,
+      `  conflict_detection=${fmt(report.claim_promotion.conflict_detection)}`,
+      `  groundedness=${fmt(report.claim_promotion.groundedness)}`,
+      `  false_authority_rate=${fmt(report.claim_promotion.false_authority_rate)}`,
+      `CLAIM GATE: broad_extractor_rollout_allowed=${report.claim_promotion_gate.broad_extractor_rollout_allowed}`,
+      `  ${report.claim_promotion_gate.rationale}`
+    );
+  }
   return out.join("\n");
 }
 
@@ -315,6 +574,11 @@ module.exports = {
   runConfig,
   buildSemanticOptions,
   decideGate,
+  scoreTemporalValidityCase,
+  evaluateTemporalValidity,
+  scoreClaimPromotionCase,
+  evaluateClaimPromotion,
+  decideClaimPromotionGate,
   evaluate,
   formatReport,
   DEFAULT_BENCHMARK_PATH,

@@ -126,6 +126,72 @@ function buildActiveSameOwnerOtherThreadMessage(ticketId, detection, options = {
   );
 }
 
+// COORD-222: enforce the documented "one governed writer per checkout/runtime"
+// rule (coord/docs/MULTI_AGENT_TOPOLOGIES.md:136) in CODE. A foreign session is
+// one bound to the SAME runtime (same board_path / coord/.runtime) on a
+// DIFFERENT thread than the caller (i.e. a different COORD_SESSION_ID / handle).
+// Freshness reuses the EXISTING heartbeat/idle model — a session is "fresh"
+// (heartbeat-fresh / appear-active) when its heartbeat age is under
+// AGENT_SESSION_IDLE_MS; stale sessions are ignored exactly as elsewhere (they
+// are reaped/non-contending). The caller's OWN session (same thread_id) is never
+// a co-located conflict, so resume and lone-session flows never false-block.
+function detectColocatedForeignSessions(options = {}) {
+  const result = {
+    present: false,
+    current_thread_id: null,
+    foreign_sessions: [],
+  };
+  const currentThreadId = options.currentThreadId !== undefined
+    ? options.currentThreadId
+    : currentRuntimeThreadId();
+  result.current_thread_id = currentThreadId || null;
+  const now = typeof options.now === "number" ? options.now : Date.now();
+  const idleMs = typeof options.idleMs === "number" ? options.idleMs : AGENT_SESSION_IDLE_MS;
+  const sessions = (options.sessions || readAgentSessions()).filter(
+    (session) => session.board_path === state.BOARD_PATH,
+  );
+  const foreign = sessions.filter((session) => {
+    if (session.status !== "active") return false;
+    if (typeof session.thread_id !== "string" || session.thread_id.trim() === "") {
+      return false;
+    }
+    // Same thread => the caller's own session (lone/resume). Never a conflict.
+    if (session.thread_id === currentThreadId) return false;
+    // Reuse the existing heartbeat/idle freshness model. A session with no
+    // parseable heartbeat is treated as not-fresh (does not block), matching
+    // how stale sessions are ignored elsewhere.
+    const age = heartbeatAgeMsForSession(session, now);
+    if (age === null) return false;
+    return age < idleMs;
+  });
+  result.foreign_sessions = foreign.map((session) => ({
+    session_id: session.session_id,
+    handle: session.handle || null,
+    thread_id: session.thread_id,
+    last_seen_at: session.last_seen_at || null,
+    heartbeat_age_ms: heartbeatAgeMsForSession(session, now),
+  }));
+  result.present = foreign.length > 0;
+  return result;
+}
+
+function buildColocatedForeignSessionMessage(verb, detection) {
+  const others = detection.foreign_sessions
+    .map((session) => `${session.session_id || "?"}(${session.handle || "?"})@thread:${session.thread_id}`)
+    .join(", ");
+  return (
+    `Refusing ${verb}: another heartbeat-fresh governed session is already bound to this ` +
+    `runtime (coord/.runtime) on a different thread — ${others}. ` +
+    `The mkdir runtime lock is what actually serializes appends to the ` +
+    `hash-chained journal, but two governed writers sharing one checkout/runtime ` +
+    `still contend for it and churn each other's owner leases and board claims — ` +
+    `a topology footgun this guard refuses early ` +
+    `(coord/docs/MULTI_AGENT_TOPOLOGIES.md:136). ` +
+    `Use a SEPARATE git worktree with its own coord/.runtime. Pass ` +
+    `\`--allow-shared-worktree\` only for deliberate single-agent/local or ` +
+    `orchestrator-controlled exceptions where you accept the shared-runtime risk.`
+  );
+}
 
 function assertRuntimeProviderMatchesAgent(agent, options = {}) {
   if (options.allowProviderMismatch === true) {
@@ -484,6 +550,62 @@ function providerThreadIdValue(entry) {
     }
   }
   return null;
+}
+
+const CONTINUITY_ATTRIBUTION_FIELDS = Object.freeze([
+  "human_id",
+  "agent_handle",
+  "provider_session_id",
+  "coord_session_id",
+  "acting_for",
+  "team_id",
+  "project_id",
+  "source_worktree",
+  "ticket_id",
+]);
+
+function cleanAttributionValue(value) {
+  if (value == null) {
+    return null;
+  }
+  const normalized = String(value).trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function buildContinuityAttribution(options = {}) {
+  const identity = options.identity || {};
+  const session = options.session || identity.session || null;
+  const agent = options.agent || identity.agent || null;
+  const provider = options.provider || session?.provider || agent?.provider || detectRuntimeProvider();
+  const providerEntry = providerConfig(provider);
+  const providerSessionId = options.provider_session_id !== undefined
+    ? options.provider_session_id
+    : providerThreadIdValue(providerEntry);
+  const coordSessionId = options.coord_session_id !== undefined
+    ? options.coord_session_id
+    : (process.env.COORD_SESSION_ID || session?.thread_id || resolveEffectiveThreadId());
+  const agentHandle = options.agent_handle !== undefined
+    ? options.agent_handle
+    : (agent?.handle || session?.handle || null);
+  const sourceWorktree = options.source_worktree !== undefined
+    ? options.source_worktree
+    : (session?.cwd || process.cwd());
+  const values = {
+    human_id: options.human_id,
+    agent_handle: agentHandle,
+    provider_session_id: providerSessionId,
+    coord_session_id: coordSessionId,
+    acting_for: options.acting_for,
+    team_id: options.team_id,
+    project_id: options.project_id,
+    source_worktree: sourceWorktree,
+    ticket_id: options.ticket_id,
+  };
+  const attribution = {};
+  for (const field of CONTINUITY_ATTRIBUTION_FIELDS) {
+    attribution[field] = cleanAttributionValue(values[field]);
+  }
+  return Object.freeze(attribution);
 }
 
 function currentRuntimeThreadId() {
@@ -1249,16 +1371,20 @@ function shouldUseLegacyAgentSessionsCompatibility() {
     assertTicketMutationOwnership,
     assertTicketRepairOwnership,
     buildActiveSameOwnerOtherThreadMessage,
+    buildColocatedForeignSessionMessage,
     buildDefaultAgentHandle,
+    buildContinuityAttribution,
     buildSessionId,
     canOwnerHoldConcurrentDoing,
     canonicalizeOwnerOrFail,
     collectReferencedAgentIdNumbers,
+    CONTINUITY_ATTRIBUTION_FIELDS,
     currentRuntimeThreadId,
     defaultAgentRegistry,
     defaultHostLabel,
     describeTicketMutationOwnershipIssue,
     detectActiveSameOwnerOtherThread,
+    detectColocatedForeignSessions,
     detectRuntimeProvider,
     ensureAgentFiles,
     ensureCurrentAgentIdentity,

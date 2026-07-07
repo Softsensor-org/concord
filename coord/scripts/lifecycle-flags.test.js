@@ -136,6 +136,10 @@ test("parseFlags accepts the documented human-admin override flag", () => {
   );
 });
 
+test("parseFlags accepts break-runtime-lock --force-live break-glass flag", () => {
+  assert.equal(__testing.parseFlags(["--yes", "--force-live"]).forceLive, true);
+});
+
 test("parseFlags accepts --fresh so agent-rebind reaches rebindAgent (COORD-003)", () => {
   assert.deepEqual(
     __testing.parseFlags(["--fresh"]),

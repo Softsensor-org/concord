@@ -11,7 +11,7 @@ Repo codes are defined in coord/project.config.js. Use X for cross-repo / coordi
 
 This is a starter board. Replace these example rows with real tickets.
 Each ticket flows todo -> doing -> review -> done via coord/scripts/gov.
-Run `npm run demo` in frontend/apps/coord-ui to see a populated example cockpit.
+From a scaffolded app root, run `npm run coord-ui` to open the read-only cockpit for this board.
 
 ---
 

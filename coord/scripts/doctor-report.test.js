@@ -1,3 +1,5 @@
+// COORD-299 / COORD-390: relocate this worker's full runtime + seal surfaces to an os.tmpdir() sandbox
+require("./governance-test-utils.js").sandboxProcessRuntime();
 "use strict";
 
 // COORD-085 (Wave 4 slice 1): behavior tests for the READ-ONLY governance
@@ -110,6 +112,168 @@ test("GCV-3 slice 3: buildCanonicalDerivedDriftError names every drifting path +
   assert.match(msg, /--no-sync/);
 });
 
+test("COORD-243: doctor wires the coverage-maturity DETECT line into WARNINGS (advisory, never an error)", () => {
+  // Build the report factory directly with benign no-op stubs so doctor() reaches
+  // the board-wide maturity DETECT block on an empty board. The injected
+  // detectMaturityStaleness returns a finding; we assert it surfaces as a printed
+  // WARNING (not a fail()) — proving the routing AND that a stale maturity file
+  // never wedges doctor (so finalize stays doctor-clean).
+  const createDoctorReport = require("./doctor-report.js");
+  const noop = () => {};
+  const emptyArr = () => [];
+  let detectCalled = false;
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...a) => logs.push(a.join(" "));
+  let failed = null;
+  try {
+    const report = createDoctorReport({
+      fail: (msg) => { failed = msg; throw new Error("doctor-fail"); },
+      readBoard: () => ({ sections: [] }),
+      getTicketRef: () => null,
+      getRows: () => [],
+      rowsById: () => new Map(),
+      runBoardValidate: noop,
+      runBoardSync: noop,
+      readAgentSessions: emptyArr,
+      repoNameForCode: (code) => String(code),
+      auditRepoWorktrees: () => ({ stale_ticket_worktrees: [], unknown_ticket_worktrees: [], missing_doing_worktrees: [] }),
+      appendGovernanceProvenanceIssues: noop,
+      detectColocatedForeignSessions: () => ({ foreign_sessions: [] }),
+      detectOutOfBandBoardMutation: () => ({ detected: false }),
+      verifyGovernanceChain: () => ({ ok: true, preChainCount: 0, chainedCount: 0, broken: [] }),
+      readGovernanceEventLog: emptyArr,
+      collectStaleTemplateFeedbackErrors: emptyArr,
+      detectMaturityStaleness: () => {
+        detectCalled = true;
+        return ["coord/TEST_MATURITY.md stale (99d old) -> run gov coverage-rollup"];
+      },
+      detectRollbackDrift: () => ({ reasons: [] }),
+      detectGateProcOrphans: emptyArr,
+      computeSyncDelta: () => [],
+      canonicalSyncablePaths: emptyArr,
+      buildQuestionQueueReport: () => ({ total: 0, by_type: {}, by_severity: {}, by_aging: {} }),
+      readActiveOrchestratorQuestionRows: emptyArr,
+      formatBucketCounts: () => "",
+      buildDoctorResolutionGuidance: () => "",
+      collectLandingAuditReport: () => ({}),
+      formatLandingAuditSummary: emptyArr,
+    });
+    report.doctor({});
+  } finally {
+    console.log = originalLog;
+  }
+  assert.equal(failed, null, "a stale maturity file must NOT fail() doctor");
+  assert.equal(detectCalled, true, "doctor must invoke the injected coverage-maturity detector");
+  const joined = logs.join("\n");
+  assert.match(joined, /\[coverage-maturity\] coord\/TEST_MATURITY\.md stale/);
+});
+
+test("COORD-391: doctor wires journal retention health into WARNINGS (read-only)", () => {
+  const createDoctorReport = require("./doctor-report.js");
+  const noop = () => {};
+  const emptyArr = () => [];
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...a) => logs.push(a.join(" "));
+  let failed = null;
+  let healthCalled = false;
+  try {
+    const report = createDoctorReport({
+      fail: (msg) => { failed = msg; throw new Error("doctor-fail"); },
+      readBoard: () => ({ sections: [] }),
+      getTicketRef: () => null,
+      getRows: () => [],
+      rowsById: () => new Map(),
+      runBoardValidate: noop,
+      runBoardSync: noop,
+      readAgentSessions: emptyArr,
+      repoNameForCode: (code) => String(code),
+      auditRepoWorktrees: () => ({ stale_ticket_worktrees: [], unknown_ticket_worktrees: [], missing_doing_worktrees: [] }),
+      appendGovernanceProvenanceIssues: noop,
+      detectColocatedForeignSessions: () => ({ foreign_sessions: [] }),
+      detectOutOfBandBoardMutation: () => ({ detected: false }),
+      verifyGovernanceChain: () => ({ ok: true, preChainCount: 0, chainedCount: 1, broken: [] }),
+      buildJournalHealthReport: () => {
+        healthCalled = true;
+        return { status: "warning", event_count: 5000, bytes: 2048, warnings: [{ message: "journal event count 5000 exceeds warning threshold 5000" }], policy: { policy_path: "coord/product/JOURNAL_RETENTION_POLICY.md" } };
+      },
+      formatJournalHealthWarning: (health) => `[journal-retention] ${health.status}: ${health.warnings[0].message}`,
+      readGovernanceEventLog: emptyArr,
+      collectStaleTemplateFeedbackErrors: emptyArr,
+      detectMaturityStaleness: emptyArr,
+      detectRollbackDrift: () => ({ reasons: [] }),
+      detectGateProcOrphans: emptyArr,
+      computeSyncDelta: () => [],
+      canonicalSyncablePaths: emptyArr,
+      buildQuestionQueueReport: () => ({ total: 0, by_type: {}, by_severity: {}, by_aging: {} }),
+      readActiveOrchestratorQuestionRows: emptyArr,
+      formatBucketCounts: () => "",
+      buildDoctorResolutionGuidance: () => "",
+      collectLandingAuditReport: () => ({}),
+      formatLandingAuditSummary: emptyArr,
+    });
+    report.doctor({});
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(failed, null);
+  assert.equal(healthCalled, true);
+  assert.match(logs.join("\n"), /\[journal-retention\] warning: journal event count 5000 exceeds warning threshold 5000/);
+});
+
+test("COORD-265: plain doctor is read-only and never runs board sync repair", () => {
+  const createDoctorReport = require("./doctor-report.js");
+  const noop = () => {};
+  const emptyArr = () => [];
+  let syncCalled = false;
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...a) => logs.push(a.join(" "));
+  try {
+    const report = createDoctorReport({
+      fail: (msg) => { throw new Error(msg); },
+      readBoard: () => ({ sections: [] }),
+      getTicketRef: () => null,
+      getRows: () => [],
+      rowsById: () => new Map(),
+      runBoardValidate: noop,
+      runBoardSync: () => {
+        syncCalled = true;
+        throw new Error("runBoardSync must not be called by read-only doctor");
+      },
+      readAgentSessions: emptyArr,
+      repoNameForCode: (code) => String(code),
+      auditRepoWorktrees: () => ({ stale_ticket_worktrees: [], unknown_ticket_worktrees: [], missing_doing_worktrees: [] }),
+      appendGovernanceProvenanceIssues: noop,
+      detectColocatedForeignSessions: () => ({ foreign_sessions: [] }),
+      detectOutOfBandBoardMutation: () => ({ detected: false }),
+      verifyGovernanceChain: () => ({ ok: true, preChainCount: 0, chainedCount: 0, broken: [] }),
+      readGovernanceEventLog: emptyArr,
+      collectStaleTemplateFeedbackErrors: emptyArr,
+      detectMaturityStaleness: emptyArr,
+      detectRollbackDrift: () => ({ reasons: [] }),
+      detectGateProcOrphans: emptyArr,
+      computeSyncDelta: () => [],
+      canonicalSyncablePaths: () => ["PLAN.md", "rendered/TASKS.md"],
+      buildQuestionQueueReport: () => ({ total: 0, by_type: {}, by_severity: {}, by_aging: {} }),
+      readActiveOrchestratorQuestionRows: emptyArr,
+      formatBucketCounts: () => "",
+      buildDoctorResolutionGuidance: () => "",
+      collectLandingAuditReport: () => ({}),
+      formatLandingAuditSummary: emptyArr,
+    });
+
+    report.doctor({});
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(syncCalled, false);
+  assert.match(logs.join("\n"), /Governance doctor OK/);
+});
+
 test("GCV-3 slice 3: buildCanonicalDerivedDriftError is deterministic on path order", () => {
   // Input order should not affect the formatted message — it sorts before
   // formatting, so two runs with the same set produce identical output.
@@ -124,4 +288,81 @@ test("GCV-3 slice 3: buildCanonicalDerivedDriftError is deterministic on path or
     "rendered/TASKS.md",
   ]);
   assert.equal(a, b);
+});
+
+test("COORD-362: read-only doctor includes the tree-mutation hazard in the sync recommendation", () => {
+  const createDoctorReport = require("./doctor-report.js");
+  const emptyArr = () => [];
+  const board = {
+    sections: [
+      {
+        rows: [
+          { ID: "OTHER-1", Repo: "X", Status: "doing", Owner: "codexb00", "Depends On": "" },
+        ],
+      },
+    ],
+    prompt_index: { "OTHER-1": { path: "coord/prompts/tickets/OTHER-1.md" } },
+  };
+  let failed = null;
+  const report = createDoctorReport({
+    fail: (message) => {
+      failed = message;
+      throw new Error(message);
+    },
+    readBoard: () => board,
+    getTicketRef: () => null,
+    getRows: (b) => b.sections.flatMap((section) => section.rows || []),
+    rowsById: (b) => new Map(b.sections.flatMap((section) => section.rows || []).map((row) => [row.ID, row])),
+    runBoardValidate: () => {},
+    evaluateReadiness: () => ({ cycles: [], blockedBy: [], blockerChains: [] }),
+    formatDependencyCycleList: (cycles) => cycles.join(", "),
+    formatTransitiveBlockerDetails: () => "",
+    isDoingStatus: (status) => status === "doing",
+    isRepoBackedCode: () => false,
+    getRepoRoot: () => "/repo/coord",
+    repoNameForCode: (code) => String(code),
+    requiresLandingGovernance: () => false,
+    hasPromptWaiver: () => false,
+    findLockForTicket: (ticket) => ({
+      ticket,
+      owner: "codexb00",
+      status: "doing",
+      head: "coord-no-git-head",
+      path: `/repo/coord/.runtime/locks/${ticket}.lock`,
+      worktree: `/repo/coord/.worktrees/codexb00/${ticket}`,
+    }),
+    isStaleTicketLock: () => false,
+    inspectCanonicalLockMirrorState: () => ({ issues: [], conflicts: [] }),
+    auditRepoWorktrees: () => ({ stale_ticket_worktrees: [], unknown_ticket_worktrees: [], missing_doing_worktrees: [] }),
+    readAgentSessions: emptyArr,
+    isRegisteredAgentHandle: () => true,
+    detectActiveSameOwnerOtherThread: () => ({ present: false, active_owner_sessions: [] }),
+    detectColocatedForeignSessions: () => ({ foreign_sessions: [] }),
+    appendGovernanceProvenanceIssues: () => {},
+    detectOutOfBandBoardMutation: () => ({ detected: false }),
+    verifyGovernanceChain: () => ({ ok: true, preChainCount: 0, chainedCount: 1, broken: [] }),
+    readGovernanceEventLog: emptyArr,
+    collectStaleTemplateFeedbackErrors: emptyArr,
+    detectMaturityStaleness: emptyArr,
+    detectRollbackDrift: () => ({ reasons: [] }),
+    detectGateProcOrphans: emptyArr,
+    computeSyncDelta: () => ["rendered/TASKS.md"],
+    canonicalSyncablePaths: () => ["rendered/TASKS.md"],
+    gitTry: (repoRoot, args) => (
+      args[0] === "status"
+        ? { status: 0, stdout: " M coord/scripts/foo.js\n M coord/rendered/TASKS.md\n" }
+        : { status: 0, stdout: "" }
+    ),
+    buildQuestionQueueReport: () => ({ total: 0, by_type: {}, by_severity: {}, by_aging: {} }),
+    readActiveOrchestratorQuestionRows: emptyArr,
+    formatBucketCounts: () => "",
+    buildDoctorResolutionGuidance: () => "",
+    collectLandingAuditReport: () => ({}),
+    formatLandingAuditSummary: emptyArr,
+  });
+
+  assert.throws(() => report.doctor({}), /Refusing tree-wide governance mutation/);
+  assert.match(failed, /Canonical derived artifacts drift from HEAD/);
+  assert.match(failed, /Refusing tree-wide governance mutation/);
+  assert.match(failed, /coord\/scripts\/foo\.js/);
 });

@@ -21,6 +21,7 @@ const {
   readReceipt,
   __testing: { safeSlug },
 } = require("./runtime-evidence.js");
+const { shapeGateResult } = require("./gate-result.js");
 
 // Pure evaluation over an in-memory receipt set — no fs, fully unit-testable.
 // receipts: array of { receipt, source } where source labels where it came from.
@@ -65,19 +66,16 @@ function evaluateReceiptSet(ticket, receipts) {
 }
 
 function finalize(ticket, checks, artifactPaths) {
-  const failed = checks.filter((c) => c.result === "fail");
-  return {
+  // COORD-279: shared gate-result shaping (was an inlined duplicate of the
+  // content/infra blocks). Label stays "evidence" (the gateProc) for an
+  // identical summary string.
+  return shapeGateResult({
     gateProc: "evidence",
     track: "product-engineering",
-    ticket,
-    result: failed.length === 0 ? "pass" : "fail",
+    subject: { ticket },
     checks,
-    artifact_paths: artifactPaths,
-    summary:
-      failed.length === 0
-        ? `evidence gate pass: ${checks.length} check(s) ok`
-        : `evidence gate fail: ${failed.length}/${checks.length} check(s) failed`,
-  };
+    artifactPaths,
+  });
 }
 
 // Load receipts for a ticket from a live-MCP evidence directory. Each file is a

@@ -1,3 +1,5 @@
+// COORD-299: relocate this worker's ephemeral coarse state-locks + memory corpus to an os.tmpdir() sandbox
+require("./governance-test-utils.js").sandboxProcessRuntimeLocks();
 "use strict";
 
 const test = require("node:test");
@@ -60,6 +62,36 @@ test("repoBootstrapLabel maps X and unknown to coord, codes to repo name", () =>
   assert.equal(w.repoBootstrapLabel("X"), "coord");
   assert.equal(w.repoBootstrapLabel("Z"), "coord");
   assert.equal(w.repoBootstrapLabel("B"), "backend");
+});
+
+test("COORD-358: repo-X ticket workspace is a real git worktree and cleanup removes branch", () => {
+  const w = build();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "repo-x-worktree-"));
+  const worktree = path.join(tmp, "COORD-358");
+  const branch = `test/coord-358-${process.pid}-${Date.now()}`;
+  const prepared = w.ensureTicketWorkspace({
+    repoCode: "X",
+    worktree,
+    branch,
+    base: "HEAD",
+  });
+  try {
+    assert.equal(prepared.createdWorktree, true);
+    assert.equal(prepared.createdBranch, true);
+    assert.equal(w.isInsideGitWorkTree(worktree), true);
+    assert.equal(fs.existsSync(path.join(worktree, "coord", "scripts", "worktree-ops.js")), true);
+    assert.equal(fs.existsSync(path.join(worktree, "coord", ".runtime", "locks")), true);
+    assert.equal(fs.existsSync(path.join(worktree, "coord", ".runtime", "plans")), true);
+    assert.equal(
+      fs.readFileSync(path.join(worktree, "coord", ".runtime", ".gitignore"), "utf8"),
+      "*\n!.gitignore\n"
+    );
+  } finally {
+    w.cleanupPreparedTicketWorkspace(prepared);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+  const liveBranch = w.gitOutput(path.dirname(require("./governance-context.js").COORD_DIR), ["branch", "--list", branch]);
+  assert.equal(String(liveBranch || "").trim(), "");
 });
 
 // --- Closed-ticket workspace cleanup (relocated from lifecycle.js, COORD-089) ---

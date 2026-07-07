@@ -15,6 +15,7 @@
 // gate-procs (analytics-gate.js, content-gate.js).
 
 const fs = require("fs");
+const { shapeGateResult } = require("./gate-result.js");
 
 // ---- pure helpers ---------------------------------------------------------
 
@@ -95,6 +96,166 @@ function checkDeploySmoke(deploySmokeUrl) {
     : { name: "deploy_smoke", result: "skip", detail: "no deploySmokeUrl provided; run smoke against preview" };
 }
 
+function enterpriseRequired(inputs = {}) {
+  return Boolean(
+    inputs.enterpriseRequired ||
+    inputs.enterpriseConfig?.required ||
+    inputs.deploymentEvidence?.enterprise_required
+  );
+}
+
+function deploymentEvidence(inputs = {}) {
+  return inputs.deploymentEvidence && typeof inputs.deploymentEvidence === "object"
+    ? inputs.deploymentEvidence
+    : {};
+}
+
+function checkEnterpriseOptIn(inputs) {
+  if (enterpriseRequired(inputs)) {
+    return { name: "enterprise_deployment_policy", result: "pass", detail: "enterprise deployment proof is required." };
+  }
+  if (inputs.deploymentEvidence || inputs.enterpriseConfig) {
+    return { name: "enterprise_deployment_policy", result: "pass", detail: "enterprise deployment evidence supplied; evaluating optional hardening checks." };
+  }
+  return { name: "enterprise_deployment_policy", result: "skip", detail: "no enterprise deployment policy supplied; scaffold-only infra gate." };
+}
+
+function evidencePass(name, ok, passDetail, failDetail, required) {
+  if (ok) return { name, result: "pass", detail: passDetail };
+  return required
+    ? { name, result: "fail", detail: failDetail }
+    : { name, result: "skip", detail: failDetail };
+}
+
+function checkDeployIdentity(inputs) {
+  const evidence = deploymentEvidence(inputs);
+  const ok = Boolean(evidence.deploy_identity || evidence.operator || evidence.actor);
+  return evidencePass(
+    "deploy_identity",
+    ok,
+    `deploy identity recorded: ${evidence.deploy_identity || evidence.operator || evidence.actor}`,
+    "deploy identity absent.",
+    enterpriseRequired(inputs)
+  );
+}
+
+function checkArtifactIdentity(inputs) {
+  const evidence = deploymentEvidence(inputs);
+  const landed = evidence.landed_commit || evidence.landedCommit;
+  const deployed = evidence.deployed_commit || evidence.deployedCommit || evidence.deployed_artifact_commit;
+  const ok = evidence.artifact_matches_commit === true || (landed && deployed && String(landed) === String(deployed));
+  return evidencePass(
+    "artifact_identity",
+    ok,
+    landed && deployed ? `deployed artifact commit matches landed commit ${landed}` : "artifact identity marked verified.",
+    "deployed artifact is not proven to equal the landed commit.",
+    enterpriseRequired(inputs)
+  );
+}
+
+function looksLikeLiteralSecret(text) {
+  return /(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*['"]?[A-Za-z0-9_+/.=-]{12,}/i.test(String(text || ""));
+}
+
+function checkSecretReferences(inputs) {
+  const evidence = deploymentEvidence(inputs);
+  const configText = [
+    inputs.manifestText,
+    inputs.workflowText,
+    JSON.stringify(inputs.enterpriseConfig || {}),
+  ].join("\n");
+  const ok = evidence.secret_refs_only === true || (!looksLikeLiteralSecret(configText) && Boolean(evidence.secret_store_ref || evidence.secretKeyRef));
+  return evidencePass(
+    "secret_references",
+    ok,
+    "deploy configuration uses secret references, not literal secrets.",
+    "secret references not proven, or a literal secret-like value appears in config.",
+    enterpriseRequired(inputs)
+  );
+}
+
+function checkSecretStoreKms(inputs) {
+  const evidence = deploymentEvidence(inputs);
+  const ok = Boolean(
+    evidence.secret_store_ref ||
+    evidence.secretStoreRef ||
+    evidence.kms_key_ref ||
+    evidence.kmsKeyRef
+  );
+  return evidencePass(
+    "secret_store_kms",
+    ok,
+    "secret-store/KMS reference recorded.",
+    "secret-store/KMS reference absent.",
+    enterpriseRequired(inputs)
+  );
+}
+
+function checkEnvironmentDiff(inputs) {
+  const evidence = deploymentEvidence(inputs);
+  const ok = Boolean(evidence.environment_diff_reviewed || evidence.env_diff_reviewed || evidence.environment_diff);
+  return evidencePass(
+    "environment_diff",
+    ok,
+    "environment diff reviewed.",
+    "environment diff review absent.",
+    enterpriseRequired(inputs)
+  );
+}
+
+function checkIamNetworkPolicy(inputs) {
+  const evidence = deploymentEvidence(inputs);
+  const ok = Boolean(evidence.iam_policy_reviewed || evidence.iamPolicyReviewed) &&
+    Boolean(evidence.network_policy_reviewed || evidence.networkPolicyReviewed);
+  return evidencePass(
+    "iam_network_policy",
+    ok,
+    "IAM and network-policy guardrails reviewed.",
+    "IAM and network-policy guardrails not both reviewed.",
+    enterpriseRequired(inputs)
+  );
+}
+
+function checkRollbackPath(inputs) {
+  const evidence = deploymentEvidence(inputs);
+  const ok = Boolean(evidence.rollback_path || evidence.rollbackPath || evidence.disable_switch);
+  return evidencePass(
+    "rollback_path",
+    ok,
+    "rollback/disable path recorded.",
+    "rollback/disable path absent.",
+    enterpriseRequired(inputs)
+  );
+}
+
+function checkRuntimeSmoke(inputs) {
+  const evidence = deploymentEvidence(inputs);
+  const ok = Boolean(evidence.runtime_smoke || evidence.runtimeSmoke || evidence.deploy_smoke || inputs.deploySmokeUrl);
+  return evidencePass(
+    "runtime_smoke",
+    ok,
+    "post-land runtime smoke/verify evidence recorded.",
+    "post-land runtime smoke/verify evidence absent.",
+    enterpriseRequired(inputs)
+  );
+}
+
+function enterpriseDeploymentChecks(inputs = {}) {
+  const checks = [checkEnterpriseOptIn(inputs)];
+  if (checks[0].result === "skip") {
+    return checks;
+  }
+  checks.push(checkDeployIdentity(inputs));
+  checks.push(checkArtifactIdentity(inputs));
+  checks.push(checkSecretReferences(inputs));
+  checks.push(checkSecretStoreKms(inputs));
+  checks.push(checkEnvironmentDiff(inputs));
+  checks.push(checkIamNetworkPolicy(inputs));
+  checks.push(checkRollbackPath(inputs));
+  checks.push(checkRuntimeSmoke(inputs));
+  return checks;
+}
+
 // ---- core pure evaluation -------------------------------------------------
 
 // evaluateInfra(inputs) -> report
@@ -111,26 +272,24 @@ function evaluateInfra(inputs = {}) {
   checks.push(checkSecurityHeaders(config, error));
   checks.push(checkWorkflowDeployStep(inputs.workflowText));
   checks.push(checkDeploySmoke(inputs.deploySmokeUrl));
+  checks.push(...enterpriseDeploymentChecks(inputs));
 
   if (inputs.deploySmokeUrl) artifactPaths.push(inputs.deploySmokeUrl);
+  if (inputs.deploymentEvidence?.receipt_path) artifactPaths.push(inputs.deploymentEvidence.receipt_path);
 
   return finalize(target, checks, artifactPaths);
 }
 
 function finalize(target, checks, artifactPaths) {
-  const failed = checks.filter((c) => c.result === "fail");
-  return {
+  // COORD-279: shared gate-result shaping (was an inlined duplicate of the
+  // analytics/content blocks).
+  return shapeGateResult({
     gateProc: "infra",
     track: "devops",
-    target,
-    result: failed.length === 0 ? "pass" : "fail",
+    subject: { target },
     checks,
-    artifact_paths: artifactPaths,
-    summary:
-      failed.length === 0
-        ? `infra gate pass: ${checks.length} check(s) ok`
-        : `infra gate fail: ${failed.length}/${checks.length} check(s) failed`,
-  };
+    artifactPaths,
+  });
 }
 
 // ---- fs loaders (thin layer over the pure core) --------------------------
@@ -149,9 +308,17 @@ function loadWorkflow(workflowPath) {
 
 // runInfraGate({ configPath?, staticwebappConfig?, workflowPath?, workflowText?, deploySmokeUrl?, target? })
 function runInfraGate(options = {}) {
+  let deploymentEvidence = options.deploymentEvidence;
+  if (!deploymentEvidence && options.deployReceiptPath && fs.existsSync(options.deployReceiptPath)) {
+    deploymentEvidence = JSON.parse(fs.readFileSync(options.deployReceiptPath, "utf8"));
+  }
   const inputs = {
     target: options.target,
     deploySmokeUrl: options.deploySmokeUrl,
+    enterpriseRequired: options.enterpriseRequired,
+    enterpriseConfig: options.enterpriseConfig,
+    deploymentEvidence,
+    manifestText: options.manifestText,
     staticwebappConfig:
       options.staticwebappConfig !== undefined ? options.staticwebappConfig : loadConfig(options.configPath),
     workflowText: options.workflowText !== undefined ? options.workflowText : loadWorkflow(options.workflowPath),
@@ -168,6 +335,8 @@ function parseArgs(argv) {
     else if (a === "--workflow") out.workflowPath = argv[++i];
     else if (a === "--target") out.target = argv[++i];
     else if (a === "--smoke-url") out.deploySmokeUrl = argv[++i];
+    else if (a === "--enterprise-required") out.enterpriseRequired = true;
+    else if (a === "--deploy-receipt") out.deployReceiptPath = argv[++i];
     else if (!out.configPath && !a.startsWith("--")) out.configPath = a;
   }
   return out;
@@ -202,5 +371,6 @@ module.exports = {
   loadConfig,
   loadWorkflow,
   runInfraGate,
+  enterpriseDeploymentChecks,
   main,
 };

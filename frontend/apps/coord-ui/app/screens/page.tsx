@@ -7,6 +7,8 @@ function refClass(c: string): string {
     : 'trace-pill trace-pill--gap';
 }
 
+export const dynamic = 'force-dynamic';
+
 export default function ScreensPage() {
   const { index, origin } = loadScreenIndex();
   const totalScreens = index.apps.reduce((n, a) => n + a.screens.length, 0);

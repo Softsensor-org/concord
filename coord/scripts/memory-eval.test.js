@@ -11,8 +11,19 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const path = require("node:path");
+
+const { sandboxProcessRuntimeLocks } = require("./governance-test-utils.js");
+
+// COORD-300: redirect MEMORY_DIR to a per-process os.tmpdir() sandbox so
+// evaluate()'s decisions-corpus rebuild writes the sandbox, not the live
+// coord/memory tree. The benchmark stays a live read. This lets
+// memory-eval.test.js leave the test-isolation-guard RUNTIME_ALLOWLIST_FILES set.
+sandboxProcessRuntimeLocks();
 
 const evalMod = require("./memory-eval.js");
+
+const FIXTURE_BENCHMARK = path.join(__dirname, "__fixtures__", "memory-phase3", "benchmark.json");
 
 // --- per-case metric math ----------------------------------------------------
 
@@ -171,11 +182,63 @@ test("evaluate runs baseline AND semantic over the real benchmark and emits a ga
   assert.ok(report.baseline.recall_at_k >= report.semantic.recall_at_k - 1e-9);
 });
 
+test("temporal validity benchmark keeps invalid memory out of active context and reports mandatory warnings", () => {
+  const benchmark = require(FIXTURE_BENCHMARK);
+  const result = evalMod.evaluateTemporalValidity(benchmark);
+  assert.equal(result.metrics.temporal_cases, 1);
+  assert.equal(result.metrics.active_constraint_safety_rate, 1);
+  assert.equal(result.metrics.warning_coverage, 1);
+  assert.equal(result.metrics.current_authority_preference_rate, 1);
+
+  const tv = result.cases[0];
+  assert.deepEqual(tv.missing_active, []);
+  assert.deepEqual(tv.active_violations, []);
+  assert.equal(tv.pack_summary.fields, 1);
+  assert.equal(tv.pack_summary.stale_sources, 1);
+  assert.equal(tv.pack_summary.history, 1);
+  assert.equal(tv.pack_summary.conflicts, 1);
+});
+
+test("evaluate includes temporal-validity metrics without merging them into recall@k", () => {
+  const report = evalMod.evaluate({ benchmarkPath: FIXTURE_BENCHMARK, skipRebuild: true });
+  assert.equal(report.benchmark_cases, 2);
+  assert.equal(report.temporal_validity.temporal_cases, 1);
+  assert.equal(report.claim_promotion.claim_promotion_cases, 1);
+  assert.equal(typeof report.baseline.stale_answer_rate, "number");
+  assert.equal(typeof report.temporal_validity.active_constraint_safety_rate, "number");
+  assert.equal(typeof report.claim_promotion.proposed_claim_precision, "number");
+  assert.notEqual(Object.prototype.hasOwnProperty.call(report.baseline, "active_constraint_safety_rate"), true);
+  assert.notEqual(Object.prototype.hasOwnProperty.call(report.baseline, "proposed_claim_precision"), true);
+});
+
+test("COORD-317 claim-promotion benchmark gates broad extractor rollout on precision", () => {
+  const benchmark = require(FIXTURE_BENCHMARK);
+  const result = evalMod.evaluateClaimPromotion(benchmark);
+  assert.equal(result.metrics.claim_promotion_cases, 1);
+  assert.equal(result.metrics.promoted_claim_precision, 1);
+  assert.equal(result.metrics.auto_reject_accuracy, 1);
+  assert.equal(result.metrics.conflict_detection, 1);
+  assert.equal(result.metrics.false_authority_rate, 0);
+  assert.equal(result.gate.broad_extractor_rollout_allowed, true);
+
+  const failed = evalMod.decideClaimPromotionGate({
+    ...result.metrics,
+    false_authority_rate: 1,
+  });
+  assert.equal(failed.broad_extractor_rollout_allowed, false);
+  assert.ok(failed.failures.includes("false_authority_rate"));
+});
+
 test("formatReport renders a readable baseline-vs-semantic table + gate line", () => {
-  const report = evalMod.evaluate({});
+  const report = evalMod.evaluate({ benchmarkPath: FIXTURE_BENCHMARK, skipRebuild: true });
   const text = evalMod.formatReport(report);
   assert.match(text, /baseline/);
   assert.match(text, /semantic/);
   assert.match(text, /recall_at_k/);
+  assert.match(text, /stale_answer_rate/);
   assert.match(text, /GATE: semantic_better=/);
+  assert.match(text, /Temporal validity/);
+  assert.match(text, /active_constraint_safety_rate/);
+  assert.match(text, /Claim promotion precision/);
+  assert.match(text, /CLAIM GATE: broad_extractor_rollout_allowed=/);
 });

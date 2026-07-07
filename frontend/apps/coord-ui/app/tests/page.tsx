@@ -6,6 +6,8 @@ function stepClass(s?: string): string {
   return 'gate-status gate-status--fail';
 }
 
+export const dynamic = 'force-dynamic';
+
 export default function TestsPage() {
   const t = loadTests();
   return (

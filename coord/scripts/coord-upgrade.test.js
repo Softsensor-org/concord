@@ -284,3 +284,173 @@ test("dispatch routes upgrade to its run()", () => {
   assert.strictEqual(result.code, 0);
   assert.deepStrictEqual(routedArgs, ["--from", "/x"]);
 });
+
+// ---------------------------------------------------------------------------
+// COORD-451: .coord-engine.json upstream pin, --channel/--entitlement, --check
+// ---------------------------------------------------------------------------
+
+const FIXED_NOW = "2026-07-03T00:00:00.000Z";
+
+function readPin(target) {
+  return JSON.parse(read(target, "coord/.coord-engine.json"));
+}
+
+test("COORD-451 apply records .coord-engine.json (version from manifest, default channel community)", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const cap = capture();
+    const result = createCoordUpgrade({ log: cap.log, cwd: () => tmp, now: FIXED_NOW })
+      .run(["--from", source, "--dir", target]);
+    assert.strictEqual(result.code, 0);
+    const pin = readPin(target);
+    assert.strictEqual(pin.schema, 1);
+    assert.strictEqual(pin.engine_version, "engine-v2");
+    assert.strictEqual(pin.source.channel, "community");
+    assert.strictEqual(pin.applied_at, FIXED_NOW);
+    assert.match(cap.text(), /Pinned upstream: version engine-v2, channel community/);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("COORD-451 --channel enterprise WITHOUT entitlement is fail-closed (exit 1, no writes)", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const before = read(target, "coord/scripts/alpha.js");
+    const cap = capture();
+    const result = createCoordUpgrade({ log: cap.log, cwd: () => tmp })
+      .run(["--from", source, "--dir", target, "--channel", "enterprise"]);
+    assert.strictEqual(result.code, 1);
+    assert.strictEqual(result.error, "entitlement required");
+    // Fail-closed BEFORE any apply: the surface is untouched, no pin written.
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), before);
+    assert.ok(!fs.existsSync(path.join(target, "coord", ".coord-engine.json")));
+    assert.match(cap.text(), /requires an entitlement token/);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("COORD-451 --channel enterprise WITH entitlement flips the pinned channel", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const result = createCoordUpgrade({ log: () => {}, cwd: () => tmp, now: FIXED_NOW })
+      .run(["--from", source, "--dir", target, "--channel", "enterprise", "--entitlement", "tok-123"]);
+    assert.strictEqual(result.code, 0);
+    assert.strictEqual(readPin(target).source.channel, "enterprise");
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("COORD-451 entitlement can come from CONCORD_ENTITLEMENT env", () => {
+  const { tmp, source, target } = makeFixture();
+  const prior = process.env.CONCORD_ENTITLEMENT;
+  process.env.CONCORD_ENTITLEMENT = "env-tok";
+  try {
+    const result = createCoordUpgrade({ log: () => {}, cwd: () => tmp })
+      .run(["--from", source, "--dir", target, "--channel", "enterprise"]);
+    assert.strictEqual(result.code, 0);
+    assert.strictEqual(readPin(target).source.channel, "enterprise");
+  } finally {
+    if (prior === undefined) delete process.env.CONCORD_ENTITLEMENT;
+    else process.env.CONCORD_ENTITLEMENT = prior;
+    cleanup(tmp);
+  }
+});
+
+test("COORD-451 unknown --channel is rejected", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const cap = capture();
+    const result = createCoordUpgrade({ log: cap.log, cwd: () => tmp })
+      .run(["--from", source, "--dir", target, "--channel", "premium"]);
+    assert.strictEqual(result.code, 1);
+    assert.match(cap.text(), /unknown --channel/);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("COORD-451 --check on a pristine upgraded target reports no engine drift (exit 0)", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    createCoordUpgrade({ log: () => {}, cwd: () => tmp, now: FIXED_NOW })
+      .run(["--from", source, "--dir", target]);
+    const cap = capture();
+    const result = createCoordUpgrade({ log: cap.log, cwd: () => tmp }).run(["--check", "--dir", target]);
+    assert.strictEqual(result.code, 0);
+    assert.match(cap.text(), /engine drift\s+: none/);
+    assert.match(cap.text(), /channel\s+: community/);
+    assert.match(cap.text(), /engine version\s+: engine-v2/);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("COORD-451 --check flags ENGINE drift when a vendored surface file is hand-edited (exit 1)", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    createCoordUpgrade({ log: () => {}, cwd: () => tmp, now: FIXED_NOW })
+      .run(["--from", source, "--dir", target]);
+    // Hand-edit a manifest-tracked (vendored) engine file → integrity drift.
+    writeFile(target, "coord/scripts/alpha.js", "module.exports = 999; // tampered\n");
+    const cap = capture();
+    const result = createCoordUpgrade({ log: cap.log, cwd: () => tmp }).run(["--check", "--dir", target, "--json"]);
+    assert.strictEqual(result.code, 1);
+    const out = JSON.parse(cap.text());
+    assert.strictEqual(out.verdict, "engine-drift");
+    assert.ok(out.engine_drift >= 1);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("COORD-451 --check tolerates a pre-COORD-451 scaffold with no .coord-engine.json", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    // Land a valid upgraded surface, then remove .coord-engine.json to mimic a
+    // pre-COORD-451 scaffold whose engine surface is still pinned/clean.
+    createCoordUpgrade({ log: () => {}, cwd: () => tmp, now: FIXED_NOW })
+      .run(["--from", source, "--dir", target]);
+    fs.rmSync(path.join(target, "coord", ".coord-engine.json"));
+    const cap = capture();
+    const result = createCoordUpgrade({ log: cap.log, cwd: () => tmp }).run(["--check", "--dir", target]);
+    assert.strictEqual(result.code, 0);
+    assert.match(cap.text(), /no \.coord-engine\.json/);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("COORD-451 surface-unchanged + --channel switch reconciles the pin (repin, exit 0)", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    // First: land the surface on community.
+    createCoordUpgrade({ log: () => {}, cwd: () => tmp, now: FIXED_NOW })
+      .run(["--from", source, "--dir", target]);
+    // Second: same source (surface unchanged) but switch channel → metadata-only re-pin.
+    const cap = capture();
+    const result = createCoordUpgrade({ log: cap.log, cwd: () => tmp, now: FIXED_NOW })
+      .run(["--from", source, "--dir", target, "--channel", "enterprise", "--entitlement", "tok"]);
+    assert.strictEqual(result.code, 0);
+    assert.strictEqual(result.applied, 0);
+    assert.strictEqual(readPin(target).source.channel, "enterprise");
+    assert.match(cap.text(), /reconciled pin/);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("COORD-451 --ref/--sha are recorded in the pin", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    createCoordUpgrade({ log: () => {}, cwd: () => tmp, now: FIXED_NOW })
+      .run(["--from", source, "--dir", target, "--ref", "v0.2.0", "--sha", "abc1234"]);
+    const pin = readPin(target);
+    assert.strictEqual(pin.source.ref, "v0.2.0");
+    assert.strictEqual(pin.source.sha, "abc1234");
+  } finally {
+    cleanup(tmp);
+  }
+});

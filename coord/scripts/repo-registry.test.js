@@ -1,3 +1,5 @@
+// COORD-299: relocate this worker's ephemeral coarse state-locks + memory corpus to an os.tmpdir() sandbox
+require("./governance-test-utils.js").sandboxProcessRuntimeLocks();
 "use strict";
 
 const test = require("node:test");

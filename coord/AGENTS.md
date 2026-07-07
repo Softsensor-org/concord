@@ -23,5 +23,20 @@
 - Treat `coord/board/tasks.json` as the canonical board and `coord/GOVERNANCE.md` as the canonical execution policy.
 - Run `node coord/board/board.js sync` after successful governed board changes.
 - Read `coord/AGENT_STARTUP_CHECKLIST.md` before starting a ticket.
+- Cold-start sequence for any nontrivial ticket:
+  1. Read the thin entry shim (`AGENTS.md`, then `CODEX.md`, `CLAUDE.md`, or
+     `GEMINI.md` as applicable).
+  2. Resolve canonical precedence from `coord/GOVERNANCE.md`.
+  3. Bind identity with `coord/scripts/gov agentid --assign`, then claim,
+     start, or resume the ticket through governance.
+  4. Retrieve minimum context before planning: `coord/scripts/gov explain
+     <ticket>`, plan/prework records, relevant recall, ADR references,
+     requirements, and business-discovery packs.
+  5. Plan, execute, verify, and move through review gates.
+  6. Externalize durable learning into governed artifacts before closeout:
+     plan records, review cycles, feature proofs, repo gates, ADR proposals or
+     links, memory-claim proposals, questions, decisions, and reflections.
+- Treat chat memory as non-authoritative. It may help locate likely context, but
+  governed artifacts are the resume source for tomorrow's cold-start agent.
 - Keep ticket-local notes in `coord/active/<ticket>.md`; do not duplicate canonical status, owner, PR, or dependency data there.
 - Periodically distill feedback-type memory notes into this file. If a governance pattern, CLI workaround, or workflow tip has been learned across 2+ sessions, promote it from agent memory to a directive here so all agents benefit.

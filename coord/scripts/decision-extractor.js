@@ -60,6 +60,20 @@ function sha1(value) {
   return crypto.createHash("sha1").update(value).digest("hex");
 }
 
+// COORD-289: SHA-256 companion for the SHA-256 journal era. Post-migration events
+// carry `hash_alg: "sha256"`, so their cited line hash must be sha256 of the
+// verbatim stored line (matching journal.js's era-aware hashing); pre-migration
+// events keep the implicit sha1 citation byte-for-byte.
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+// Hash a verbatim journal line under the algorithm named by the record's
+// `hash_alg` field (sha256 once migrated, else sha1).
+function hashLineForRecord(line, record) {
+  return record && record.hash_alg === "sha256" ? sha256(line) : sha1(line);
+}
+
 // Read the journal once and index, per ticket, the LATEST event's canonical
 // hash + whether that event is part of the verified hash-chain. Also return the
 // chain head (hash of the last stored event overall). Missing/empty journal is
@@ -86,7 +100,8 @@ function indexJournalProvenance(journalPath) {
       // extractor never fails closed on journal scratch state.
       continue;
     }
-    const eventHash = sha1(trimmed);
+    // COORD-289: cite under the event's era (sha256 post-migration, sha1 pre).
+    const eventHash = hashLineForRecord(trimmed, record);
     chainHead = eventHash;
     const ticket = record && typeof record.ticket === "string" ? record.ticket : null;
     if (!ticket) {
@@ -109,8 +124,20 @@ function isScaffoldLine(value) {
   return String(value || "").trim().toUpperCase().startsWith("TODO");
 }
 
+// requirement_closure is APPEND-ONLY: set-requirement-closure appends a fresh
+// "Ticket ask / Implemented / Not implemented / Deferred to / Closeout verdict"
+// block on every (re-)closure rather than replacing the old one (COORD-198). A
+// takeover / re-closure therefore leaves BOTH the superseded block (e.g.
+// "Closeout verdict: partial") and the newer block ("Closeout verdict: complete")
+// in the ordered array. The DERIVED verdict/debt signals must respect verdict
+// RECENCY: the LAST occurrence of a labelled line wins, so a partial verdict
+// later superseded by a complete one reads as complete, and a "Not implemented: X"
+// later superseded by "Not implemented: none" reads as none. Older lines stay in
+// the record as history — only this derived read uses recency. We therefore scan
+// the ordered list and keep the LAST match, not the first.
 function matchLabel(entries, label) {
   const lowered = label.toLowerCase();
+  let found = null;
   for (const entry of entries) {
     const text = String(entry || "").trim();
     if (isScaffoldLine(text)) {
@@ -118,10 +145,27 @@ function matchLabel(entries, label) {
     }
     const idx = text.toLowerCase().indexOf(lowered + ":");
     if (idx === 0) {
-      return text.slice(label.length + 1).trim();
+      found = text.slice(label.length + 1).trim();
     }
   }
-  return null;
+  return found;
+}
+
+// A "none"-class closure value: the field is present but carries NO real debt.
+// The canonical scaffold writes the bare token "none", but a human/agent closeout
+// frequently writes "none — full acceptance bar met" or "none, nothing deferred"
+// (COORD-197 is the live example). All of these MEAN none, so the derived
+// not-implemented / deferred carve-out signals must treat a leading "none" token
+// (followed by end-of-string or a non-word separator like a dash, em-dash, comma,
+// or colon) as none. Without this, a recency-correct verdict that landed at
+// "Not implemented: none — ..." would still be mis-flagged as a carve-out.
+// Shared so closeout-summary + insight-reports interpret "none" identically.
+function isNoneClosureValue(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) {
+    return true;
+  }
+  return /^none\b/.test(text) && !/^none\w/.test(text);
 }
 
 // Pull every "COORD-123"-style ticket id out of a free-text deferred-to value.
@@ -151,13 +195,21 @@ function parseRequirementClosure(entries) {
   const list = flattenClosureEntries(entries).filter((e) => !isScaffoldLine(e));
   const deferredToRaw = matchLabel(list, "Deferred to");
   const verdictRaw = matchLabel(list, "Closeout verdict");
+  const notImplementedRaw = matchLabel(list, "Not implemented");
   return {
     ticket_ask: matchLabel(list, "Ticket ask"),
     implemented: matchLabel(list, "Implemented"),
-    not_implemented: matchLabel(list, "Not implemented"),
+    not_implemented: notImplementedRaw,
+    // Recency-correct (COORD-198): true when the LATEST "Not implemented:" line
+    // carries no real carve-out — either absent or a "none"-class value (bare
+    // "none" or "none — ..."). Consumers should gate the not-implemented carve-out
+    // signal on this rather than an exact === "none" check so a re-closure that
+    // landed complete is not mis-flagged as debt.
+    not_implemented_is_none: notImplementedRaw == null || isNoneClosureValue(notImplementedRaw),
     deferred_to: deferredToRaw,
+    deferred_to_is_none: deferredToRaw == null || isNoneClosureValue(deferredToRaw),
     deferred_to_tickets:
-      deferredToRaw && deferredToRaw.toLowerCase() !== "none"
+      deferredToRaw && !isNoneClosureValue(deferredToRaw)
         ? extractTicketIds(deferredToRaw)
         : [],
     verdict: verdictRaw ? verdictRaw.toLowerCase() : null,
@@ -190,6 +242,226 @@ function cleanInvariants(invariants) {
   return invariants.map((i) => String(i).trim()).filter((i) => i && !isScaffoldLine(i));
 }
 
+const DECISION_OBJECT_SCHEMA_VERSION = "continuity-decision-object/v1";
+
+const DECISION_OBJECT_FIELDS = Object.freeze([
+  "id",
+  "status",
+  "type",
+  "subject",
+  "question",
+  "why_now",
+  "options",
+  "recommendation",
+  "owner",
+  "needed_by",
+  "resolution",
+  "sources",
+  "supersession",
+  "linked",
+]);
+
+const OPEN_DECISION_STATUSES = new Set(["open", "proposed", "pending", "needs_decision"]);
+const RESOLVED_DECISION_STATUSES = new Set(["resolved", "accepted", "rejected", "deferred"]);
+
+function cleanString(value) {
+  const text = String(value == null ? "" : value).trim();
+  return text || null;
+}
+
+function cleanStringList(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return [...new Set(values.map(cleanString).filter(Boolean))];
+}
+
+function normalizeDecisionOptions(options) {
+  if (!Array.isArray(options)) {
+    return [];
+  }
+  return options
+    .map((option) => {
+      if (typeof option === "string") {
+        return { id: null, label: option.trim(), tradeoffs: [] };
+      }
+      if (!option || typeof option !== "object") {
+        return null;
+      }
+      return {
+        id: cleanString(option.id),
+        label: cleanString(option.label || option.name || option.option),
+        tradeoffs: cleanStringList(option.tradeoffs || option.risks || option.notes),
+      };
+    })
+    .filter((option) => option && option.label);
+}
+
+function normalizeDecisionSources(sources) {
+  if (!Array.isArray(sources)) {
+    return [];
+  }
+  return sources
+    .map((source) => {
+      if (typeof source === "string") {
+        return { type: "ref", ref: source.trim() };
+      }
+      if (!source || typeof source !== "object") {
+        return null;
+      }
+      return {
+        type: cleanString(source.type) || "ref",
+        ref: cleanString(source.ref || source.path || source.url || source.id),
+        note: cleanString(source.note),
+      };
+    })
+    .filter((source) => source && source.ref);
+}
+
+function normalizeDecisionSupersession(supersession) {
+  const input = supersession && typeof supersession === "object" ? supersession : {};
+  return {
+    supersedes: cleanStringList(input.supersedes),
+    superseded_by: cleanString(input.superseded_by),
+    reason: cleanString(input.reason),
+  };
+}
+
+function normalizeDecisionLinked(linked) {
+  const input = linked && typeof linked === "object" ? linked : {};
+  return {
+    tickets: cleanStringList(input.tickets),
+    cadences: cleanStringList(input.cadences),
+  };
+}
+
+function normalizeDecisionResolution(resolution) {
+  const input = resolution && typeof resolution === "object" ? resolution : {};
+  return {
+    answer: cleanString(input.answer),
+    decided_at: cleanString(input.decided_at),
+    decided_by: cleanString(input.decided_by),
+    durable: Boolean(input.durable),
+    promote_to: cleanStringList(input.promote_to),
+    notes: cleanString(input.notes),
+  };
+}
+
+function normalizeDecisionObject(decision, index = 0, fallbackTicketId = null) {
+  if (!decision || typeof decision !== "object") {
+    return null;
+  }
+
+  const id = cleanString(decision.id) || (fallbackTicketId ? `${fallbackTicketId}-D${index + 1}` : null);
+  const statusRaw = (cleanString(decision.status) || "open").toLowerCase();
+  const question = cleanString(decision.question);
+  const subject = cleanString(decision.subject);
+  if (!id || !question) {
+    return null;
+  }
+
+  const linked = normalizeDecisionLinked(decision.linked || {
+    tickets: decision.linked_tickets,
+    cadences: decision.linked_cadences,
+  });
+  if (fallbackTicketId && linked.tickets.length === 0) {
+    linked.tickets = [fallbackTicketId];
+  }
+
+  const resolution = normalizeDecisionResolution(decision.resolution);
+  const resolved = RESOLVED_DECISION_STATUSES.has(statusRaw) || Boolean(resolution.answer);
+  const status = resolved && OPEN_DECISION_STATUSES.has(statusRaw) ? "resolved" : statusRaw;
+  const open = OPEN_DECISION_STATUSES.has(status) && !resolved;
+  const scopeKind = open && (linked.tickets.length > 0 || linked.cadences.length > 0)
+    ? "scoped_risky_work"
+    : "none";
+
+  return {
+    schema_version: DECISION_OBJECT_SCHEMA_VERSION,
+    id,
+    status,
+    type: cleanString(decision.type) || "operational",
+    subject,
+    question,
+    why_now: cleanString(decision.why_now),
+    options: normalizeDecisionOptions(decision.options),
+    recommendation: cleanString(decision.recommendation),
+    owner: cleanString(decision.owner),
+    needed_by: cleanString(decision.needed_by),
+    resolution,
+    sources: normalizeDecisionSources(decision.sources),
+    supersession: normalizeDecisionSupersession(decision.supersession),
+    linked,
+    blocking: {
+      unresolved_blocks: scopeKind,
+      rationale: open
+        ? "Open decision is advisory for warm-start and blocks only risky work in its linked ticket/cadence scope."
+        : "Resolved or non-open decision does not block execution.",
+    },
+  };
+}
+
+function normalizeDecisionObjects(planRecord) {
+  const raw = Array.isArray(planRecord.decision_objects)
+    ? planRecord.decision_objects
+    : Array.isArray(planRecord.operational_decisions)
+      ? planRecord.operational_decisions
+      : [];
+  return raw
+    .map((decision, index) => normalizeDecisionObject(decision, index, planRecord.ticket_id))
+    .filter(Boolean);
+}
+
+function decisionMatchesScope(decision, scope = {}) {
+  const linked = decision.linked || {};
+  if (scope.ticket_id && Array.isArray(linked.tickets) && linked.tickets.includes(scope.ticket_id)) {
+    return true;
+  }
+  if (scope.cadence && Array.isArray(linked.cadences) && linked.cadences.includes(scope.cadence)) {
+    return true;
+  }
+  return !scope.ticket_id && !scope.cadence;
+}
+
+function selectWarmStartDecisionObjects(decisionRecords, scope = {}) {
+  const out = [];
+  for (const record of Array.isArray(decisionRecords) ? decisionRecords : []) {
+    for (const decision of record.decision_objects || []) {
+      if (OPEN_DECISION_STATUSES.has(decision.status) && decisionMatchesScope(decision, scope)) {
+        out.push(decision);
+      }
+    }
+  }
+  return out.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function selectResolvedDurableDecisionObjects(decisionRecords) {
+  const out = [];
+  for (const record of Array.isArray(decisionRecords) ? decisionRecords : []) {
+    for (const decision of record.decision_objects || []) {
+      const promotes = decision.resolution && decision.resolution.promote_to;
+      if (
+        RESOLVED_DECISION_STATUSES.has(decision.status) &&
+        decision.resolution &&
+        (decision.resolution.durable || (Array.isArray(promotes) && promotes.length > 0))
+      ) {
+        out.push(decision);
+      }
+    }
+  }
+  return out.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function decisionBlocksScopedRiskyWork(decision, scope = {}) {
+  if (!decision || !OPEN_DECISION_STATUSES.has(decision.status)) {
+    return false;
+  }
+  if (!decisionMatchesScope(decision, scope)) {
+    return false;
+  }
+  return Boolean(scope.risky) && decision.blocking && decision.blocking.unresolved_blocks === "scoped_risky_work";
+}
+
 // Build the decision record for one plan record. Returns null when the record
 // carries no real decision content (pure scaffold / unworked ticket) so the
 // derived view never asserts an uncited or empty decision.
@@ -204,24 +476,32 @@ function buildDecisionRecord(planRecord, sourcePlanRel, provenanceIndex, chainHe
   const closure = parseRequirementClosure(planRecord.requirement_closure);
   const selfReview = parseSelfReviewCycles(planRecord.self_review_cycles);
   const invariants = cleanInvariants(planRecord.critical_invariants);
+  const decisionObjects = normalizeDecisionObjects(planRecord);
 
   const hasContent =
     Boolean(closure.ticket_ask || closure.implemented) ||
     selfReview.length > 0 ||
-    invariants.length > 0;
+    invariants.length > 0 ||
+    decisionObjects.length > 0;
   if (!hasContent) {
     return null;
   }
 
   const prov = provenanceIndex.get(ticketId) || { event_hash: null, verified: false };
 
-  return {
+  const record = {
     ticket_id: ticketId,
     requirement_closure: {
       ticket_ask: closure.ticket_ask,
       implemented: closure.implemented,
       not_implemented: closure.not_implemented,
+      // COORD-198: the recency-correct none-class flag travels with the derived
+      // record so downstream consumers of decisions.ndjson interpret a re-closure's
+      // latest "Not implemented: none — ..." as no carve-out, the SAME way the
+      // closeout/insight in-process parse does.
+      not_implemented_is_none: closure.not_implemented_is_none,
       deferred_to: closure.deferred_to,
+      deferred_to_is_none: closure.deferred_to_is_none,
       deferred_to_tickets: closure.deferred_to_tickets,
       verdict: closure.verdict,
     },
@@ -236,6 +516,10 @@ function buildDecisionRecord(planRecord, sourcePlanRel, provenanceIndex, chainHe
       verified: prov.verified,
     },
   };
+  if (decisionObjects.length > 0) {
+    record.decision_objects = decisionObjects;
+  }
+  return record;
 }
 
 // stableStringify: deterministic key order so rebuilds are byte-identical and
@@ -309,9 +593,19 @@ function rebuild(options = {}) {
 module.exports = {
   sha1,
   indexJournalProvenance,
+  isNoneClosureValue,
   parseRequirementClosure,
   parseSelfReviewCycles,
   cleanInvariants,
+  DECISION_OBJECT_SCHEMA_VERSION,
+  DECISION_OBJECT_FIELDS,
+  OPEN_DECISION_STATUSES,
+  RESOLVED_DECISION_STATUSES,
+  normalizeDecisionObject,
+  normalizeDecisionObjects,
+  selectWarmStartDecisionObjects,
+  selectResolvedDurableDecisionObjects,
+  decisionBlocksScopedRiskyWork,
   buildDecisionRecord,
   stableStringify,
   serializeDecisions,

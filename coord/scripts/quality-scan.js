@@ -29,15 +29,29 @@
 //
 // BOUNDARY
 //   This module is the orchestration layer: arch-checks.js owns the analysis,
-//   `gov open-followup` owns board mutation. We do not reimplement either. The
-//   filing path SHELLS OUT to the gov CLI so every created ticket flows through
-//   the same governed, validated, audit-logged mutation as a hand-filed one.
+//   the governed create CLI (`gov open-followup` / `gov file-ticket`) owns board
+//   mutation. We do not reimplement either. The filing path SHELLS OUT to the
+//   gov CLI so every created ticket flows through the same governed, validated,
+//   audit-logged mutation as a hand-filed one.
+//
+// COORD-286 (auto-ticketing trigger)
+//   With `--propose` (alias `--status proposed`) the filer routes through the
+//   COORD-285 single-writer create path `gov file-ticket --status proposed`,
+//   landing the auto-generated debt in the APPROVAL-GATED QUARANTINE instead of
+//   open work — a human `gov approve`s (proposed -> todo) or `gov reject`s
+//   (proposed -> superseded). Without the flag, behavior is unchanged (filed
+//   `todo` via `gov open-followup`). Dedup is status-agnostic (it counts the
+//   proposed rows), so the cadence is idempotent. The cadence WHEN-layer is a
+//   thin single-shot runner (coord/scripts/quality-propose-cron.js) plus the
+//   documented recipes in coord/product/QUALITY_AUTOMATION.md — no live
+//   scheduler ships (mirrors the COORD-243 detect/do/trigger split).
 
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
 const archChecks = require("./arch-checks.js");
+const { CREATABLE_STATUSES, STATUS } = require("./governance-constants.js");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const GOV_BIN = path.join(REPO_ROOT, "coord", "scripts", "gov");
@@ -46,9 +60,10 @@ const DEFAULT_BOARD = path.join(REPO_ROOT, "coord", "board", "tasks.json");
 // Severity -> ticket priority. Documented mapping (overridable per-check below).
 //   fail  -> P2 (must fix; escalated check fired)
 //   warn  -> P3 (debt; track but lower urgency)
-// monolith findings are bumped to P2 even at warn severity (architectural risk).
+// monolith/prodloc findings are bumped to P2 even at warn severity
+// (architectural risk).
 const SEVERITY_PRIORITY = Object.freeze({ fail: "P2", warn: "P3" });
-const CHECK_PRIORITY_OVERRIDE = Object.freeze({ monolith: "P2" });
+const CHECK_PRIORITY_OVERRIDE = Object.freeze({ monolith: "P2", prodloc: "P2", compositionRoot: "P2" });
 
 // Ordered so a higher floor excludes lower severities.
 const SEVERITY_ORDER = Object.freeze(["warn", "fail"]);
@@ -63,6 +78,16 @@ const DEFAULT_OPTIONS = Object.freeze({
   severityFloor: "fail",
   cap: 5,
   apply: false,
+  // COORD-286: the status stamped on auto-filed debt. Default `todo` preserves
+  // the historical behavior (filed via `gov open-followup` straight into open
+  // work). `proposed` (set by --propose / --status proposed) files through the
+  // COORD-285 single-writer create path `gov file-ticket --status proposed`, so
+  // the debt lands in the approval-gated QUARANTINE (a human must `gov approve`
+  // / `gov reject` it) instead of directly into the backlog. Dedup via the
+  // [qkey:...] marker is status-agnostic: it counts proposed rows too (they are
+  // not closed), so the cadence stays idempotent — a same-qkey proposal already
+  // on the board is a dedup hit and is not re-filed.
+  status: STATUS.TODO,
 });
 
 // Machine marker embedded in every generated ticket description. The stable key
@@ -104,6 +129,8 @@ const FIX_FRAMING = Object.freeze({
   complexity: "Refactor this function: extract helpers / flatten branching to reduce cyclomatic complexity.",
   imports: "Remove the disallowed cross-module import; route through the declared boundary instead.",
   duplication: "Extract the duplicated block into a shared helper and call it from both sites.",
+  prodloc: "Split this coord/scripts production module or lower its high-water LOC budget after extraction.",
+  compositionRoot: "Move the added logic into a self-registering module and leave the composition root as wiring only.",
   hardcoding: "Move this magic literal to config or a named shared constant (config-seam hygiene).",
   deadcode: "Confirm the symbol is truly unreferenced (incl. dispatch tables/tests), then delete it.",
 });
@@ -115,6 +142,10 @@ function titleFor(finding) {
       return `Reduce file size: ${file} (${finding.value} LOC > ${finding.threshold})`;
     case "monolith":
       return `Decompose monolith: ${file} (${finding.value} LOC > ${finding.threshold})`;
+    case "prodloc":
+      return `Reduce coord production module size: ${file} (${finding.value} LOC > ${finding.threshold})`;
+    case "compositionRoot":
+      return `Move composition-root logic into a module: ${file}${finding.line != null ? `:${finding.line}` : ""}`;
     case "complexity": {
       const m = /function\s+(\S+)\s+in/.exec(String(finding.message || ""));
       const fn = m ? m[1] : `function@${finding.line}`;
@@ -175,6 +206,14 @@ function groupProposals(proposals) {
 // (non-done / non-superseded), the set of stable keys recorded in its
 // description's [qkey:...] marker(s). A proposal whose key is in that set is a
 // duplicate and is skipped.
+//
+// COORD-286: a `proposed` (quarantined) ticket is NOT closed, so its qkey IS
+// collected here — i.e. dedup counts proposed rows. This is what makes the
+// `--propose` cadence idempotent: a proposal already sitting in the approval
+// queue (or already promoted to todo, or in-flight) is a dedup hit and is not
+// re-filed, so re-running the scan does not spam the quarantine. Only `done` /
+// `superseded` (an approved-then-closed fix, or a rejected proposal) free the
+// key to be re-proposed.
 // ---------------------------------------------------------------------------
 function boardRows(board) {
   const rows = [];
@@ -295,16 +334,36 @@ function scan({ root, config } = {}) {
 // under --apply.
 // ---------------------------------------------------------------------------
 function fileTicket(proposal, opts, runner = spawnSync) {
-  const args = [
-    "open-followup",
-    "--prefix", opts.prefix,
-    "--depends-on", opts.dependsOn,
-    "--repo", opts.repo,
-    "--type", opts.type,
-    "--pri", proposal.pri,
-    "--description", proposal.description,
-    "--relation", "related",
-  ];
+  // COORD-286: two filing paths, selected by opts.status.
+  //   - todo (default, back-compat): `gov open-followup` — the historical path
+  //     that files straight into open work with a parent relation.
+  //   - proposed: the COORD-285 single-writer create path
+  //     `gov file-ticket --status proposed`, which stamps the QUARANTINED
+  //     `proposed` status (validated against CREATABLE_STATUSES inside that
+  //     locked, journaled transaction — we do NOT reimplement that validation).
+  //     The qkey marker still rides in --description, so dedup is identical.
+  const propose = opts.status === STATUS.PROPOSED;
+  const args = propose
+    ? [
+        "file-ticket",
+        "--prefix", opts.prefix,
+        "--repo", opts.repo,
+        "--type", opts.type,
+        "--pri", proposal.pri,
+        "--status", STATUS.PROPOSED,
+        "--depends-on", opts.dependsOn,
+        "--description", proposal.description,
+      ]
+    : [
+        "open-followup",
+        "--prefix", opts.prefix,
+        "--depends-on", opts.dependsOn,
+        "--repo", opts.repo,
+        "--type", opts.type,
+        "--pri", proposal.pri,
+        "--description", proposal.description,
+        "--relation", "related",
+      ];
   const env = Object.assign({}, process.env);
   if (!env.COORD_SESSION_ID) env.COORD_SESSION_ID = "coord-quality-scan";
   const res = runner(GOV_BIN, args, { cwd: REPO_ROOT, encoding: "utf8", env });
@@ -313,7 +372,9 @@ function fileTicket(proposal, opts, runner = spawnSync) {
   if (res.status !== 0) {
     return { ok: false, proposal, error: (stderr || stdout || `exit ${res.status}`).trim() };
   }
-  const m = /follow-up ticket (\S+) after/.exec(stdout);
+  // open-followup: "Created related follow-up ticket QSCAN-001 after COORD-083."
+  // file-ticket:   "Filed ticket QSCAN-001 (X/refactor/P2, status=proposed)."
+  const m = /follow-up ticket (\S+) after/.exec(stdout) || /Filed ticket (\S+)/.exec(stdout);
   return { ok: true, proposal, ticket: m ? m[1] : null, output: stdout.trim() };
 }
 
@@ -335,7 +396,7 @@ function formatPlan(plan, opts, summary) {
   const lines = [];
   lines.push(archChecks.formatArchSummary(summary));
   lines.push(
-    `quality-scan: mode=${opts.apply ? "APPLY" : "dry-run"} floor=${opts.severityFloor} cap=${opts.cap} ` +
+    `quality-scan: mode=${opts.apply ? "APPLY" : "dry-run"} status=${opts.status || STATUS.TODO} floor=${opts.severityFloor} cap=${opts.cap} ` +
     `findings=${plan.counts.findings} below-floor=${plan.counts.belowFloor} ` +
     `skipped-open=${plan.counts.skippedOpen} skipped-in-run=${plan.counts.skippedInRun} ` +
     `eligible=${plan.counts.eligible} ` +
@@ -382,6 +443,11 @@ function parseArgs(argv) {
       case "--prefix": opts.prefix = next(); break;
       case "--severity-floor": opts.severityFloor = next(); break;
       case "--cap": opts.cap = parseInt(next(), 10); break;
+      // COORD-286: file the auto-generated debt as `proposed` (quarantined)
+      // instead of `todo`. `--propose` is the ergonomic alias for
+      // `--status proposed`; `--status <todo|proposed>` is the explicit form.
+      case "--propose": opts.status = STATUS.PROPOSED; break;
+      case "--status": opts.status = next(); break;
       case "--config": opts.configPath = next(); break;
       case "--help": case "-h": opts.help = true; break;
       default:
@@ -391,14 +457,25 @@ function parseArgs(argv) {
   return opts;
 }
 
-const USAGE = `usage: quality-scan.js [--apply] [--root <dir>] [--board <path>]
+const USAGE = `usage: quality-scan.js [--apply] [--propose] [--root <dir>] [--board <path>]
   [--depends-on <ticket>] [--repo <code>] [--type <type>] [--prefix <PREFIX>]
-  [--severity-floor warn|fail] [--cap <n>] [--config <json>]
+  [--severity-floor warn|fail] [--cap <n>] [--status todo|proposed] [--config <json>]
 
 Runs the arch-checks code-quality library over <root>, dedups findings against
-open tickets on <board>, and (with --apply) files governed follow-up tickets
-via 'gov open-followup'. DRY-RUN IS THE DEFAULT: without --apply nothing is
-written. A per-run cap (default ${DEFAULT_OPTIONS.cap}) prevents board flooding.
+open tickets on <board>, and (with --apply) files governed follow-up tickets.
+DRY-RUN IS THE DEFAULT: without --apply nothing is written. A per-run cap
+(default ${DEFAULT_OPTIONS.cap}) prevents board flooding.
+
+FILING STATUS (--propose / --status):
+  default (todo): files via 'gov open-followup' straight into open work
+      (historical behavior, unchanged when --propose is absent).
+  --propose (alias --status proposed): files via the COORD-285 single-writer
+      create path 'gov file-ticket --status proposed', so the auto-generated
+      debt lands in the approval-gated QUARANTINE. A human must 'gov approve'
+      (proposed -> todo) or 'gov reject' (proposed -> superseded) before it
+      becomes real work. Dedup counts proposed rows, so the cadence
+      'quality-scan --severity-floor warn --cap N --apply --propose' is
+      idempotent: a same-qkey proposal already queued is not re-filed.
 
 SEVERITY FLOOR — two intended modes:
   --severity-floor fail  (DEFAULT): files only ESCALATED, fail-severity findings.
@@ -432,6 +509,13 @@ function runCli(argv, { stdout, stderr } = {}, runner = spawnSync) {
   }
   if (!Number.isInteger(opts.cap) || opts.cap < 0) {
     err.write(`quality-scan: invalid --cap (need a non-negative integer)\n`);
+    return 2;
+  }
+  // COORD-286: only a CREATABLE status may be stamped on a freshly-filed row.
+  // Reuse the COORD-285 vocabulary (todo|proposed) — every other status is
+  // reached via a governed transition, never born here.
+  if (!CREATABLE_STATUSES.includes(opts.status)) {
+    err.write(`quality-scan: invalid --status ${opts.status} (use ${CREATABLE_STATUSES.join("|")}; or --propose)\n`);
     return 2;
   }
 

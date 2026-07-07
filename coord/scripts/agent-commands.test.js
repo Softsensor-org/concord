@@ -29,7 +29,15 @@ const {
   runGit,
   writeRepoFile,
   createMinimalGovernanceWorkspace,
+  sandboxProcessRuntime,
 } = require("./governance-test-utils.js");
+
+// COORD-300: redirect the full runtime surface (RUNTIME_DIR + agent registry/
+// sessions + coarse locks + plan-records) to a per-process os.tmpdir() sandbox so
+// the governed-mutation writes that this file's thin per-test sandboxes don't cover
+// land in tmp instead of the live coord/.runtime tree — letting agent-commands.test.js
+// leave the test-isolation-guard allowlist.
+sandboxProcessRuntime();
 
 // Hermetic session env: these tests control provider session/thread ids
 // explicitly. Strip any ambient id the host injects (e.g. Claude Code exports
@@ -43,7 +51,7 @@ delete process.env.GROK_THREAD_ID;
 test("detectCwdTicketClaimHazard warns when claiming inside a governed worktree without rebinding the ticket", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "coord-claim-hazard-"));
   const runtimeLocksDir = path.join(tempDir, ".runtime", "locks");
-  const worktree = path.join(tempDir, "backend", ".worktrees", "codexa12", "IMP-245");
+  const worktree = path.join(tempDir, __testing.repoNameForCode("B"), ".worktrees", "codexa12", "IMP-245");
   const lockPath = path.join(runtimeLocksDir, "IMP-245.lock");
   const original = {
     LOCKS_DIR: __testing.paths.LOCKS_DIR,
@@ -72,6 +80,220 @@ test("detectCwdTicketClaimHazard warns when claiming inside a governed worktree 
   } finally {
     __testing.paths.LOCKS_DIR = original.LOCKS_DIR;
     __testing.paths.LEGACY_LOCKS_DIR = original.LEGACY_LOCKS_DIR;
+  }
+});
+
+test("COORD-361: optimistic claim reserves todo ownership without creating a lock", () => {
+  const owner = "codexa41";
+  const threadId = "codex-thread-optimistic";
+  const now = new Date().toISOString();
+  const { coordRoot } = createMinimalGovernanceWorkspace("coord-optimistic-claim-");
+
+  const boardPath = path.join(coordRoot, "board", "tasks.json");
+  const planPath = path.join(coordRoot, "PLAN.md");
+  const questionsPath = path.join(coordRoot, "QUESTIONS.md");
+  const agentsPath = path.join(coordRoot, ".runtime", "agents.json");
+  const sessionsPath = path.join(coordRoot, ".runtime", "agent_sessions.json");
+  const runtimeDir = path.join(coordRoot, ".runtime");
+  const eventLogPath = path.join(coordRoot, ".runtime", "governance-events.ndjson");
+  const locksDir = path.join(coordRoot, ".runtime", "locks");
+
+  fs.writeFileSync(planPath, "", "utf8");
+  fs.writeFileSync(questionsPath, "# Questions\n", "utf8");
+  fs.writeFileSync(boardPath, `${JSON.stringify({
+    version: 1,
+    metadata: {
+      title: "Optimistic Claim Board",
+      last_updated: now,
+      canonical_references: ["coord/GOVERNANCE.md"],
+      plan_markdown_render_statuses: ["doing", "review"],
+      preamble: [],
+    },
+    sections: [
+      {
+        kind: "table",
+        level: 3,
+        heading: "Optimistic Claims",
+        separator_before: false,
+        columns: ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+        rows: [
+          {
+            ID: "OPT-001",
+            Repo: "X",
+            Type: "task",
+            Pri: "P3",
+            Status: "todo",
+            Owner: "unassigned",
+            Description: "Optimistic claim success.",
+            "Depends On": "",
+          },
+          {
+            ID: "OPT-002",
+            Repo: "X",
+            Type: "task",
+            Pri: "P3",
+            Status: "todo",
+            Owner: "codexa99",
+            Description: "Optimistic claim conflict.",
+            "Depends On": "",
+          },
+          {
+            ID: "OPT-003",
+            Repo: "X",
+            Type: "task",
+            Pri: "P3",
+            Status: "deferred",
+            Owner: "",
+            Description: "Optimistic claim keeps deferred status.",
+            "Depends On": "",
+          },
+        ],
+      },
+    ],
+    prompt_index: {},
+    pr_index: {},
+    landing_index: {},
+    review_findings: {},
+    followup_exceptions: {},
+  }, null, 2)}\n`, "utf8");
+  fs.writeFileSync(agentsPath, `${JSON.stringify([
+    {
+      id: "a41",
+      handle: owner,
+      provider: "openai",
+      status: "active",
+      aliases: [],
+      lane: "coord",
+      default_repo: "X",
+      created_at: now,
+    },
+  ], null, 2)}\n`, "utf8");
+  fs.writeFileSync(sessionsPath, `${JSON.stringify([
+    {
+      session_id: "a41-optimistic",
+      agent_id: "a41",
+      handle: owner,
+      session_label: "codex:optimistic",
+      host: "h",
+      cwd: coordRoot,
+      board_path: boardPath,
+      board_root: coordRoot,
+      thread_id: threadId,
+      claimed_at: now,
+      last_seen_at: now,
+      released_at: null,
+      status: "active",
+      auto_claimed: false,
+    },
+  ], null, 2)}\n`, "utf8");
+
+  const original = {
+    BOARD_PATH: __testing.paths.BOARD_PATH,
+    PLAN_PATH: __testing.paths.PLAN_PATH,
+    QUESTIONS_PATH: __testing.paths.QUESTIONS_PATH,
+    AGENTS_PATH: __testing.paths.AGENTS_PATH,
+    AGENT_SESSIONS_PATH: __testing.paths.AGENT_SESSIONS_PATH,
+    PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+    LEGACY_PLAN_RECORDS_DIR: __testing.paths.LEGACY_PLAN_RECORDS_DIR,
+    PROMPTS_DIR: __testing.paths.PROMPTS_DIR,
+    RENDERED_DIR: __testing.paths.RENDERED_DIR,
+    LOCKS_DIR: __testing.paths.LOCKS_DIR,
+    LEGACY_LOCKS_DIR: __testing.paths.LEGACY_LOCKS_DIR,
+    RUNTIME_DIR: __testing.paths.RUNTIME_DIR,
+    GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
+    GOVERNANCE_SNAPSHOT_PATH: __testing.paths.GOVERNANCE_SNAPSHOT_PATH,
+    GOVERNANCE_SNAPSHOTS_DIR: __testing.paths.GOVERNANCE_SNAPSHOTS_DIR,
+    GOVERNANCE_EVENT_LOCK_DIR: __testing.paths.GOVERNANCE_EVENT_LOCK_DIR,
+    CODEX_THREAD_ID: process.env.CODEX_THREAD_ID,
+    CLAUDE_SESSION_ID: process.env.CLAUDE_SESSION_ID,
+    CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID,
+    AGENT_THREAD_ID: process.env.AGENT_THREAD_ID,
+  };
+
+  __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.PLAN_PATH = planPath;
+  __testing.paths.QUESTIONS_PATH = questionsPath;
+  __testing.paths.AGENTS_PATH = agentsPath;
+  __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
+  __testing.paths.PLAN_RECORDS_DIR = path.join(runtimeDir, "plans");
+  __testing.paths.LEGACY_PLAN_RECORDS_DIR = path.join(coordRoot, "board", "plans");
+  __testing.paths.PROMPTS_DIR = path.join(coordRoot, "prompts");
+  __testing.paths.RENDERED_DIR = path.join(coordRoot, "rendered");
+  __testing.paths.LOCKS_DIR = locksDir;
+  __testing.paths.LEGACY_LOCKS_DIR = path.join(coordRoot, "locks");
+  __testing.paths.RUNTIME_DIR = runtimeDir;
+  __testing.paths.GOVERNANCE_EVENT_LOG_PATH = eventLogPath;
+  __testing.paths.GOVERNANCE_SNAPSHOT_PATH = path.join(runtimeDir, "governance-latest-snapshot.json");
+  __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = path.join(runtimeDir, "governance-snapshots");
+  __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = path.join(runtimeDir, "governance.lock");
+  process.env.CODEX_THREAD_ID = threadId;
+  delete process.env.CLAUDE_SESSION_ID;
+  delete process.env.CLAUDE_CODE_SESSION_ID;
+  delete process.env.AGENT_THREAD_ID;
+
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(" "));
+
+  try {
+    assert.throws(
+      () => __testing.claimTicket("OPT-001"),
+      /claim OPT-001 --optimistic/,
+      "plain claim must preserve the existing start/resume guidance",
+    );
+
+    __testing.claimTicket("OPT-001", { optimistic: true });
+    let board = JSON.parse(fs.readFileSync(boardPath, "utf8"));
+    let row = board.sections[0].rows.find((item) => item.ID === "OPT-001");
+    assert.equal(row.Owner, owner);
+    assert.equal(row.Status, "todo");
+    assert.equal(fs.existsSync(path.join(locksDir, "OPT-001.lock")), false);
+    const payload = JSON.parse(logs.at(-1));
+    assert.equal(payload.optimistic, true);
+    assert.equal(payload.lock_created, false);
+
+    assert.doesNotThrow(() => __testing.claimTicket("OPT-001", { optimistic: true }));
+    board = JSON.parse(fs.readFileSync(boardPath, "utf8"));
+    row = board.sections[0].rows.find((item) => item.ID === "OPT-001");
+    assert.equal(row.Owner, owner, "same-owner optimistic claim is idempotent");
+
+    assert.throws(
+      () => __testing.claimTicket("OPT-002", { optimistic: true }),
+      /already owned by codexa99/,
+    );
+
+    __testing.claimTicket("OPT-003", { optimistic: true });
+    board = JSON.parse(fs.readFileSync(boardPath, "utf8"));
+    row = board.sections[0].rows.find((item) => item.ID === "OPT-003");
+    assert.equal(row.Owner, owner);
+    assert.equal(row.Status, "deferred");
+    assert.equal(fs.existsSync(path.join(locksDir, "OPT-003.lock")), false);
+  } finally {
+    console.log = originalLog;
+    __testing.paths.BOARD_PATH = original.BOARD_PATH;
+    __testing.paths.PLAN_PATH = original.PLAN_PATH;
+    __testing.paths.QUESTIONS_PATH = original.QUESTIONS_PATH;
+    __testing.paths.AGENTS_PATH = original.AGENTS_PATH;
+    __testing.paths.AGENT_SESSIONS_PATH = original.AGENT_SESSIONS_PATH;
+    __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;
+    __testing.paths.LEGACY_PLAN_RECORDS_DIR = original.LEGACY_PLAN_RECORDS_DIR;
+    __testing.paths.PROMPTS_DIR = original.PROMPTS_DIR;
+    __testing.paths.RENDERED_DIR = original.RENDERED_DIR;
+    __testing.paths.LOCKS_DIR = original.LOCKS_DIR;
+    __testing.paths.LEGACY_LOCKS_DIR = original.LEGACY_LOCKS_DIR;
+    __testing.paths.RUNTIME_DIR = original.RUNTIME_DIR;
+    __testing.paths.GOVERNANCE_EVENT_LOG_PATH = original.GOVERNANCE_EVENT_LOG_PATH;
+    __testing.paths.GOVERNANCE_SNAPSHOT_PATH = original.GOVERNANCE_SNAPSHOT_PATH;
+    __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = original.GOVERNANCE_SNAPSHOTS_DIR;
+    __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = original.GOVERNANCE_EVENT_LOCK_DIR;
+    if (original.CODEX_THREAD_ID === undefined) delete process.env.CODEX_THREAD_ID;
+    else process.env.CODEX_THREAD_ID = original.CODEX_THREAD_ID;
+    if (original.CLAUDE_SESSION_ID === undefined) delete process.env.CLAUDE_SESSION_ID;
+    else process.env.CLAUDE_SESSION_ID = original.CLAUDE_SESSION_ID;
+    if (original.CLAUDE_CODE_SESSION_ID === undefined) delete process.env.CLAUDE_CODE_SESSION_ID;
+    else process.env.CLAUDE_CODE_SESSION_ID = original.CLAUDE_CODE_SESSION_ID;
+    if (original.AGENT_THREAD_ID === undefined) delete process.env.AGENT_THREAD_ID;
+    else process.env.AGENT_THREAD_ID = original.AGENT_THREAD_ID;
   }
 });
 
@@ -193,6 +415,9 @@ test("claim transfer fails closed without override and records audited transfer 
     AGENTS_PATH: __testing.paths.AGENTS_PATH,
     AGENT_SESSIONS_PATH: __testing.paths.AGENT_SESSIONS_PATH,
     PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+    // COORD-290: sandbox the prompt + rendered coordination surfaces too.
+    PROMPTS_DIR: __testing.paths.PROMPTS_DIR,
+    RENDERED_DIR: __testing.paths.RENDERED_DIR,
     LOCKS_DIR: __testing.paths.LOCKS_DIR,
     LEGACY_LOCKS_DIR: __testing.paths.LEGACY_LOCKS_DIR,
     RUNTIME_DIR: __testing.paths.RUNTIME_DIR,
@@ -213,6 +438,10 @@ test("claim transfer fails closed without override and records audited transfer 
   __testing.paths.QUESTIONS_PATH = questionsPath;
   __testing.paths.AGENTS_PATH = agentsPath;
   __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
+  fs.mkdirSync(path.join(coordRoot, "prompts", "tickets"), { recursive: true });
+  fs.mkdirSync(path.join(coordRoot, "rendered"), { recursive: true });
+  __testing.paths.PROMPTS_DIR = path.join(coordRoot, "prompts");
+  __testing.paths.RENDERED_DIR = path.join(coordRoot, "rendered");
   __testing.paths.PLAN_RECORDS_DIR = path.join(coordRoot, ".runtime", "plans");
   __testing.paths.LEGACY_PLAN_RECORDS_DIR = path.join(coordRoot, "board", "plans");
   __testing.paths.LOCKS_DIR = path.join(coordRoot, ".runtime", "locks");
@@ -288,6 +517,8 @@ test("claim transfer fails closed without override and records audited transfer 
     __testing.paths.AGENTS_PATH = original.AGENTS_PATH;
     __testing.paths.AGENT_SESSIONS_PATH = original.AGENT_SESSIONS_PATH;
     __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;
+    __testing.paths.PROMPTS_DIR = original.PROMPTS_DIR;
+    __testing.paths.RENDERED_DIR = original.RENDERED_DIR;
     __testing.paths.LOCKS_DIR = original.LOCKS_DIR;
     __testing.paths.LEGACY_LOCKS_DIR = original.LEGACY_LOCKS_DIR;
     __testing.paths.RUNTIME_DIR = original.RUNTIME_DIR;
@@ -572,6 +803,98 @@ test("buildAgentStatusPayload surfaces idle sessions as release candidates for o
   }
 });
 
+test("terminal ticket release marks the current active session released without touching other threads", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "coord263-terminal-session-"));
+  const runtimeDir = path.join(tempDir, ".runtime");
+  const boardPath = path.join(tempDir, "tasks.json");
+  const agentsPath = path.join(tempDir, "agents.json");
+  const sessionsPath = path.join(runtimeDir, "agent_sessions.json");
+  const ticketId = "COORD-263";
+  const owner = "codexa00";
+  const now = new Date().toISOString();
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  fs.writeFileSync(boardPath, `${JSON.stringify({
+    sections: [{
+      rows: [{
+        ID: ticketId,
+        Repo: "X",
+        Type: "bug",
+        Pri: "P2",
+        Status: "done",
+        Owner: owner,
+        Description: "Terminal session release regression",
+        "Depends On": "",
+      }],
+    }],
+  }, null, 2)}\n`);
+  fs.writeFileSync(agentsPath, `${JSON.stringify([
+    { id: "a00", handle: owner, provider: "openai", status: "active", aliases: [] },
+  ], null, 2)}\n`);
+  fs.writeFileSync(sessionsPath, `${JSON.stringify([
+    {
+      session_id: "a00-current",
+      agent_id: "a00",
+      handle: owner,
+      board_path: boardPath,
+      board_root: tempDir,
+      thread_id: "thread-current",
+      claimed_at: now,
+      last_seen_at: now,
+      released_at: null,
+      status: "active",
+      auto_claimed: false,
+    },
+    {
+      session_id: "a00-other",
+      agent_id: "a00",
+      handle: owner,
+      board_path: boardPath,
+      board_root: tempDir,
+      thread_id: "thread-other",
+      claimed_at: now,
+      last_seen_at: now,
+      released_at: null,
+      status: "active",
+      auto_claimed: false,
+    },
+  ], null, 2)}\n`);
+
+  const original = {
+    BOARD_PATH: __testing.paths.BOARD_PATH,
+    AGENTS_PATH: __testing.paths.AGENTS_PATH,
+    AGENT_SESSIONS_PATH: __testing.paths.AGENT_SESSIONS_PATH,
+    RUNTIME_DIR: __testing.paths.RUNTIME_DIR,
+    AGENT_THREAD_ID: process.env.AGENT_THREAD_ID,
+  };
+  try {
+    __testing.paths.BOARD_PATH = boardPath;
+    __testing.paths.AGENTS_PATH = agentsPath;
+    __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
+    __testing.paths.RUNTIME_DIR = runtimeDir;
+    process.env.AGENT_THREAD_ID = "thread-current";
+
+    const result = __testing.releaseTerminalTicketSession(ticketId, { effectiveThread: "thread-current" });
+    assert.equal(result.released.length, 1, "current active session should be released");
+    assert.equal(result.released[0].session_id, "a00-current");
+
+    const sessions = JSON.parse(fs.readFileSync(sessionsPath, "utf8"));
+    assert.equal(sessions.find((s) => s.session_id === "a00-current").status, "released");
+    assert.ok(sessions.find((s) => s.session_id === "a00-current").released_at);
+    assert.equal(sessions.find((s) => s.session_id === "a00-other").status, "active");
+  } finally {
+    __testing.paths.BOARD_PATH = original.BOARD_PATH;
+    __testing.paths.AGENTS_PATH = original.AGENTS_PATH;
+    __testing.paths.AGENT_SESSIONS_PATH = original.AGENT_SESSIONS_PATH;
+    __testing.paths.RUNTIME_DIR = original.RUNTIME_DIR;
+    if (original.AGENT_THREAD_ID === undefined) {
+      delete process.env.AGENT_THREAD_ID;
+    } else {
+      process.env.AGENT_THREAD_ID = original.AGENT_THREAD_ID;
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("rebindAgent --fresh releases current session and claims a new unclaimed handle (GOV-013)", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-rebind-fresh-"));
   const agentsPath = path.join(tempDir, "agents.json");
@@ -781,6 +1104,12 @@ test("rebindAgent --fresh fails closed when the provider pool is exhausted (GOV-
     GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
     GOVERNANCE_SNAPSHOT_PATH: __testing.paths.GOVERNANCE_SNAPSHOT_PATH,
     GOVERNANCE_SNAPSHOTS_DIR: __testing.paths.GOVERNANCE_SNAPSHOTS_DIR,
+    // COORD-290: also sandbox the runtime + lock dir (mirror the sibling
+    // rebindAgent tests). Without RUNTIME_DIR the mutation's crash-recovery read
+    // the LIVE coord/.runtime/governance-restore-point.json and restored the
+    // live files it referenced (e.g. coord/prompts/implementer.md) out of band.
+    RUNTIME_DIR: __testing.paths.RUNTIME_DIR,
+    GOVERNANCE_EVENT_LOCK_DIR: __testing.paths.GOVERNANCE_EVENT_LOCK_DIR,
     CLAUDE_SESSION_ID: process.env.CLAUDE_SESSION_ID,
     CLAUDECODE: process.env.CLAUDECODE,
     CODEX_THREAD_ID: process.env.CODEX_THREAD_ID,
@@ -793,6 +1122,8 @@ test("rebindAgent --fresh fails closed when the provider pool is exhausted (GOV-
   __testing.paths.GOVERNANCE_EVENT_LOG_PATH = eventLogPath;
   __testing.paths.GOVERNANCE_SNAPSHOT_PATH = snapshotPath;
   __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = snapshotsDir;
+  __testing.paths.RUNTIME_DIR = runtimeDir;
+  __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = path.join(runtimeDir, "governance.lock");
   process.env.CLAUDE_SESSION_ID = "claude-exhausted-thread";
   process.env.CLAUDECODE = "1";
   delete process.env.CODEX_THREAD_ID;
@@ -817,6 +1148,8 @@ test("rebindAgent --fresh fails closed when the provider pool is exhausted (GOV-
     __testing.paths.GOVERNANCE_EVENT_LOG_PATH = original.GOVERNANCE_EVENT_LOG_PATH;
     __testing.paths.GOVERNANCE_SNAPSHOT_PATH = original.GOVERNANCE_SNAPSHOT_PATH;
     __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = original.GOVERNANCE_SNAPSHOTS_DIR;
+    __testing.paths.RUNTIME_DIR = original.RUNTIME_DIR;
+    __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = original.GOVERNANCE_EVENT_LOCK_DIR;
     for (const key of ["CLAUDE_SESSION_ID", "CLAUDECODE", "CODEX_THREAD_ID", "AGENT_THREAD_ID"]) {
       if (original[key] === undefined) {
         delete process.env[key];
@@ -998,6 +1331,9 @@ test("COORD-011: a fresh same-owner other-thread Codex session cannot rebind a l
     AGENT_SESSIONS_PATH: __testing.paths.AGENT_SESSIONS_PATH,
     PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
     LEGACY_PLAN_RECORDS_DIR: __testing.paths.LEGACY_PLAN_RECORDS_DIR,
+    // COORD-290: sandbox the prompt + rendered coordination surfaces too.
+    PROMPTS_DIR: __testing.paths.PROMPTS_DIR,
+    RENDERED_DIR: __testing.paths.RENDERED_DIR,
     LOCKS_DIR: __testing.paths.LOCKS_DIR,
     LEGACY_LOCKS_DIR: __testing.paths.LEGACY_LOCKS_DIR,
     RUNTIME_DIR: __testing.paths.RUNTIME_DIR,
@@ -1016,6 +1352,10 @@ test("COORD-011: a fresh same-owner other-thread Codex session cannot rebind a l
   __testing.paths.QUESTIONS_PATH = questionsPath;
   __testing.paths.AGENTS_PATH = agentsPath;
   __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
+  fs.mkdirSync(path.join(coordRoot, "prompts", "tickets"), { recursive: true });
+  fs.mkdirSync(path.join(coordRoot, "rendered"), { recursive: true });
+  __testing.paths.PROMPTS_DIR = path.join(coordRoot, "prompts");
+  __testing.paths.RENDERED_DIR = path.join(coordRoot, "rendered");
   __testing.paths.PLAN_RECORDS_DIR = path.join(coordRoot, ".runtime", "plans");
   __testing.paths.LEGACY_PLAN_RECORDS_DIR = path.join(coordRoot, "board", "plans");
   __testing.paths.LOCKS_DIR = path.join(coordRoot, ".runtime", "locks");
@@ -1077,6 +1417,34 @@ test("COORD-011: a fresh same-owner other-thread Codex session cannot rebind a l
     assert.equal(explainPayload.active_same_owner_other_thread.present, true);
     assert.equal(explainPayload.active_same_owner_other_thread.active_owner_sessions[0].thread_id, threadA);
 
+    // COORD-222: from thread B's vantage, the live thread-A session is also a
+    // co-located FOREIGN session on the same runtime (the gate is owner-agnostic).
+    // The detector sees it; the released thread-C session is ignored (not fresh-active).
+    const colocatedFromB = __testing.detectColocatedForeignSessions({ currentThreadId: threadB });
+    assert.equal(colocatedFromB.present, true, "thread-A is a co-located fresh foreign session from B");
+    assert.ok(
+      colocatedFromB.foreign_sessions.some((s) => s.thread_id === threadA),
+      "co-located detection surfaces the thread-A holder",
+    );
+    assert.ok(
+      !colocatedFromB.foreign_sessions.some((s) => s.thread_id === "codex-thread-C"),
+      "released session must not appear as co-located",
+    );
+
+    // COORD-222: --allow-shared-worktree opts out of the co-located refusal.
+    // (Here the same-owner owner-lease gate still applies, so we assert the
+    // refusal message is NOT the co-located one when the override is passed.)
+    let sharedErr = null;
+    try {
+      __testing.claimTicket(ticketId, { allowSharedWorktree: true });
+    } catch (err) {
+      sharedErr = err;
+    }
+    assert.ok(
+      !sharedErr || !/one governed writer per checkout\/runtime|--allow-shared-worktree/.test(sharedErr.message),
+      `--allow-shared-worktree must bypass the co-located gate (got: ${sharedErr && sharedErr.message})`,
+    );
+
     // A human-admin override bypasses the owner-lease gate.
     let overrideErr = null;
     try {
@@ -1098,6 +1466,8 @@ test("COORD-011: a fresh same-owner other-thread Codex session cannot rebind a l
     __testing.paths.AGENT_SESSIONS_PATH = original.AGENT_SESSIONS_PATH;
     __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;
     __testing.paths.LEGACY_PLAN_RECORDS_DIR = original.LEGACY_PLAN_RECORDS_DIR;
+    __testing.paths.PROMPTS_DIR = original.PROMPTS_DIR;
+    __testing.paths.RENDERED_DIR = original.RENDERED_DIR;
     __testing.paths.LOCKS_DIR = original.LOCKS_DIR;
     __testing.paths.LEGACY_LOCKS_DIR = original.LEGACY_LOCKS_DIR;
     __testing.paths.RUNTIME_DIR = original.RUNTIME_DIR;

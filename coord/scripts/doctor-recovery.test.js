@@ -1,3 +1,5 @@
+// COORD-299: relocate this worker's ephemeral coarse state-locks + memory corpus to an os.tmpdir() sandbox
+require("./governance-test-utils.js").sandboxProcessRuntimeLocks();
 "use strict";
 
 const test = require("node:test");
@@ -20,6 +22,31 @@ delete process.env.CLAUDE_CODE_SESSION_ID;
 delete process.env.CLAUDE_SESSION_ID;
 delete process.env.GEMINI_THREAD_ID;
 delete process.env.GROK_THREAD_ID;
+
+test("COORD-392: doctor --repair-all is a dry-run by default and requires confirmation", () => {
+  const createDoctorRecovery = require("./doctor-recovery.js");
+  let mutated = false;
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(" "));
+  try {
+    const recovery = createDoctorRecovery({
+      withGovernanceMutation: () => {
+        mutated = true;
+        throw new Error("dry-run must not mutate");
+      },
+    });
+    const payload = recovery.doctorFix({ repairAll: true });
+    assert.equal(payload.mode, "dry-run");
+    assert.equal(payload.confirmation_required, true);
+    assert.match(payload.apply_command, /doctor --repair-all --confirm/);
+  } finally {
+    console.log = originalLog;
+  }
+  assert.equal(mutated, false);
+  assert.match(logs.join("\n"), /\"mode\": \"dry-run\"/);
+  assert.match(logs.join("\n"), /repair-chain/);
+});
 
 test("doctorFix repairs ticket-scoped plan stub, non-doing lock, and orphan coord worktree", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-doctor-fix-"));
@@ -141,6 +168,68 @@ test("doctorFix repairs ticket-scoped plan stub, non-doing lock, and orphan coor
     __testing.paths.GOVERNANCE_SNAPSHOT_PATH = original.GOVERNANCE_SNAPSHOT_PATH;
     __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = original.GOVERNANCE_SNAPSHOTS_DIR;
     __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = original.GOVERNANCE_EVENT_LOCK_DIR;
+  }
+});
+
+test("COORD-371: board-wide doctorFix does NOT rewrite an existing plan record (non-destructive)", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "coord371-doctor-nondestructive-"));
+  const runtimeDir = path.join(tempDir, ".runtime");
+  const recordsDir = path.join(tempDir, "plans");
+  const locksDir = path.join(runtimeDir, "locks");
+  fs.mkdirSync(locksDir, { recursive: true });
+  fs.mkdirSync(recordsDir, { recursive: true });
+  const keys = [
+    "BOARD_PATH", "PLAN_PATH", "QUESTIONS_PATH", "AGENTS_PATH", "AGENT_SESSIONS_PATH",
+    "PLAN_RECORDS_DIR", "LOCKS_DIR", "LEGACY_LOCKS_DIR", "RUNTIME_DIR",
+    "GOVERNANCE_EVENT_LOG_PATH", "GOVERNANCE_SNAPSHOT_PATH", "GOVERNANCE_SNAPSHOTS_DIR", "GOVERNANCE_EVENT_LOCK_DIR",
+  ];
+  const original = Object.fromEntries(keys.map((k) => [k, __testing.paths[k]]));
+
+  fs.writeFileSync(path.join(tempDir, "tasks.json"), JSON.stringify({
+    version: 1,
+    metadata: { title: "Test", plan_markdown_render_statuses: ["done"] },
+    sections: [{
+      kind: "table", level: 2, heading: "Debt", separator_before: false,
+      columns: ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      rows: [{ ID: "DEBT-950", Repo: "X", Type: "infra", Pri: "P2", Status: "done", Owner: "unassigned", Description: "done ticket", "Depends On": "" }],
+    }],
+    prompt_index: {}, pr_index: {}, landing_index: {}, review_findings: {}, waiver_index: {}, followup_exceptions: {},
+  }, null, 2), "utf8");
+  fs.writeFileSync(path.join(tempDir, "PLAN.md"), "", "utf8");
+  fs.writeFileSync(path.join(tempDir, "QUESTIONS.md"), "# Questions\n", "utf8");
+  fs.writeFileSync(path.join(tempDir, "agents.json"), "[]\n", "utf8");
+  fs.writeFileSync(path.join(runtimeDir, "agent_sessions.json"), "[]\n", "utf8");
+  // A MINIMAL existing plan record: normalization WOULD expand it (changed=true),
+  // so the old unguarded readPlanRecord would repair-WRITE it during board-wide
+  // doctorFix. The fix (skipRepairWrite on the existence check) must leave it intact.
+  const recordPath = path.join(recordsDir, "DEBT-950.json");
+  const seed = `${JSON.stringify({ schema_version: 1, ticket_id: "DEBT-950" }, null, 2)}\n`;
+  fs.writeFileSync(recordPath, seed, "utf8");
+
+  __testing.paths.BOARD_PATH = path.join(tempDir, "tasks.json");
+  __testing.paths.PLAN_PATH = path.join(tempDir, "PLAN.md");
+  __testing.paths.QUESTIONS_PATH = path.join(tempDir, "QUESTIONS.md");
+  __testing.paths.AGENTS_PATH = path.join(tempDir, "agents.json");
+  __testing.paths.AGENT_SESSIONS_PATH = path.join(runtimeDir, "agent_sessions.json");
+  __testing.paths.PLAN_RECORDS_DIR = recordsDir;
+  __testing.paths.LOCKS_DIR = locksDir;
+  __testing.paths.LEGACY_LOCKS_DIR = path.join(tempDir, "legacy-locks");
+  __testing.paths.RUNTIME_DIR = runtimeDir;
+  __testing.paths.GOVERNANCE_EVENT_LOG_PATH = path.join(runtimeDir, "governance-events.ndjson");
+  __testing.paths.GOVERNANCE_SNAPSHOT_PATH = path.join(runtimeDir, "governance-latest-snapshot.json");
+  __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = path.join(runtimeDir, "governance-snapshots");
+  __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = path.join(runtimeDir, "governance.lock");
+
+  try {
+    assert.doesNotThrow(() => __testing.doctorFix({ fix: true }));
+    assert.equal(
+      fs.readFileSync(recordPath, "utf8"),
+      seed,
+      "board-wide doctor --fix must NOT rewrite an existing plan record (COORD-371 §11.1 non-destructive)"
+    );
+  } finally {
+    for (const k of keys) __testing.paths[k] = original[k];
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
 
@@ -642,4 +731,50 @@ test("recoverTicket on a done lock-less ticket is a no-op and does not throw ENO
     __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = original.GOVERNANCE_SNAPSHOTS_DIR;
     __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = original.GOVERNANCE_EVENT_LOCK_DIR;
   }
+});
+
+test("COORD-362: board-wide doctor --fix refuses dirty non-derived work while a foreign doing lock is live", () => {
+  const createDoctorRecovery = require("./doctor-recovery.js");
+  const board = {
+    sections: [
+      {
+        rows: [
+          { ID: "OTHER-1", Repo: "X", Status: "doing", Owner: "codexb00", "Depends On": "" },
+        ],
+      },
+    ],
+  };
+  const recovery = createDoctorRecovery({
+    fail: (message) => {
+      throw new Error(message);
+    },
+    readBoard: () => board,
+    resolveDoctorScope: (candidateBoard) => ({
+      targetRef: null,
+      rows: candidateBoard.sections.flatMap((section) => section.rows || []),
+      byId: new Map(candidateBoard.sections.flatMap((section) => section.rows || []).map((row) => [row.ID, row])),
+    }),
+    gitTry: (repoRoot, args) => (
+      args[0] === "status"
+        ? { status: 0, stdout: " M coord/scripts/doctor-recovery.js\n M coord/rendered/TASKS.md\n" }
+        : { status: 0, stdout: "" }
+    ),
+    canonicalSyncablePaths: () => ["rendered/TASKS.md"],
+    isDoingStatus: (status) => status === "doing",
+    findLockForTicket: (ticket) => ({
+      ticket,
+      owner: "codexb00",
+      path: `/repo/coord/.runtime/locks/${ticket}.lock`,
+      worktree: `/repo/coord/.worktrees/codexb00/${ticket}`,
+    }),
+    isStaleTicketLock: () => false,
+    withGovernanceMutation: () => {
+      throw new Error("doctorFix must fail before mutating governance state");
+    },
+  });
+
+  assert.throws(
+    () => recovery.doctorFix({ fix: true }),
+    /Refusing tree-wide governance mutation/
+  );
 });

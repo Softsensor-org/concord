@@ -2,6 +2,8 @@
 
 Status: **implemented (pilot)** (2026-06-24) · Owner: Softsensor · Supersedes the 3-track scope of
 [`CONTENT_SITE_GOVERNANCE_PROFILE.md`](CONTENT_SITE_GOVERNANCE_PROFILE.md) by adding two engineering tracks.
+Enforcement status by surface is tracked in
+[`POLICY_ENFORCEMENT_MATRIX.md`](POLICY_ENFORCEMENT_MATRIX.md).
 
 > A reusable extension to coord-template: a **multi-track governance profile** so one Concord-managed
 > project governs several kinds of work — each with its own gate, skills, review policy, and operator —
@@ -28,6 +30,19 @@ Status: **implemented (pilot)** (2026-06-24) · Owner: Softsensor · Supersedes 
 Track resolves from ticket prefix via a `tracks` block in `coord/project.config.js`
 (`WEB-`/`DOC-`→marketing, `DEV-`/`FE-`→development, `OPS-`→devops, `PE-`/`LIVE-MCP-`→product-engineering,
 `DATA-`/`ANALYTICS-`→data&analytics), with a `gov start --track` override.
+
+New teams do not have to design this map from a blank page. The product CLI
+ships conservative track presets:
+
+```bash
+coord/scripts/coord track-presets
+coord/scripts/coord onboard . --dry-run
+```
+
+Presets suggest repo aliases, ticket prefixes, default gates, proof artifacts,
+and adoption notes for common starting shapes (`web-app`, `data-service`,
+`content-site`, `infra`). They are setup guidance, not a separate track model;
+the canonical track registry and gate policy still own enforcement.
 
 ## Communication shorthand
 
@@ -108,7 +123,7 @@ Phase A (upstream, coord-template) — implemented in the template:
 | COORD-193 | done | scaffold | Data-analytics borrowable scaffold `coord/profiles/data-analytics/` |
 | COORD-194 | done | docs | `DATA_ANALYTICS_TRACK.md` (adopts the reference data-platform pattern) + update profile to 5 tracks |
 
-Phase B (downstream): instantiate on consumer projects (e.g. `softsensor-website` for marketing/devops;
+Phase B (downstream): instantiate on consumer projects (e.g. `example-content-site` for marketing/devops;
 a data project borrowing the data-analytics scaffold) — `WEB-`/`OPS-`/`DATA-` tickets on those boards.
 
 ## Current verification contract

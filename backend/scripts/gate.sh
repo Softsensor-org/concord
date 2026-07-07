@@ -309,9 +309,19 @@ if [ "$LANE" = "full" ] || [ "$LANE" = "ci" ]; then
     ARCH_SKIP_REASON="arch policy ($ARCH_POLICY) not found"
     echo "  SKIP: $ARCH_SKIP_REASON — arch signal unavailable"
   else
+    # COORD-284: default to the checked-in arch-debt PREVENTION ratchet config
+    # (monolith/size grandfather existing over-budget files, fail on a NEW file
+    # grown past budget vs the baseline — GATE_ARCH_BASELINE | origin/main | main).
+    # An explicit GATE_ARCH_CONFIG still wins; if neither resolves the step runs
+    # warning-first (absolute). The classify CLI auto-resolves the baseline and
+    # falls back to a non-failing absolute pass when no baseline ref is reachable.
+    ARCH_CONFIG="${GATE_ARCH_CONFIG:-}"
+    if [ -z "$ARCH_CONFIG" ] && [ -f "$REPO_DIR/../coord/config/arch-gate.ratchet.json" ]; then
+      ARCH_CONFIG="$REPO_DIR/../coord/config/arch-gate.ratchet.json"
+    fi
     ARCH_CONFIG_ARG=()
-    if [ -n "${GATE_ARCH_CONFIG:-}" ] && [ -f "${GATE_ARCH_CONFIG}" ]; then
-      ARCH_CONFIG_ARG=(--config "${GATE_ARCH_CONFIG}")
+    if [ -n "$ARCH_CONFIG" ] && [ -f "$ARCH_CONFIG" ]; then
+      ARCH_CONFIG_ARG=(--config "$ARCH_CONFIG")
     fi
     ARCH_RC=0
     ARCH_SUMMARY="$(node "$ARCH_POLICY" classify --root "$REPO_DIR" "${ARCH_CONFIG_ARG[@]}")" || ARCH_RC=$?

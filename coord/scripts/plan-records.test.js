@@ -1,9 +1,12 @@
+// COORD-299 / COORD-390: relocate this worker's full runtime + seal surfaces to an os.tmpdir() sandbox
+require("./governance-test-utils.js").sandboxProcessRuntime();
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
+const createPlanRecords = require("./plan-records.js");
 const { __testing, GovernanceError } = require("./governance-test-utils.js");
 const { DEFAULT_PATHS: ACTIVE_PATHS } = require("./governance-context.js");
 
@@ -14,6 +17,68 @@ const { DEFAULT_PATHS: ACTIVE_PATHS } = require("./governance-context.js");
 // "API"). Derive a B-mapped prefix from the active registry.
 const B_TICKET_PREFIX =
   Object.entries(ACTIVE_PATHS.ticketPrefixToRepoCode || {}).find(([, code]) => code === "B")?.[0] || "MSRV";
+
+function createReadonlyPlanRecordHarness() {
+  const defaultGovernance = () => ({
+    expected_closeout: {
+      method: "no_pr",
+      base_ref: "main",
+      provenance_note: null,
+    },
+    review_profile: "standard",
+    ticket_local_repairs: [],
+  });
+  return createPlanRecords({
+    fail: (message) => {
+      throw new GovernanceError(message);
+    },
+    resolveRepoCodeForTicket: () => "X",
+    buildDefaultGovernancePlan: defaultGovernance,
+    normalizeGovernancePlanShape: (value) => {
+      const input = value && typeof value === "object" && !Array.isArray(value)
+        ? value
+        : defaultGovernance();
+      return {
+        ...defaultGovernance(),
+        ...input,
+        expected_closeout: {
+          ...defaultGovernance().expected_closeout,
+          ...(input.expected_closeout || {}),
+        },
+        ticket_local_repairs: Array.isArray(input.ticket_local_repairs) ? input.ticket_local_repairs : [],
+      };
+    },
+    formatGovernancePlanEntry: () => "",
+    formatGovernanceReviewProfileEntry: () => "",
+    formatGovernanceRepairEntry: () => "",
+    parseGovernancePlanEntries: () => defaultGovernance(),
+    scaffoldSelfReviewCycle: () => ({ cycle: 1, total: 1, raw: "", risks: [] }),
+    resolveRepoIntegrationBranch: () => "main",
+    isTestingInfrastructureTicket: () => false,
+    todayIso: () => "2026-01-01",
+    escapeTable: (value) => String(value || ""),
+    toArray: (value) => (Array.isArray(value) ? value : value == null ? [] : [value]),
+    normalizeSelfReviewCycleLine: (value) => ({ raw: String(value || ""), risks: [] }),
+    parseSelfReviewCycles: () => [],
+    validateRequirementClosureEntry: () => {},
+    validateFeatureProofEntry: () => {},
+    normalizeFeatureProofEntryForTicket: (value) => value,
+    isMeaningfulText: (value) => String(value || "").trim().length > 0,
+    escapeRegex: (value) => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    integerOrDefault: (value, fallback) => {
+      const n = Number(value);
+      return Number.isInteger(n) ? n : fallback;
+    },
+    readBoard: () => ({ sections: [] }),
+    getTicketRef: () => null,
+    inferRequiredReviewRound: () => 1,
+    normalizeOwnerValue: (value) => String(value || ""),
+    repoNameForCode: () => "coord",
+    ensurePlanStub: () => null,
+    mergeUniqueRefs: (...groups) => [...new Set(groups.flat())],
+    isRepoBackedCode: () => false,
+  });
+}
 
 test("parsePlanBlockToRecord normalizes a markdown PLAN block into structured canonical state", () => {
   const block = `## IMP-221 — 2026-03-25T17:30:00Z
@@ -136,6 +201,56 @@ test("renderPlanRecordBlock rebuilds a compatible PLAN.md block from canonical s
   assert.equal(reparsed.self_review_cycles.length, 1);
 });
 
+test("renderPlanRecordBlock round-trips gate_plan receipt without losing JSON-only fields", () => {
+  const record = {
+    schema_version: 1,
+    ticket_id: "COORD-379",
+    markdown_heading: "## COORD-379 — 2026-06-28T14:00:00.000Z",
+    startup_checklist: ["completed"],
+    traceability_gate: ["exempt"],
+    review_round: 1,
+    baseline_reproduction: ["Command: node --test coord/scripts/gate-plan.test.js", "Outcome: pass"],
+    prior_findings: [],
+    intended_files: ["coord/scripts/gate-plan.js"],
+    change_summary: ["Add deterministic gate-plan receipts."],
+    verification_commands: ["node --test coord/scripts/gate-plan.test.js"],
+    critical_invariants: ["Gate planning must not execute gates."],
+    requirement_closure: ["Ticket ask: gate plan", "Implemented: gate plan", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    feature_proof: ["path:coord/scripts/gate-plan.js"],
+    repo_gates: ["node --test coord/scripts/gate-plan.test.js"],
+    self_review_cycles: [
+      {
+        cycle: 1,
+        total: 1,
+        lens: "state authority",
+        diff: "manual",
+        risks: ["receipt drift", "markdown loss"],
+        findings: "none",
+        verification: "node --test coord/scripts/gate-plan.test.js",
+        verdict: "pass",
+        raw: "lens=state authority; diff=manual; risks=receipt drift, markdown loss; findings=none; verification=node --test coord/scripts/gate-plan.test.js; verdict=pass",
+      },
+    ],
+    rollback_strategy: ["remove gate_plan field"],
+    gate_plan: {
+      schema_version: 1,
+      planner_version: "gate-plan-v1",
+      ticket_id: "COORD-379",
+      risk_class: "R2",
+      affected_targets: {
+        mode: "slice",
+        selected: [{ id: "coord:gate-planner", command: "node --test coord/scripts/gate-plan.test.js" }],
+      },
+      required_evidence: ["executed repo gate or focused test evidence"],
+    },
+    security_surface: "no",
+  };
+
+  const block = __testing.renderPlanRecordBlock(record);
+  const reparsed = __testing.parsePlanBlockToRecord("COORD-379", block);
+  assert.deepEqual(reparsed.gate_plan, record.gate_plan);
+});
+
 // COORD-153: the optional live_mcp declaration round-trips through the markdown
 // compatibility block as a single JSON-encoded line (mirroring bootstrap_risk),
 // and is omitted entirely when absent so non-live-mcp records are unchanged.
@@ -182,6 +297,67 @@ test("renderPlanRecordBlock round-trips the optional live_mcp declaration and om
   assert.ok(/- Live-MCP:/.test(block));
   const reparsed = __testing.parsePlanBlockToRecord("LMCP-RT", block);
   assert.deepEqual(reparsed.live_mcp, liveMcp);
+});
+
+test("renderPlanRecordBlock round-trips context_pack_ack and validates advisory-learning shape", () => {
+  const record = {
+    schema_version: 1,
+    ticket_id: "CTX-348",
+    markdown_heading: "## CTX-348 — 2026-06-27T00:00:00.000Z",
+    startup_checklist: ["completed"],
+    traceability_gate: ["exempt"],
+    review_round: 1,
+    baseline_reproduction: [],
+    prior_findings: [],
+    intended_files: ["coord/scripts/governance-validation.js"],
+    change_summary: ["enforce context-pack acknowledgement"],
+    verification_commands: ["node --test coord/scripts/governance-validation.test.js"],
+    critical_invariants: ["advisory memory must not govern implementation"],
+    requirement_closure: ["Ticket ask: context pack enforcement", "Implemented: enforcement", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
+    feature_proof: [],
+    repo_gates: ["node --test coord/scripts/governance-validation.test.js"],
+    self_review_cycles: [],
+    rollback_strategy: ["revert"],
+    context_pack_ack: {
+      refs: ["coord/.runtime/context-packs/CTX-348.json"],
+      considered: {
+        active_constraints: ["confirmed/current constraints"],
+        adrs: ["ADR-0001"],
+        business_rules: ["none"],
+        conflicts: ["handled: no active conflicts"],
+        stale_warnings: ["none"],
+        open_questions: ["none"],
+      },
+      authority: {
+        constraints: ["ADR-0001"],
+        advisory_only: ["BD-REC-CANDIDATE"],
+      },
+      closeout_learning: {
+        decision: "scratch-only",
+        promote: [],
+        demote: [],
+        scratch_only: ["ticket-local observation"],
+        rationale: "No reusable rule was proven.",
+      },
+    },
+    security_surface: "no",
+  };
+
+  const block = __testing.renderPlanRecordBlock(record);
+  const reparsed = __testing.parsePlanBlockToRecord("CTX-348", block);
+
+  assert.deepEqual(reparsed.context_pack_ack, record.context_pack_ack);
+  assert.doesNotThrow(() => __testing.applyPlanUpdateOptionsToRecord(record, {}));
+  assert.throws(
+    () => __testing.applyPlanUpdateOptionsToRecord({
+      ...record,
+      context_pack_ack: {
+        ...record.context_pack_ack,
+        closeout_learning: { decision: "archive" },
+      },
+    }, {}),
+    /closeout_learning\.decision/
+  );
 });
 
 
@@ -319,6 +495,7 @@ test("renderPlanRecordBlock and parsePlanBlockToRecord preserve governance plan 
     change_summary: ["repair governance visibility"],
     verification_commands: ["node --test coord/scripts/governance.test.js"],
     critical_invariants: ["invariant 1", "invariant 2"],
+    adr_refs: ["ADR-0001"],
     requirement_closure: ["Ticket ask: demo", "Implemented: demo", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
     feature_proof: ["path:coord/scripts/governance.js"],
     repo_gates: ["node --test coord/scripts/governance.test.js"],
@@ -336,6 +513,12 @@ test("renderPlanRecordBlock and parsePlanBlockToRecord preserve governance plan 
       },
     ],
     rollback_strategy: ["revert"],
+    decision_required: {
+      required: true,
+      status: "required",
+      reason: "governance policy change",
+      adr_refs: ["0001"],
+    },
     security_surface: "no",
     synced_from_markdown_at: "2026-04-04T00:00:00.000Z",
   };
@@ -344,6 +527,8 @@ test("renderPlanRecordBlock and parsePlanBlockToRecord preserve governance plan 
   const reparsed = __testing.parsePlanBlockToRecord("FE-999", block);
 
   assert.deepEqual(reparsed.governance, record.governance);
+  assert.deepEqual(reparsed.adr_refs, ["ADR-0001"]);
+  assert.deepEqual(reparsed.decision_required, record.decision_required);
 });
 
 test("applyPlanUpdateOptionsToRecord rejects malformed closure and feature-proof entries", () => {
@@ -1176,6 +1361,51 @@ test("readPlanRecord rejects malformed canonical plan records", () => {
   );
 });
 
+test("readPlanRecordsReadonly lists canonical records without repair writes", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-plan-readonly-"));
+  const samplePath = path.join(__dirname, "__fixtures__", "plan-record.sample.json");
+  const sample = JSON.parse(fs.readFileSync(samplePath, "utf8"));
+  const first = { ...sample, ticket_id: "RO-002", markdown_heading: "## RO-002" };
+  const second = { ...sample, ticket_id: "RO-001", markdown_heading: "## RO-001" };
+  fs.writeFileSync(path.join(tempDir, "RO-002.json"), `${JSON.stringify(first, null, 2)}\n`, "utf8");
+  fs.writeFileSync(path.join(tempDir, "RO-001.json"), `${JSON.stringify(second, null, 2)}\n`, "utf8");
+  fs.writeFileSync(path.join(tempDir, "notes.txt"), "ignored\n", "utf8");
+
+  const planRecords = createReadonlyPlanRecordHarness();
+  assert.deepEqual(planRecords.listPlanRecordIds(tempDir), ["RO-001", "RO-002"]);
+  const before = fs.readFileSync(path.join(tempDir, "RO-001.json"), "utf8");
+  const records = planRecords.readPlanRecordsReadonly({ recordsDir: tempDir });
+  assert.deepEqual(records.map((record) => record.ticket_id), ["RO-001", "RO-002"]);
+  assert.equal(fs.readFileSync(path.join(tempDir, "RO-001.json"), "utf8"), before);
+});
+
+test("readPlanRecordsReadonly does not normalize legacy records while reading", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-plan-readonly-legacy-"));
+  const legacy = {
+    ticket_id: "RO-003",
+    startup_checklist: [],
+    traceability_gate: [],
+    baseline_reproduction: [],
+    prior_findings: [],
+    intended_files: [],
+    change_summary: [],
+    verification_commands: [],
+    critical_invariants: [],
+    adr_refs: [],
+    requirement_closure: [],
+    feature_proof: [],
+    repo_gates: [],
+    rollback_strategy: [],
+    self_review_cycles: [],
+  };
+  const filePath = path.join(tempDir, "RO-003.json");
+  fs.writeFileSync(filePath, `${JSON.stringify(legacy, null, 2)}\n`, "utf8");
+  const before = fs.readFileSync(filePath, "utf8");
+  const records = createReadonlyPlanRecordHarness().readPlanRecordsReadonly({ recordsDir: tempDir });
+  assert.equal(records[0].schema_version, 1);
+  assert.equal(fs.readFileSync(filePath, "utf8"), before);
+});
+
 test("readPlanRecord repairs legacy missing fields but still preserves canonical content", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-plan-record-legacy-"));
   const recordPath = path.join(tempDir, "IMP-310.json");
@@ -1195,14 +1425,58 @@ test("readPlanRecord repairs legacy missing fields but still preserves canonical
     security_surface: "no",
   }, null, 2));
 
+  const before = fs.readFileSync(recordPath, "utf8");
   const record = __testing.readPlanRecord("IMP-310", { recordsDir: tempDir });
 
+  // In-memory normalization: the RETURNED record has the missing fields filled.
   assert.deepEqual(record.baseline_reproduction, []);
   assert.deepEqual(record.intended_files, []);
 
+  // COORD-373: the READ is PURE — it must NOT persist (no read-that-writes).
+  assert.equal(fs.readFileSync(recordPath, "utf8"), before, "readPlanRecord must not write the file");
+
+  // Explicit repair is the ONLY sanctioned read->write migration path.
+  const result = __testing.repairPlanRecord("IMP-310", { recordsDir: tempDir });
+  assert.equal(result.persisted, true);
   const repaired = JSON.parse(fs.readFileSync(recordPath, "utf8"));
   assert.deepEqual(repaired.baseline_reproduction, []);
   assert.deepEqual(repaired.intended_files, []);
+  // Repair must PRESERVE the rich canonical fields (no field loss on migrate).
+  assert.equal(repaired.markdown_heading, "## IMP-310");
+  assert.deepEqual(repaired.startup_checklist, ["completed"]);
+  assert.deepEqual(repaired.traceability_gate, ["exempt"]);
+});
+
+test("COORD-373: reads are idempotent + pure; markdown sync cannot degrade canonical JSON", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "coord373-"));
+  const recordPath = path.join(tempDir, "IMP-373.json");
+  const rich = {
+    schema_version: 1, ticket_id: "IMP-373",
+    markdown_heading: "## IMP-373", startup_checklist: ["completed"], traceability_gate: ["exempt"],
+    review_round: 1, change_summary: ["x"], verification_commands: ["vitest run"],
+    critical_invariants: ["done"], repo_gates: ["passed"], self_review_cycles: [],
+    rollback_strategy: ["revert"], security_surface: "no",
+    baseline_reproduction: [], intended_files: ["frontend/x.ts"],
+  };
+  fs.writeFileSync(recordPath, `${JSON.stringify(rich, null, 2)}\n`);
+
+  // (1) reading twice is byte-identical (idempotent, no mutation).
+  const a = JSON.stringify(__testing.readPlanRecord("IMP-373", { recordsDir: tempDir }));
+  const b = JSON.stringify(__testing.readPlanRecord("IMP-373", { recordsDir: tempDir }));
+  assert.equal(a, b);
+  // (2) reads did not write the file.
+  assert.equal(fs.readFileSync(recordPath, "utf8"), `${JSON.stringify(rich, null, 2)}\n`);
+
+  // (3) markdown sync onto an EXISTING canonical record is a no-op: the narrower
+  // markdown view cannot drop the rich JSON-only fields (JSON is the authority).
+  const narrowBlock = "## IMP-373\n\n### Change summary\n- x\n"; // markdown lacks most sections
+  __testing.syncPlanRecordFromBlock("IMP-373", narrowBlock, tempDir);
+  const after = JSON.parse(fs.readFileSync(recordPath, "utf8"));
+  assert.equal(after.markdown_heading, "## IMP-373");
+  assert.deepEqual(after.startup_checklist, ["completed"]);
+  assert.deepEqual(after.traceability_gate, ["exempt"]);
+  assert.deepEqual(after.intended_files, ["frontend/x.ts"]);
+  fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
 test("synthesizeHistoricalPlanRecord preserves board evidence when no markdown block survives", () => {

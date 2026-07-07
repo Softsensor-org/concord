@@ -88,6 +88,50 @@ test("ask & delivered grounds what-was-asked / delivered / verdict in the plan r
   }
 });
 
+// COORD-198: requirement_closure is append-only, so a re-closure leaves BOTH the
+// superseded block (e.g. "Closeout verdict: partial" / "Not implemented: X") and
+// the latest block ("Closeout verdict: complete" / "Not implemented: none — ...").
+// The closeout summary must report the RECENCY-correct verdict + drop the
+// superseded not-implemented carve-out.
+const extractor = require("./decision-extractor.js");
+
+function supersededPlan() {
+  const closure = extractor.parseRequirementClosure([
+    "Ticket ask: ship the feature behind the acceptance bar.",
+    "Implemented: first pass that fell short.",
+    "Not implemented: ACCEPTANCE-cut NOT met on the first closure.",
+    "Deferred to: FIX-009 (follow-up)",
+    "Closeout verdict: partial",
+    "Ticket ask: finish the feature so the acceptance bar is met.",
+    "Implemented: second pass that landed the full bar.",
+    "Not implemented: none — full acceptance bar met",
+    "Deferred to: none",
+    "Closeout verdict: complete",
+  ]);
+  return { ticket_id: "RC-198", path: "coord/.runtime/plans/RC-198.json", closure, invariants: [], cycles: [] };
+}
+
+test("closeout reports the RECENCY-correct verdict (partial superseded by complete) and drops the superseded carve-out", () => {
+  const plan = supersededPlan();
+  const ad = closeout.buildAskAndDelivered(plan, "deadbeefchainhead");
+  const byField = Object.fromEntries(ad.claims.map((c) => [c.field, c]));
+  // The verdict reads complete (the LAST "Closeout verdict:" line), not partial.
+  assert.equal(byField.closeout_verdict.text, "complete");
+  // The superseded "Not implemented: ACCEPTANCE-cut NOT met" carve-out is GONE —
+  // the latest line is none-class, so no not_implemented claim is emitted.
+  assert.equal(byField.not_implemented, undefined, "none-class latest carve-out is not surfaced");
+  // The latest ask/implemented win.
+  assert.match(byField.ticket_ask.text, /finish the feature/);
+  assert.match(byField.implemented.text, /second pass/);
+
+  // Decisions section: the superseded FIX-009 deferral is dropped (latest is none).
+  const dec = closeout.buildDecisions(plan, "deadbeefchainhead");
+  assert.ok(
+    !dec.claims.some((c) => c.kind === "deferral"),
+    "the later 'Deferred to: none' supersedes the earlier FIX-009 deferral"
+  );
+});
+
 // --- SECTION 2: evidence trail (gates + reviews + commits/landing + attestation)
 
 test("evidence trail grounds repo-gate results + review cycles in the plan record", () => {

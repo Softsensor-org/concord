@@ -16,16 +16,14 @@ fixture under `examples/demo/coord`.
 ## Run it
 
 ```bash
-cd frontend/apps/coord-ui
-npm install
-npm run demo
+npm --prefix frontend/apps/coord-ui install && npm --prefix frontend/apps/coord-ui run demo
 ```
 
 Then open **http://localhost:3002**.
 
-`npm run demo` points the cockpit at the bundled demo board (`examples/demo/coord`)
-and starts the dev server on port 3002. On localhost the cockpit grants full
-local access automatically — no login.
+This points the cockpit at the bundled demo board (`examples/demo/coord`) and
+starts the dev server on port 3002. On localhost the cockpit grants full local
+access automatically — no login.
 
 ## The 2-minute tour
 

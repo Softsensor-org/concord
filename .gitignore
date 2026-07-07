@@ -37,3 +37,8 @@ coord/evidence/**/*.json
 # rules live in coord/.gitignore (consulted for paths under coord/); this anchor
 # documents the policy at the repo root.
 coord/memory/decisions.ndjson
+
+# COORD-450: SEA binary build artifacts (built in CI, never committed)
+dist/
+release/sea/bundle.tar
+release/sea/sea-prep.blob

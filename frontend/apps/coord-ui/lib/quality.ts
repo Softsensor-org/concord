@@ -443,8 +443,7 @@ export function loadQualityCockpit(
   filters: ScanFilters = {},
   scopeId?: string
 ): QualityCockpit {
-  const archChecks = requireExternal<ArchChecksModule>(path.join(COORD_DIR, 'scripts', 'arch-checks.js'));
-  const qualityScan = requireExternal(path.join(COORD_DIR, 'scripts', 'quality-scan.js')) as {
+  type QualityScanModule = {
     planTickets: (opts: {
       findings: unknown[];
       board: unknown;
@@ -456,6 +455,21 @@ export function loadQualityCockpit(
       counts: PlanCounts;
     };
   };
+  let archChecks: ArchChecksModule;
+  let qualityScan: QualityScanModule;
+  try {
+    archChecks = requireExternal<ArchChecksModule>(path.join(COORD_DIR, 'scripts', 'arch-checks.js'));
+    qualityScan = requireExternal(path.join(COORD_DIR, 'scripts', 'quality-scan.js')) as QualityScanModule;
+  } catch (error) {
+    // COORD-432: degrade instead of 500 if an engine module (arch-checks /
+    // quality-scan) is missing or unloadable (a rename, or a release cut that
+    // strips it). Every other engine-backed view returns an empty model on load
+    // failure — match that contract rather than crashing the page.
+    return emptyCockpit(resolveScope(scopeId), qualityScopes(), [], filters, {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   const scopes = qualityScopes();
   const scope = resolveScope(scopeId);

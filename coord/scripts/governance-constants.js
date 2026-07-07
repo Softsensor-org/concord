@@ -29,7 +29,14 @@ const TEMPLATE_FEEDBACK_TRIGGER_PATTERN =
 // isDoingStatus / the `/^doing \(blocked: .+\)$/` predicate). STATUS.BLOCKED is
 // provided for completeness/consumers that want the bare token, but it is not a
 // member of ORDERED_STATUSES / LEGAL_STATUSES.
+// COORD-285: `proposed` is a PRE-`todo`, QUARANTINED status — machine-proposed
+// debt that a human must accept (`gov approve` -> todo) or decline (`gov reject`
+// -> superseded) before it becomes real work. It is a LEGAL board status (board
+// validate accepts it, the create transaction may file it) but it is NOT open /
+// actionable work: it is excluded from open counts, the next/ready/gap
+// computations, and downstream-open dependency counts, and `gov start` refuses it.
 const STATUS = Object.freeze({
+  PROPOSED: "proposed",
   TODO: "todo",
   DOING: "doing",
   REVIEW: "review",
@@ -41,8 +48,9 @@ const STATUS = Object.freeze({
 
 // The canonical ordered list of legal board statuses (the enum order used by
 // board.js, cli.js and lifecycle.js). Order is preserved for parity with the
-// previously-inline Sets.
+// previously-inline Sets. `proposed` leads the list as the pre-todo intake state.
 const ORDERED_STATUSES = Object.freeze([
+  STATUS.PROPOSED,
   STATUS.TODO,
   STATUS.DOING,
   STATUS.REVIEW,
@@ -50,6 +58,22 @@ const ORDERED_STATUSES = Object.freeze([
   STATUS.DEFERRED,
   STATUS.SUPERSEDED,
 ]);
+
+// COORD-285: the statuses the single-writer create transaction (file-ticket /
+// open-followup) may stamp on a brand-new row. `todo` is the normal backlog
+// intake; `proposed` is the quarantined machine-proposed intake (COORD-286's
+// generator files here). No other status may be born directly — every other
+// status is reached only through a governed transition.
+const CREATABLE_STATUSES = Object.freeze([STATUS.TODO, STATUS.PROPOSED]);
+
+function creatableStatusSet() {
+  return new Set(CREATABLE_STATUSES);
+}
+
+// COORD-285: quarantined (NOT open work) statuses — a row in one of these is on
+// the board for human triage, not for scheduling. Used by the open/active/gap
+// counts and downstream-open dependency analysis to exclude proposed debt.
+const QUARANTINED_STATUSES = Object.freeze([STATUS.PROPOSED]);
 
 // Factory (not a shared singleton) so callers that previously owned a private
 // `new Set([...])` keep an independent, mutation-safe instance.
@@ -149,6 +173,9 @@ module.exports = {
   ORDERED_STATUSES,
   OPENABLE_STATUSES,
   TERMINAL_STATUSES,
+  CREATABLE_STATUSES,
+  creatableStatusSet,
+  QUARANTINED_STATUSES,
   legalStatusSet,
   FINDING_STATUS,
   ORDERED_FINDING_STATUSES,

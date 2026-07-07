@@ -360,6 +360,10 @@ coord/scripts/agent-commands.js      — AGENT-COMMAND / claim-orchestration sur
 coord/scripts/landing-resolution.js  — landing COMMIT-RESOLUTION surface: extractCommitShas, refreshLandingBaseRef, resolveLandingBaseRef/resolvePrLandingBaseRef, pickBestLandingCommit, resolveSourceCommitSha, resolveFulfilledByLandingCommit, resolveLandingCommitSha; owns git-ancestry/base-ref/source-commit resolution ONLY (injects resolveCommitishInRepo/fetchRepoRef/isCommitAncestorOfRef + repo registry + ghPrView/mergeUniqueRefs/toArray from landing-gh.js; TRANSPORT stays in landing-gh.js, AUDIT stays in landing-audit.js); wired after landing-gh.js, before createLandingAudit (DI factory)
 coord/scripts/board-rebuild.js       — board-rebuild-from-journal surface: rebuildBoardFromJournal, terminalJournalStatusForTicket, collectTicketsWithJournalDrift; replays the governance event journal to repair board/tasks.json rows that drifted from the journal's terminal succeeded event (GOV-012); writes the board only inside the injected withGovernanceMutation envelope (injects readGovernanceEventLog/readBoard/getTicketRef/writeBoard/fail); wired after createJournal + createGovernanceBoardState (DI factory; COORD-091)
 coord/scripts/conformance-verbs.js   — ENT conformance / engine-integrity CLI verb surface: conform (ENT-002 journal hash-chain self-verify + ENT-010 signed attestation emit/verify) and verifyEngine (ENT-011 engine version-pin + drift-check); pure presentation glue over the injected createConformanceAttestation/createEnginePin factories (injects coordDir/verifyGovernanceChain/fail + the two factory creators, returns conform/verifyEngine for the commands map + cli.js cases); READ-ONLY except conform --attest's gitignored attestation + verify-engine --pin's coord/engine-pin.json; extracted from lifecycle.js to hold the 5000 ceiling by EXTRACTION (DI factory; COORD-107)
+coord/scripts/lifecycle-help.js      — CLI presentation + thin command-wrapper surface: printHelp/buildInitiateSummary/printInitiate (help text + session primer) and the recall/insights/coverage-rollup/prework/closeout-summary/learned-rule/sign-journal thin wrappers (each validates args, delegates to a lazily-required engine, and emits output); injects ONLY fail/ensureCurrentAgentIdentity/GovernanceError/state(by-ref)/COORD_DIR — no governance-mutation internals; extracted from lifecycle.js to hold the 5000 ceiling by EXTRACTION (DI factory; COORD-281)
+coord/scripts/ticket-commands.js     — ticket state-mutation commands: fileTicket(file-ticket/new)/openFollowup/unstartTicket/lockAbandonTicket/commitTicket + the shared read-only collectUnstartEvidenceBlockers guard; creates keep riding the COORD-220 withBoardTransaction/single-writer path (reserveTicketId injected, NOT reimplemented); injects every collaborator + STATUS/ALLOWED_TICKET_TYPES/ALLOWED_PRIORITIES by reference; extracted from lifecycle.js to hold the 5000 ceiling by EXTRACTION (DI factory; COORD-282)
+coord/scripts/testing-infra-audit.js — testing-infrastructure audit/classification helpers: extractPackageScriptsFromCommands/buildTestingInfrastructureClassificationText/isTestingInfrastructureTicket/normalizeTestingInfraAuditPath/listCommitTouchedPaths/readJsonFileFromRef (+ private sanitizePackageScriptToken/isTestingInfrastructureClassificationPath); decides whether a ticket touches testing infra and the git-ref reads that feed it; buildTestingInfrastructureClassificationText is pure, the rest inject path/registry helpers + tokenizeShellWords + gitTry as deferred wrappers with REPO_ROOTS/PNPM_BUILTIN_COMMANDS/TESTING_INFRA_DESCRIPTION_PATTERN by reference; extracted from lifecycle.js to hold the 5000 ceiling by EXTRACTION (DI factory; COORD-283)
+coord/scripts/sync-provenance.js     — sync/provenance-baseline service: runSyncCommand/commitCanonicalDelta/buildAutoSyncMessage/pushOnFinalizeEnabled/pushAfterLifecycleSync/lifecycleSyncScopePaths/advanceProvenanceBaselineAfterLifecycle/autoSyncAfterLifecycle; scoped canonical-delta sync + the post-mutation provenance-baseline advance at terminal lifecycle boundaries; the COORD-275 scope-checked advance (advanceGovernanceProvenanceBaseline from journal.js) is INJECTED, NOT reimplemented — lifecycleSyncScopePaths derives the authorized canonical-derived + board-json scope and the advance is constrained to it (out-of-scope concurrent edits preserved as drift); COORD-246/196/ENT-001 behavior unchanged; every collaborator injected as deferred wrappers with COORD_DIR/DEFAULT_PATHS by reference; extracted from lifecycle.js to hold the 5000 ceiling by EXTRACTION (DI factory; COORD-292, decomposition slice #1)
 coord/scripts/lifecycle.js           — orchestration hub: factory wiring + residual lifecycle surface
 coord/scripts/cli.js                 — CLI routing and executeCommand()
 coord/scripts/governance.js          — public compatibility facade
@@ -644,3 +648,256 @@ Implement the state model:
 | Multi-agent parity | Claude has rich skills, Codex/Gemini get prose | All agents use same facade/MCP verbs while keeping native ecosystems |
 | State mutation | Multi-file independent writes | Single canonical write → derived renders |
 | Recovery | Patch several files | Journal-based rebuild |
+
+## Journal Hash-Chain Era Model — SHA-1 → SHA-256 (COORD-289)
+
+The governance journal (`coord/.runtime/governance-events.ndjson`) is the
+tamper-evident audit substrate: each chained event records
+`prev_event_hash` = the canonical hash of the immediately-preceding stored
+record, so any reorder / drop / in-place edit breaks a link and is detected by
+`verifyGovernanceChain` (surfaced via `gov conform` and `gov doctor`).
+
+Historically the link hash and the COORD-274 content hash were **SHA-1**, while
+the conformance attestation signs a **SHA-256** subject. COORD-289 moves the chain
+forward to SHA-256 **without re-hashing or re-chaining any historical event** — a
+naive swap would re-hash every existing event, move the live chain head, and
+invalidate every prior attestation (which embeds `journal_chain_head`). Instead
+the chain has **three eras** separated by one governed bridge event:
+
+```
+[ pre-chain legacy ]      events with NO prev_event_hash (accepted, unverified)
+        │
+[ SHA-1 era ]             first chained event prev==="genesis", then
+        │                 prev === sha1(prior record); hash_alg ABSENT (implicit sha1)
+        │
+   ┌────┴─────────────┐
+   │ hash-alg-migration│   the BRIDGE — SHA-1-linked to the prior tip
+   │ (the hinge)       │   (prev_event_hash = sha1(old head)), carries
+   └────┬─────────────┘   hash_alg:"sha256" + a signed transition payload;
+        │                 its OWN sha256 record-hash is the new-era checkpoint
+[ SHA-256 era ]           every later event carries hash_alg:"sha256" and links
+                          via prev === sha256(prior record)
+```
+
+**The bridge event** (`command: "hash-alg-migration"`, created ONLY by the
+governed `gov migrate-chain-hash` verb) carries
+`details: { sha1_chain_head, migrated_at, verifier_version, signature }` where
+`signature` is an ed25519 signature (the SAME conformance keypair under
+`coord/.runtime/conformance-keys/`) over the deterministic transition payload
+`{ migrated_at, sha1_chain_head, verifier_version }`.
+
+**How the verifier dispatches the era.** For each chained `event[i]` the linking
+algorithm is: the migration event links via **sha1** (the bridge — so the old
+SHA-1 chain still verifies end-to-end up to it); every other event links under its
+own era (`event.hash_alg || "sha1"`). The migration event additionally proves
+(a) `details.sha1_chain_head` equals the sha1 head accumulated up to its
+predecessor, and (b) its embedded signature verifies over the transition payload.
+When a **trust anchor is configured** (COORD-272 composition), the signer must
+also be pinned — so a *forged* re-signature (valid under an attacker key) is
+rejected, while the unanchored community path remains honest (integrity verified,
+authenticity reported as self-signed). The chain `head` is the hash of the last
+chained event under **its** era's algorithm; `verifyGovernanceChain` also returns
+`headAlg`, `sha1ChainedCount`, `sha256ChainedCount`, and `migrationIndex`. The
+signed conformance subject records `journal_chain_head.head_alg` so the era is
+explicit across the boundary.
+
+**Back-compat / dormancy.** Until `gov migrate-chain-hash --confirm` runs, an
+untouched repo is **byte-for-byte unchanged**: new events carry no `hash_alg`
+field and link via sha1 exactly as before. The migration is **idempotent** — a
+second migration is refused — and `gov repair-chain` is era-aware (the SHA-256-era
+re-link and the appended repair marker stay in the SHA-256 era). Archival
+re-chaining of historical events is explicitly out of scope: SHA-1 history is
+preserved as immutable audit fact.
+
+## Lifecycle composition-root boundary (COORD-291)
+
+`lifecycle.js` has been progressively de-monolithed (COORD-061/091/107, then
+COORD-281/282/283 extracted `lifecycle-help.js`, `ticket-commands.js`,
+`testing-infra-audit.js`). It is now ~5,010 raw / ~4,460 code-LOC, under its
+documented 5,000 composition-root budget (ratchet-protected by COORD-284 / the
+`arch-checks` `size.perFile["lifecycle.js"]` override). COORD-291 is the LEAD
+ticket of the next decomposition epic (COORD-292..297). It does **not** move any
+code — it **defines the target boundary** so each follow-on slice has an explicit
+contract to extract against. No behavior change.
+
+### Target principle
+
+`lifecycle.js` is a **composition root only**: `require`s of the core/factory
+modules, dependency-injection wiring of the ~33 `create*(deps)` factories (in the
+order their cross-module deps come live), the `commands` dispatch table, and the
+`__testing` facade. It should hold **no inline domain logic** — every cohesive
+behavior cluster lives in a named module behind a narrow API, and lifecycle.js
+only wires and dispatches. The proven extraction pattern (COORD-061..107,
+281..283) is: a `createX(deps)` DI factory whose cyclic/forward dependencies are
+passed as **deferred wrappers** (`(...args) => fn(...args)`) so factory wiring
+order never constrains call-time resolution; lifecycle.js re-destructures the
+factory's returns back into local scope so the `commands` map, `cli.js` dispatch,
+and `__testing` keys resolve byte-identically.
+
+### The eight module contracts
+
+1. **Command dispatch** — *stays the composition root's own surface.* The
+   `commands` map (lifecycle.js:4523) plus `cli.js` routing / `executeCommand()` /
+   `main()`. Responsibility: map verb → handler, nothing else. API lifecycle.js
+   consumes: the destructured factory returns it assembles into `commands`. This
+   is the irreducible residue that justifies the 5,000 budget — it is wiring, not
+   domain logic.
+
+2. **Application orchestration** — *stays in lifecycle.js (composition-root
+   orchestration), trimmed by the other slices.* Cross-cutting read/report flows
+   that compose multiple services: `orchestratorCycle` (1047), `showTicket`
+   (1015), `printCounts` (484), `recentEvents`/event summarizers (1278+), the
+   orchestrator SLO/exception reports (1125, 1152), and `buildPostCloseFollowupCommand`
+   (1830, injected into `ticket-guidance.js`). Responsibility: sequence governed
+   services for operator-facing composite commands; owns no single-domain logic.
+
+3. **Governed mutation** — *already a core seam; lifecycle.js only wires it.* The
+   mutation envelope: `withBoardTransaction` (2232, the COORD-220 single-writer
+   board transaction still inline) over the injected `withGovernanceMutation` /
+   `appendGovernanceEvent` from `journal.js` + canonical writes in `state-io.js` +
+   board IO in `governance-board-state.js`. API: a single atomic
+   write-canonical-then-render envelope. Contract: every governed write goes
+   through it; no command mutates board/plan/journal independently.
+
+4. **Sync / provenance service → COORD-292 (✅ DONE).** Responsibility: scoped
+   canonical-delta sync and provenance-baseline advance after a lifecycle
+   mutation (COORD-275 concurrency invariant). Extracted to `sync-provenance.js`:
+   `runSyncCommand`, `commitCanonicalDelta`, `buildAutoSyncMessage`,
+   `pushOnFinalizeEnabled`, `pushAfterLifecycleSync`, `lifecycleSyncScopePaths`,
+   `advanceProvenanceBaselineAfterLifecycle`, `autoSyncAfterLifecycle`.
+   lifecycle.js now consumes `createSyncProvenance(deps)` and re-destructures the
+   eight returns; the COORD-275 scope-checked advance
+   (`advanceGovernanceProvenanceBaseline` from journal.js) is INJECTED, not
+   reimplemented, so the out-of-scope-drift-preserved / in-scope-absorbed
+   invariant (and COORD-246/196/ENT-001) are unchanged. lifecycle.js only wires
+   the service.
+
+5. **Lock service → COORD-293 (✅ DONE).** Responsibility: ticket-lock path
+   resolution, legacy-lock compatibility/promotion, and doing-lock integrity.
+   Extracted to `ticket-lock-service.js`: `resolveLockHead`, `safeResolveLockHead`,
+   `refreshLockHead`, `shouldUseLegacyLockCompatibility`, `existingLockDirs`,
+   `resolveTicketLockPath`, `ensureDoingTicketLockIntegrity`. lifecycle.js now
+   consumes `createTicketLockService(deps)` and re-destructures the seven returns.
+   API: a narrow lock-service surface (resolve path / refresh head / assert
+   integrity). The governance-context lock-dir primitive (`state`, holding
+   `LOCKS_DIR` / `LEGACY_LOCKS_DIR`) is INJECTED BY REFERENCE; the live-holder
+   (COORD-270) + stale-lock primitives (the mkdir-mutex / `tryReclaimStaleDirectoryLock`
+   / `writeDirectoryLockMetadata` in governance-context.js, `findLockForTicket` /
+   `writeLock` / `moveFileIfNeeded` in governance-session/lifecycle) are INJECTED,
+   not moved/reimplemented — so no lock behavior changed and legacy-path-compat +
+   doing-lock-integrity + live-holder/stale-lock coverage are preserved (relocated
+   to `ticket-lock-service.test.js`). NOTE: the **session/identity** lock semantics
+   already live in `governance-session.js` (injected, not duplicated); 293 moved
+   only the lock-*path/head/integrity* helpers that were still inline here.
+
+6. **Queue service → COORD-294 (✅ DONE).** Responsibility: ticket ranking,
+   pick/list/recommend, and agent-release planning. Extracted to
+   `ticket-queue-service.js`: `listTickets`, `pickTickets`, `recommendTickets`,
+   `recommendationModeForAgent` (mode bias), `summarizeBusyActiveAgents`,
+   `listIdleActiveAgentSessions` (idle summary), `buildReleaseCandidates`,
+   `scoreTicket`, `buildDownstreamCounts` — plus the private-only helpers
+   (`pickCurrentAgentTickets`/`pickAllTickets`, `buildRecommendationSet`,
+   `printRankedTicketList`/`formatRankedTicket`, `assignTicketsToAgents`/
+   `compareAssignedCandidates`, `inferModeFromRepo`, `modeBiasScore`).
+   lifecycle.js now consumes `createTicketQueueService(deps)` and re-destructures
+   the nine public returns; `state` (BOARD_PATH) and the `STATUS` constant map are
+   injected BY REFERENCE, every collaborator (board/identity/agent-session/readiness
+   readers, `compareSessionsMostRecentFirst` — which STAYS in lifecycle.js because
+   governance-session also consumes it) as a deferred `(...a)=>fn(...a)` wrapper.
+   Parity preserved: `gov counts/list/pick/recommend` output byte-identical; the
+   COORD-285 `proposed` exclusion is preserved from both the downstream/unblocks
+   count (`buildDownstreamCounts`) AND the recommendation candidate set; ranking
+   (`scoreTicket` + mode bias) unchanged. lifecycle.js only dispatches.
+
+7. **Plan-normalization (plan-shape) service → COORD-295 (✅ DONE).**
+   Responsibility: governance-plan normalization and scaffold-plan construction
+   (distinct from `plan-records.js` IO and `plan-command.js` verbs). Extracted to
+   `governance-plan-shape.js`: `scaffoldSelfReviewCycle`,
+   `buildDefaultGovernancePlan`, `normalizeGovernancePlanShape`,
+   `formatGovernancePlanEntry` + the sibling format helpers
+   (`formatGovernanceReviewProfileEntry`/`formatGovernanceRepairEntry`),
+   `parseGovernancePlanEntries`, `buildScaffoldPlanRecord`, `ensurePlanStub`.
+   lifecycle.js now consumes `createGovernancePlanShape(deps)` and re-destructures
+   the nine returns. API: a pure-ish plan-shape surface (normalize / parse /
+   scaffold). Plan JSON/markdown round trips stay byte-stable where expected; the
+   COORD-007 live-`REPO_INTEGRATION_BRANCHES` base_ref seed is preserved (the map +
+   `state` + `DEFAULT_INTEGRATION_BRANCH` + repo predicates + state-io
+   readers/writers are INJECTED BY REFERENCE), and the plan-record IO seam
+   (`readPlanRecord`/`extractPlanBlock`/`renderPlanRecordBlock`/`appendPlanBlock`/
+   `syncPlanRecordFromBlock`/`planRecordPath`/`writePlanCompatibilityBlockFromRecord`,
+   all from `createPlanRecords`) is INJECTED as deferred `(...a)=>fn(...a)`
+   wrappers, NOT moved — so it stays governed/unchanged. The factory is wired EARLY
+   (before `createGovernanceValidation`/`createPlanRecords`, which inject these
+   shape functions) so the re-destructured returns are in scope. lifecycle.js
+   delegates plan-shape concerns. lifecycle.js 4473 → 4261 raw LOC.
+
+8. **Evidence service → COORD-296 (✅ DONE).** Responsibility: lifecycle
+   PR/git-context evidence resolution (distinct from `landing-resolution.js`
+   commit/base-ref resolution and `landing-audit.js` provenance records, which stay
+   SEPARATE modules wired alongside this one — 296 sits beside them, it does not
+   absorb them). Extracted to `lifecycle-evidence.js`: `resolveTicketGitContext`,
+   `resolvePrUrlForTicket`, `resolveLifecyclePrRefs`. lifecycle.js now consumes
+   `createLifecycleEvidence(deps)` and re-destructures the three returns. API: a
+   narrow evidence-resolution surface; PR/no-PR evidence behavior is byte-identical
+   (the `--no-pr` X-lane and the PR-backed path resolve through the same decision
+   tree; `verifyPrEvidence` is INJECTED with `allowNoPr: true`, not reimplemented).
+   The repo-registry/worktree-ops/landing-gh collaborators (`isRepoBackedCode`,
+   `getRepoRoot`, `listGitWorktrees`, `inferTicketIdFromPath`, `isGitHubPrUrl`,
+   `ghPrListByBranch`, `verifyPrEvidence`, `mergeUniqueRefs`, `toArray`) inject BY
+   REFERENCE; the lifecycle-local hoisted `findLockForTicket` / `fail` inject as
+   DEFERRED `(...a)=>fn(...a)` wrappers. OWNERSHIP DECISION (COORD-088 caveat
+   re-confirmed via grep): `readCommitSubject` / `commitSubjectAffiliatesWithTicket`
+   are review-STATE verification used by `assertCommittedReviewState` and injected
+   into `governance-validation.js` — NONE of the three moved functions consume them —
+   so they were LEFT in lifecycle.js; `assertCommittedReviewState` is unchanged.
+   lifecycle.js only wires the service.
+
+A ninth follow-on, **COORD-297 (facade-shrink) — ✅ DONE**, is not a new
+contract: after 292..296 landed it removed the `__testing` re-exports that now
+belong to the extracted modules, keeping lifecycle.js tests to
+facade/dispatch/wiring only. Six redundant facade keys were dropped:
+`runSyncCommand`, `autoSyncAfterLifecycle`, `pushOnFinalizeEnabled`,
+`pushAfterLifecycleSync`, `buildAutoSyncMessage` (sync-provenance), and
+`buildReleaseCandidates` (ticket-queue-service). The four dispatchable sync verbs
+(`runSyncCommand`/`autoSyncAfterLifecycle`/`pushOnFinalizeEnabled`/
+`pushAfterLifecycleSync`) stay wired in the `commands` dispatch map — only their
+redundant `__testing` re-exports were removed; the sync behavior tests now
+construct `createSyncProvenance(deps)` DIRECTLY (injecting `syncFn`/`pushFn` per
+call) instead of reaching through the lifecycle facade, and the
+`buildReleaseCandidates` behavior is owned by `ticket-queue-service.test.js`
+(`svc.buildReleaseCandidates`). CONSERVATIVELY KEPT (cross-module / by-design
+facade dependencies, NOT removed): `commitCanonicalDelta` (depended on through the
+facade by governance.test.js + state-io.test.js), `buildDefaultGovernancePlan`
+(consumed through the facade by the shared `governance-test-utils.js`),
+`ensurePlanStub` (reached through the facade by governance-validation /
+plan-command / governance-plan-shape tests), and `refreshLockHead` /
+`ensureDoingTicketLockIntegrity` (tested through the fully-wired facade by design —
+they need the live composition-root environment via `__testing.paths.*`
+mutation). The COORD-280 auto-derived facade test, the COORD-066 wiring guard, and
+the COORD-007 verb parity all stay green; no behavior changed.
+
+**Epic COORD-291..297 is COMPLETE.** lifecycle.js is now a true
+composition root: `require`s + DI factory wiring + the `commands` dispatch map +
+a `__testing` facade that surfaces dispatch/wiring/composition-root concerns plus
+only the internals still legitimately shared across module test boundaries. The
+five service modules (sync-provenance, ticket-lock-service, ticket-queue-service,
+governance-plan-shape, lifecycle-evidence) each own their behavior tests.
+
+### Before / after module map
+
+| Current inline cluster (lifecycle.js) | Representative functions (verified locations) | Destination |
+|---|---|---|
+| Command dispatch | `commands` map (4523), → `cli.js` routing/`executeCommand` | **stays** (composition root) |
+| App orchestration | `orchestratorCycle` (1047), `showTicket` (1015), `printCounts` (484), `recentEvents` (1278), `buildPostCloseFollowupCommand` (1830) | **stays** (root orchestration) |
+| Governed mutation | `withBoardTransaction` (2232) over injected `withGovernanceMutation`/`appendGovernanceEvent` (journal.js) | **stays** (core seam; already extracted IO) |
+| Sync / provenance | `runSyncCommand`, `commitCanonicalDelta`, `buildAutoSyncMessage`, `pushOnFinalizeEnabled`, `pushAfterLifecycleSync`, `lifecycleSyncScopePaths`, `advanceProvenanceBaselineAfterLifecycle`, `autoSyncAfterLifecycle` | **✅ COORD-292 (DONE)** — extracted to `sync-provenance.js` |
+| Lock | `resolveLockHead`, `safeResolveLockHead`, `refreshLockHead`, `shouldUseLegacyLockCompatibility`, `existingLockDirs`, `resolveTicketLockPath`, `ensureDoingTicketLockIntegrity` | **✅ COORD-293 (DONE)** — extracted to `ticket-lock-service.js` |
+| Queue / ranking | `listTickets`, `pickTickets`, `recommendTickets`, `recommendationModeForAgent`, `summarizeBusyActiveAgents`, `listIdleActiveAgentSessions`, `buildReleaseCandidates`, `scoreTicket`, `buildDownstreamCounts` (+ private pick/recommend/score helpers) | **✅ COORD-294 (DONE)** — extracted to `ticket-queue-service.js` |
+| Plan-shape | `scaffoldSelfReviewCycle`, `buildDefaultGovernancePlan`, `normalizeGovernancePlanShape`, `formatGovernancePlanEntry` (+ `formatGovernanceReviewProfileEntry`/`formatGovernanceRepairEntry`), `parseGovernancePlanEntries`, `buildScaffoldPlanRecord`, `ensurePlanStub` | **✅ COORD-295 (DONE)** — extracted to `governance-plan-shape.js` |
+| Evidence | `resolveTicketGitContext`, `resolvePrUrlForTicket`, `resolveLifecyclePrRefs` (`readCommitSubject`/`commitSubjectAffiliatesWithTicket` re-confirmed review-state — LEFT in lifecycle.js) | **✅ COORD-296 (DONE)** — extracted to `lifecycle-evidence.js` |
+| `__testing` facade exports for the above | `runSyncCommand`, `autoSyncAfterLifecycle`, `pushOnFinalizeEnabled`, `pushAfterLifecycleSync`, `buildAutoSyncMessage`, `buildReleaseCandidates` | **✅ COORD-297 (DONE)** — redundant `__testing` re-exports removed (dispatch verbs stay in `commands`; behaviors owned by module tests) |
+
+After 292..297, lifecycle.js holds only contracts 1–3 (dispatch, root
+orchestration, the mutation-envelope wiring) — a true composition root whose size
+is dominated by DI wiring, not domain logic. The 5,000 budget remains the honest
+ceiling and should *fall* as each slice lands.

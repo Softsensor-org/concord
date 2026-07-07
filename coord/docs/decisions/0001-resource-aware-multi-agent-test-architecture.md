@@ -20,7 +20,23 @@ The question was whether to build a scheduler that *coordinates* heavy gate work
 across agents (so contention is avoided structurally and heavy results can be
 shared), or to keep gates independent and only *contain* the runtime damage.
 
-## Option Evaluated: Resource-Aware Dispatch + Shared Test Evidence Broker
+## Linked Scope
+
+- Governing ticket: COORD-095.
+- Adopted containment ticket: COORD-092.
+- Affected surfaces: gate lanes, multi-agent dispatch, gate runtime process
+  cleanup, and landing evidence policy.
+
+## Decision Criteria
+
+- Landing evidence must remain tied to the exact commit being certified.
+- The solution must avoid new shared mutable scheduling state unless the
+  measured benefit justifies the added failure modes.
+- Contention handling should prefer false failure/re-run over false pass.
+
+## Options Evaluated
+
+### Resource-Aware Dispatch + Shared Test Evidence Broker
 
 A coordinated-scheduling architecture with these components:
 
@@ -42,6 +58,12 @@ A coordinated-scheduling architecture with these components:
 ## Decision
 
 **This architecture is deliberately NOT built.**
+
+## Alternatives Rejected
+
+The resource-aware dispatch and shared test evidence broker were rejected for
+this phase. Their validity rules are the hard part: a reused heavy-gate result
+could certify the wrong commit if the equivalence policy is incomplete.
 
 ## Adopted Instead
 

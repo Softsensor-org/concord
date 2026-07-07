@@ -6,7 +6,13 @@ const path = require("node:path");
 
 const governanceModule = require("./governance.js");
 const { GovernanceError, executeCommand, __testing } = governanceModule;
-const { withCleanRuntimeFixture, runGit, writeRepoFile, createTempGitRepo, createTempGitRepoWithOrigin, createMinimalGovernanceWorkspace, setupCoord003Workspace, readBoardRow, withCanonicalTicketPrompt, withRegisterPromptHarness } = require("./governance-test-utils.js");
+const { withCleanRuntimeFixture, runGit, writeRepoFile, createTempGitRepo, createTempGitRepoWithOrigin, createMinimalGovernanceWorkspace, setupCoord003Workspace, readBoardRow, withCanonicalTicketPrompt, withRegisterPromptHarness, sandboxProcessRuntime } = require("./governance-test-utils.js");
+
+// COORD-300: redirect the full runtime surface (agent registry + sessions + coarse
+// locks + RUNTIME_DIR) to a per-process os.tmpdir() sandbox so the few full-stack
+// governed flows here that touch the live agent registry write tmp instead of the
+// live coord/.runtime tree — letting governance.test.js leave the isolation-guard allowlist.
+sandboxProcessRuntime();
 
 // Hermetic session env: these tests control provider session/thread ids
 // explicitly. Strip any ambient id the host injects (e.g. Claude Code exports
@@ -17,322 +23,184 @@ delete process.env.CLAUDE_SESSION_ID;
 delete process.env.GEMINI_THREAD_ID;
 delete process.env.GROK_THREAD_ID;
 
-const EXPECTED_TESTING_KEYS = `
-addFeatureProofCommand
-addRepoGateCommand
-addReviewCycleCommand
-aggregateCost
-allocateAgentSimpleId
-allocateLiveSessionId
-appendGovernanceEvent
-appendQuestionRowText
-appendReviewFollowupPlan
-applyFollowupRelation
-applyLandingAuditBackfill
-applyPlanUpdateOptionsToRecord
-applyRetireStaleDriftNotes
-assertAlreadyLandedNoPrReconcileReady
-assertCommittedReviewState
-assertCurrentTicketLockIntegrity
-assertLandingIntegrity
-assertPromptPreconditionsResolve
-assertRegisteredBoundOwner
-assertReviewPlanReady
-assertTicketMutationOwnership
-assertTicketRepairOwnership
-auditCoordWorktrees
-autoSyncAfterLifecycle
-blockTicket
-breakRuntimeLock
-buildAgentStatusPayload
-buildAutoSyncMessage
-buildCanonicalDerivedDriftError
-buildContextPack
-buildDefaultGovernancePlan
-buildDependencyBootstrapGuidance
-buildDoctorResolutionGuidance
-buildExplainQuestionsGuidance
-buildGovernanceSnapshot
-buildInitiateSummary
-buildMergedButNotDoneReport
-buildNoPrCloseoutPlanUpdate
-buildOrchestratorExceptionSloReport
-buildPlanStatusPayload
-buildPrCloseoutPlanUpdate
-buildPromptWaiverCommand
-buildQuestionQueueReport
-buildReleaseCandidates
-buildStartOwnershipRaceMessage
-buildStartPlanBootstrapCommand
-buildStartPlanSeedUpdate
-buildTicketNextCommands
-canonicalSyncablePaths
-captureGovernanceRestorePoint
-claimTicket
-classifyGateAttribution
-classifyLandingRecord
-classifyPrecheckVerdict
-classifyPreconditionArtifact
-classifyQuestionAgingBucket
-classifyQuestionOperationalType
-classifyQuestionSeverity
-cleanRuntime
-cleanupPreparedTicketWorkspace
-collectAgentFacadeVerbs
-collectAgentWrapperFlags
-collectCleanRuntimeTargets
-collectCostObservations
-collectDispatchCommandVerbs
-collectGovernedSnapshotFilePaths
-collectLandingAuditReport
-collectParseFlagsFlags
-collectReferencedAgentIdNumbers
-collectReviewPlanReadinessIssues
-collectStaleTemplateFeedbackErrors
-collectStartReadinessBlockers
-collectSubmitReadinessBlockers
-collectTemplateFeedbackAlerts
-collectTicketWorktreeResidue
-collectTicketsWithJournalDrift
-collectUnstartEvidenceBlockers
-commitCanonicalDelta
-commitSubjectAffiliatesWithTicket
-computeSyncDelta
-contextPack
-defaultTicketPromptRelPath
-deriveFeatureProofAudit
-deriveGovernanceReadiness
-deriveTestingInfrastructureAudit
-describeDirectoryLockHolder
-describeTicketMutationOwnershipIssue
-detectActiveSameOwnerOtherThread
-detectCwdTicketClaimHazard
-detectGatePackageManager
-detectGovernanceProvenanceDrift
-detectRollbackDrift
-detectSupersedeLandingBypass
-diffGovernanceSnapshots
-dispatchActionForTicket
-dispatchCachePrefixMarker
-dispatchCommand
-dispatchPlan
-dispatchPrecheckVerdict
-doctorFix
-dropFeatureProofCommand
-effectiveTierMinimum
-ensureCurrentAgentIdentity
-ensureDoingTicketLockIntegrity
-ensureFeatureProofLandingAudit
-ensurePlanBlockForUpdate
-ensurePlanRecordForUpdate
-ensurePlanStub
-ensurePromptCoverageOrDiscover
-ensureTestingInfrastructureLandingAudit
-ensureTicketMutationOwnership
-estimateCostUsd
-evaluateReadiness
-explainTicket
-extractDriftMutationStage
-extractDriftSinceTimestamp
-extractPlanBlock
-extractPlanBlockEntries
-extractPlanBlocks
-finalizeTicket
-findActiveProviderSessions
-findDoingTicketForOwner
-findLatestGovernanceBaselineTimestamp
-finishTicket
-formatBucketCounts
-formatLandingAuditSummary
-formatMissingStartBaseRefMessage
-formatRepoGateEntry
-formatTemplateFeedbackAlerts
-getOrCreateSessionToken
-ghPrView
-gitCommitishExists
-gitIgnoredDriftPaths
-governanceRestorePointPath
-hasOnlyScaffoldSelfReviewCycles
-hasPromptWaiver
-hashGovernanceEventRecord
-inferRequiredReviewRound
-inferTicketIdFromPath
-isActiveOrchestratorQuestionRow
-isCommitAncestorOfRef
-isCompleteLockPayload
-isDoingStatus
-isInsideGitWorkTree
-isLightLaneEligible
-isPlanSectionBoundary
-isProceduralDocPath
-isProductRepo
-isRecoverableGovernanceDriftPath
-isRepoBackedCode
-isScaffoldWorktreeIntendedFile
-isTestingInfrastructureTicket
-isTransientGhError
-landTicket
-latestDoneTimestampByTicket
-loadTicketPrecheckProbes
-lockAbandonTicket
-markDone
-materializeGovernanceEvent
-materializePlanBlockFromRecord
-mergedPrAffiliatesWithTicket
-minePriorProofsAndInvariants
-moveReview
-nextTicketId
-normalizeFeatureProofEntryForTicket
-normalizeFollowupRelation
-normalizeLegacyPlanRecordShape
-normalizeSelfReviewCycleLine
-normalizeTestingInfraAuditPath
-openFollowup
-parseDocumentedAgentVerbs
-parseDocumentedGovVerbs
-parseFlags
-parsePlanBlockToRecord
-parsePromptLikelyFiles
-parsePromptPreconditions
-parseQuestionRow
-parseTemplateFeedbackRowsFromText
-parseTicketDependsOn
-parseTicketPromptSections
-paths
-persistGovernanceRestorePoint
-persistMergedPrLandingSnapshot
-persistReturnDoingState
-planGovernanceChainRepair
-planRecordHasImplicitIntendedFilesScaffoldPlaceholder
-planRecordHasOnlyScaffoldSelfReviewCycles
-planStaleDriftNoteRetirement
-planTicket
-planWaves
-precheck
-preflightPrBranch
-printNextId
-pushAfterLifecycleSync
-pushOnFinalizeEnabled
-readActiveOrchestratorQuestionRows
-readAgentSessions
-readAgentsRegistry
-readBoard
-readCanonicalJsonFile
-readCanonicalTextFile
-readCommitSubject
-readGovernanceEventLog
-readGovernanceSnapshotArtifact
-readGovernanceSnapshotCheckpoint
-readJsonFileState
-readLatestGovernanceEvent
-readLockFileOrFail
-readModelPrices
-readOrchestratorQuestionRows
-readPlanListField
-readPlanRecord
-readPlanScalarField
-readQuestionRows
-readRecordedIntendedFilesScaffoldSeed
-readTemplateFeedbackRows
-readTierPolicy
-reapIdleAutoClaimedProviderStubs
-rebindAgent
-rebindTicketLock
-rebuildBoardFromJournal
-recentEvents
-recordGovernanceExternalSideEffect
-recoverCrashedGovernanceMutation
-recoverTicket
-refreshLockHead
-refsContainMergedPrForTicket
-registerPrompt
-renderPlanRecordBlock
-repairGovernanceChain
-repairTornGovernanceEventLogTail
-replacePlanBlock
-replaceSelfReviewCycles
-repoBootstrapLabel
-repoCliAliasesForCode
-repoCodeForCliRepoArg
-repoCodeForLockRepoName
-repoDisplayNameForCode
-repoNameForCode
-repoPrefixForCode
-repoPrefixesForCode
-requiresFeatureProofGovernance
-resetRunGhForTesting
-resetSleepSyncForTesting
-resolveCommitishInRepo
-resolveCurrentAgentId
-resolveDoctorOwnerScope
-resolveDoctorScope
-resolveEffectiveThreadId
-resolveFollowupPromptPath
-resolveGateArtifactDir
-resolveGateInvocation
-resolveGateScript
-resolveHumanAdminOverride
-resolveLandingBaseRef
-resolveModelPrice
-resolveOwnerIdentity
-resolvePrLandingBaseRef
-resolveRepoCodeForTicket
-resolveRepoIntegrationBranch
-resolveSourceCommitSha
-resolveTicketBaseRef
-resolveTicketLightLane
-resolveTicketTier
-resolveWorktreeBaseCompareRef
-restoreGovernanceRestorePoint
-resumeTicket
-retireStaleDriftNotes
-runGh
-runPrecheckProbe
-runSyncCommand
-runVerbParityCheck
-runtimeLockStatus
-runtimeSessionFingerprint
-seedStartIntendedFilesFromPrompt
-setRequirementClosureCommand
-setReviewCyclesCommand
-setRunGhForTesting
-setSleepSyncForTesting
-shouldIgnoreMergeFailureAfterSuccessfulMerge
-splitGovernanceProvenanceDrift
-splitTicket
-submitRequiresReviewPlanCheck
-summarizeGovernanceEvent
-supersedeTicket
-syncPlanRecordFromBlock
-synthesizeHistoricalPlanRecord
-terminalJournalStatusForTicket
-ticketFilesIntersect
-ticketNeedsTemplateFeedback
-ticketPromptRelPathExists
-tierCommand
-tierEvidenceMinimums
-tryReclaimStaleDirectoryLock
-unblockTicket
-unstartTicket
-updateCanonicalPlanState
-upsertListItem
-validateFeatureProofEntry
-validateRequirementClosureEntry
-verifyGovernanceChain
-verifyPromptPreconditions
-withGovernanceMutation
-withPreparedTicketWorkspace
-withTemporaryExecutionContext
-writeBoard
-writeCanonicalJsonFile
-writeCanonicalTextFile
-writeFileAtomicSync
-writeLock
-writePlanCompatibilityBlockFromRecord
-`.trim().split("\n");
+test("COORD-390: process runtime sandbox redirects seal-sensitive prompt/render surfaces", () => {
+  const livePromptsDir = path.resolve(__dirname, "..", "prompts");
+  const liveRenderedDir = path.resolve(__dirname, "..", "rendered");
+  assert.notEqual(path.resolve(__testing.paths.PROMPTS_DIR), livePromptsDir);
+  assert.notEqual(path.resolve(__testing.paths.RENDERED_DIR), liveRenderedDir);
+  assert.match(path.resolve(__testing.paths.PROMPTS_DIR), /^\/tmp\//);
+  assert.match(path.resolve(__testing.paths.RENDERED_DIR), /^\/tmp\//);
+});
 
-test("__testing export surface matches the frozen governance facade key set", () => {
-  assert.deepEqual(Object.keys(__testing).sort(), EXPECTED_TESTING_KEYS);
+test("COORD-394: ephemeral worktree live-authority writes fail closed, sandbox writes remain allowed", () => {
+  const coordDir = path.join(os.tmpdir(), "coord394-live", "coord");
+  const livePaths = {
+    BOARD_PATH: path.join(coordDir, "board", "tasks.json"),
+    GOVERNANCE_EVENT_LOG_PATH: path.join(coordDir, ".runtime", "governance-events.ndjson"),
+    GOVERNANCE_SNAPSHOT_PATH: path.join(coordDir, ".runtime", "governance-snapshot.json"),
+    GOVERNANCE_SNAPSHOTS_DIR: path.join(coordDir, ".runtime", "governance-snapshots"),
+    PLAN_RECORDS_DIR: path.join(coordDir, ".runtime", "plans"),
+  };
+  const role = { role: "ephemeral_worktree", reason: "test marker" };
+  const issue = __testing.canonicalAuthorityWriteIssue({ role, coordDir, paths: livePaths });
+  assert.equal(issue.code, "ephemeral_canonical_authority_write");
+  assert.throws(
+    () => __testing.assertCanonicalAuthorityWriteAllowed({ role, coordDir, paths: livePaths }),
+    /Refusing canonical governance-state mutation from an ephemeral linked worktree/
+  );
+
+  const sandboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "coord394-sandbox-"));
+  const sandboxPaths = {
+    ...livePaths,
+    GOVERNANCE_EVENT_LOG_PATH: path.join(sandboxDir, "governance-events.ndjson"),
+    GOVERNANCE_SNAPSHOT_PATH: path.join(sandboxDir, "governance-snapshot.json"),
+    GOVERNANCE_SNAPSHOTS_DIR: path.join(sandboxDir, "governance-snapshots"),
+    PLAN_RECORDS_DIR: path.join(sandboxDir, "plans"),
+  };
+  assert.equal(__testing.canonicalAuthorityWriteIssue({ role, coordDir, paths: sandboxPaths }), null);
+  assert.doesNotThrow(() => __testing.assertCanonicalAuthorityWriteAllowed({ role, coordDir, paths: sandboxPaths }));
+});
+
+test("COORD-394: canonical integration role can mutate canonical authority paths", () => {
+  const coordDir = path.join(os.tmpdir(), "coord394-canonical", "coord");
+  const paths = {
+    BOARD_PATH: path.join(coordDir, "board", "tasks.json"),
+    GOVERNANCE_EVENT_LOG_PATH: path.join(coordDir, ".runtime", "governance-events.ndjson"),
+    GOVERNANCE_SNAPSHOT_PATH: path.join(coordDir, ".runtime", "governance-snapshot.json"),
+    GOVERNANCE_SNAPSHOTS_DIR: path.join(coordDir, ".runtime", "governance-snapshots"),
+    PLAN_RECORDS_DIR: path.join(coordDir, ".runtime", "plans"),
+  };
+  const role = { role: "canonical_integration_tree", reason: "test marker" };
+  assert.equal(__testing.canonicalAuthorityWriteIssue({ role, coordDir, paths }), null);
+  assert.doesNotThrow(() => __testing.assertCanonicalAuthorityWriteAllowed({ role, coordDir, paths }));
+});
+
+// ---------------------------------------------------------------------------
+// COORD-280: __testing facade surface check (required-subset, auto-derived).
+//
+// HISTORY: this used to be an exact `deepEqual(Object.keys(__testing).sort(),
+// <a ~1,633-key frozen literal>)`. That literal was a merge-conflict magnet and
+// forced a manual edit on every facade add/remove. The PROTECTION we keep: a
+// refactor (e.g. the COORD-281/282/283 extractions) that DROPS or RENAMES an
+// internal that the test suite still depends on must fail here.
+//
+// HOW THE REQUIRED SET IS DERIVED (self-maintaining — do NOT hand-edit a list):
+// We scan every sibling `coord/scripts/*.test.js` that consumes the governance
+// `__testing` facade (directly from `./governance.js`, via `governanceModule`,
+// or via the `./governance-test-utils.js` re-export) and collect every
+// `__testing.<key>` member access. That set IS the honest "depended upon"
+// surface. The facade must be a SUPERSET of it.
+//   - ADD a new `__testing` export  -> nothing references it yet -> still PASS
+//     (the brittleness is gone; no manual literal edit, no merge conflict).
+//   - DROP/RENAME a depended-on key  -> some test still says `__testing.<key>`
+//     -> key is in the required set but missing from the facade -> FAIL
+//     (the COORD-066-adjacent safety net is preserved).
+// When an extraction renames an internal, update the call sites (the tests that
+// reference it) — the required set follows automatically from those edits.
+//
+// Access is always `__testing.<identifier>` (no destructuring/aliasing/dynamic
+// bracket access exists in the suite — verified COORD-280), so a single member
+// -access regex captures the full dependency surface.
+
+const GOVERNANCE_FACADE_REQUIRE_RE =
+  /require\(["']\.\/governance(?:-test-utils)?\.js["']\)/;
+const TESTING_MEMBER_ACCESS_RE = /__testing\.([A-Za-z_$][A-Za-z0-9_$]*)/g;
+
+// Intentionally-OPTIONAL references: keys a test reads through the facade but
+// guards with a fallback (e.g. `__testing.CHAIN_GENESIS_PREV || "genesis"`),
+// so the facade NOT exporting them does not break anything. These are excluded
+// from the required set to keep it honest — they are referenced but not truly
+// depended upon. Add an entry here only with a matching fallback-guarded call
+// site and a note explaining why its absence is tolerated.
+//   - CHAIN_GENESIS_PREV: journal.js keeps this genesis-anchor constant module-
+//     private; journal.test.js reads it opportunistically with a "genesis"
+//     fallback, so the export is optional by design.
+const OPTIONAL_TESTING_KEYS = new Set(["CHAIN_GENESIS_PREV"]);
+
+// A file participates in the required-surface derivation only if it pulls the
+// governance facade in (so a future sibling that exposes a *different* module's
+// `__testing` is never misattributed to this surface).
+function importsGovernanceTestingFacade(sourceText) {
+  return (
+    GOVERNANCE_FACADE_REQUIRE_RE.test(sourceText) &&
+    /\b__testing\b/.test(sourceText)
+  );
+}
+
+function collectTestingKeyReferences(sourceText, into) {
+  TESTING_MEMBER_ACCESS_RE.lastIndex = 0;
+  let match;
+  while ((match = TESTING_MEMBER_ACCESS_RE.exec(sourceText)) !== null) {
+    into.add(match[1]);
+  }
+  return into;
+}
+
+// Derive the required `__testing` surface from actual usage across the suite.
+function collectGovernanceTestingRequirements() {
+  const required = new Set();
+  for (const name of fs.readdirSync(__dirname)) {
+    if (!name.endsWith(".test.js")) continue;
+    const sourceText = fs.readFileSync(path.join(__dirname, name), "utf8");
+    if (!importsGovernanceTestingFacade(sourceText)) continue;
+    collectTestingKeyReferences(sourceText, required);
+  }
+  for (const optional of OPTIONAL_TESTING_KEYS) required.delete(optional);
+  return required;
+}
+
+// Pure helper (unit-tested below): which required keys are absent from a facade.
+function missingRequiredTestingKeys(facadeKeys, requiredKeys) {
+  const present = new Set(facadeKeys);
+  return [...requiredKeys].filter((key) => !present.has(key)).sort();
+}
+
+test("__testing facade exposes every internal the test suite depends on (required-subset, auto-derived)", () => {
+  const required = collectGovernanceTestingRequirements();
+  // Self-check: the derivation actually found a substantial surface. Guards
+  // against a silent regex/scan breakage that would make the check vacuous.
+  // (As of COORD-280 the suite consumes ~280 distinct internals; extractions
+  // relocate tests into siblings that are still scanned, so this only grows.)
+  assert.ok(
+    required.size >= 200,
+    `expected the derived required __testing surface to be substantial; ` +
+      `got ${required.size} — the usage scan likely broke`
+  );
+  const missing = missingRequiredTestingKeys(Object.keys(__testing), required);
+  assert.deepEqual(
+    missing,
+    [],
+    `__testing facade is missing internals the test suite depends on ` +
+      `(dropped or renamed by a refactor without updating call sites?): ` +
+      `${missing.join(", ")}`
+  );
+});
+
+test("COORD-280 ADD-KEY-OK: a NEW __testing export does not break the surface check", () => {
+  // Synthetic: a brand-new internal nothing references yet must pass.
+  const required = new Set(["alpha", "beta"]);
+  assert.deepEqual(
+    missingRequiredTestingKeys(["alpha", "beta", "freshInternalFromARefactor"], required),
+    []
+  );
+  // Against the REAL facade: a superset (every real key plus a synthetic new
+  // one) still passes — proving adds never force a manual literal edit.
+  const realRequired = collectGovernanceTestingRequirements();
+  const supersetFacade = [...Object.keys(__testing), "__coord280_synthetic_new_export"];
+  assert.deepEqual(missingRequiredTestingKeys(supersetFacade, realRequired), []);
+});
+
+test("COORD-280 DROP-DEPENDED-KEY-FAILS: removing a depended-on __testing key still fails", () => {
+  // Synthetic: dropping a required key is reported.
+  const required = new Set(["alpha", "beta"]);
+  assert.deepEqual(missingRequiredTestingKeys(["alpha"], required), ["beta"]);
+  // Against the REAL derived surface: drop one genuinely-depended key and
+  // confirm the check fires — the extraction safety net is intact.
+  const realRequired = collectGovernanceTestingRequirements();
+  const [sampleDependedKey] = [...realRequired];
+  assert.ok(sampleDependedKey, "expected at least one depended-on key");
+  const facadeMissingOne = Object.keys(__testing).filter((key) => key !== sampleDependedKey);
+  assert.deepEqual(missingRequiredTestingKeys(facadeMissingOne, realRequired), [sampleDependedKey]);
 });
 
 test("buildDependencyBootstrapGuidance is registry-generalized (no hardcoded B/F→repo names)", () => {
@@ -664,104 +532,8 @@ test("assertCommittedReviewState rejects source commits already landed on origin
   }
 });
 
-test("ensureDoingTicketLockIntegrity recreates a missing doing lock from the canonical worktree", () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-recreate-doing-lock-"));
-  const repo = createTempGitRepo("ebmr-governance-doing-lock-repo-", {
-    "README.md": "lock recreation fixture\n",
-  });
-  const ticketId = "IMP-997";
-  const worktree = path.join(repo.repoRoot, ".worktrees", "codexa04", ticketId);
-  runGit(repo.repoRoot, ["worktree", "add", "-b", "agent/codexa04-imp-997-fix", worktree, "HEAD"]);
-
-  const boardPath = path.join(tempDir, "tasks.json");
-  const locksDir = path.join(tempDir, "locks");
-  const legacyLocksDir = path.join(tempDir, "legacy-locks");
-  const agentsPath = path.join(tempDir, "agents.json");
-  const sessionsPath = path.join(tempDir, "agent_sessions.json");
-  fs.mkdirSync(locksDir, { recursive: true });
-  fs.mkdirSync(legacyLocksDir, { recursive: true });
-  fs.writeFileSync(boardPath, JSON.stringify({
-    sections: [{
-      heading: "Backend",
-      rows: [{
-        ID: ticketId,
-        Repo: "B",
-        Status: "doing",
-        Owner: "codexa04",
-        Description: "Repair lost lock",
-        "Depends On": "",
-      }],
-    }],
-  }, null, 2));
-  fs.writeFileSync(agentsPath, JSON.stringify([
-    { id: "a04", handle: "codexa04", provider: "openai", status: "active", aliases: [] },
-  ], null, 2));
-  fs.writeFileSync(sessionsPath, JSON.stringify([
-    {
-      session_id: "a04-current",
-      agent_id: "a04",
-      handle: "codexa04",
-      board_path: boardPath,
-      thread_id: "codex-thread-recover-lock",
-      claimed_at: new Date().toISOString(),
-      last_seen_at: new Date().toISOString(),
-      status: "active",
-    },
-  ], null, 2));
-
-  const original = {
-    BOARD_PATH: __testing.paths.BOARD_PATH,
-    LOCKS_DIR: __testing.paths.LOCKS_DIR,
-    LEGACY_LOCKS_DIR: __testing.paths.LEGACY_LOCKS_DIR,
-    AGENTS_PATH: __testing.paths.AGENTS_PATH,
-    AGENT_SESSIONS_PATH: __testing.paths.AGENT_SESSIONS_PATH,
-    REPO_ROOTS: { ...__testing.paths.REPO_ROOTS },
-    CODEX_THREAD_ID: process.env.CODEX_THREAD_ID,
-    AGENT_THREAD_ID: process.env.AGENT_THREAD_ID,
-  };
-
-  __testing.paths.BOARD_PATH = boardPath;
-  __testing.paths.LOCKS_DIR = locksDir;
-  __testing.paths.LEGACY_LOCKS_DIR = legacyLocksDir;
-  __testing.paths.AGENTS_PATH = agentsPath;
-  __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
-  __testing.paths.REPO_ROOTS = {
-    ...__testing.paths.REPO_ROOTS,
-    B: repo.repoRoot,
-  };
-  process.env.CODEX_THREAD_ID = "codex-thread-recover-lock";
-  delete process.env.AGENT_THREAD_ID;
-
-  try {
-    const row = {
-      ID: ticketId,
-      Repo: "B",
-      Status: "doing",
-      Owner: "codexa04",
-      Description: "Repair lost lock",
-    };
-    const lock = __testing.ensureDoingTicketLockIntegrity(ticketId, row, {});
-    assert.equal(lock.owner, "codexa04");
-    assert.equal(lock.branch, "agent/codexa04-imp-997-fix");
-    assert.equal(lock.worktree, worktree);
-    assert.equal(lock.session_id, "a04-current");
-    assert.equal(fs.existsSync(path.join(locksDir, `${ticketId}.lock`)), true);
-  } finally {
-    __testing.paths.BOARD_PATH = original.BOARD_PATH;
-    __testing.paths.LOCKS_DIR = original.LOCKS_DIR;
-    __testing.paths.LEGACY_LOCKS_DIR = original.LEGACY_LOCKS_DIR;
-    __testing.paths.AGENTS_PATH = original.AGENTS_PATH;
-    __testing.paths.AGENT_SESSIONS_PATH = original.AGENT_SESSIONS_PATH;
-    __testing.paths.REPO_ROOTS = original.REPO_ROOTS;
-    for (const [key, value] of Object.entries(original).filter(([key]) => key === key.toUpperCase())) {
-      if (value === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = value;
-      }
-    }
-  }
-});
+// COORD-293: the ensureDoingTicketLockIntegrity doing-lock-recreation test moved
+// to ticket-lock-service.test.js alongside the extracted ticket-lock service.
 
 test("withPreparedTicketWorkspace removes a newly created Repo X workspace when later validation fails", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ebmr-governance-workspace-cleanup-"));
@@ -824,6 +596,8 @@ test("counts treats superseded tickets as closed instead of open", () => {
           { ID: "SUPER-001", Repo: "X", Status: "superseded", Owner: "codexa00", Description: "retired" },
           { ID: "TODO-001", Repo: "X", Status: "todo", Owner: "unassigned", Description: "todo" },
           { ID: "DOING-001", Repo: "X", Status: "doing", Owner: "codexa00", Description: "doing" },
+          // COORD-285: a quarantined proposed ticket must NOT count as open work.
+          { ID: "PROP-001", Repo: "X", Status: "proposed", Owner: "unassigned", Description: "proposed debt" },
         ],
       },
     ],
@@ -836,10 +610,13 @@ test("counts treats superseded tickets as closed instead of open", () => {
   try {
     const result = executeCommand(["counts"]);
     assert.equal(result.ok, true);
-    assert.match(result.stdout, /^Tickets: 4$/m);
-    assert.match(result.stdout, /^Open: 2 \(excludes done and superseded\)$/m);
+    assert.match(result.stdout, /^Tickets: 5$/m);
+    // COORD-285: Open still counts only TODO-001 + DOING-001 — proposed is excluded
+    // alongside done/superseded.
+    assert.match(result.stdout, /^Open: 2 \(excludes done, superseded, and proposed\)$/m);
     assert.match(result.stdout, /^Closed: 2$/m);
     assert.match(result.stdout, /^Superseded: 1$/m);
+    assert.match(result.stdout, /^Proposed: 1 \(awaiting approve\/reject\)$/m);
   } finally {
     __testing.paths.BOARD_PATH = originalBoardPath;
     __testing.paths.LOCKS_DIR = originalLocksDir;
@@ -1051,6 +828,10 @@ test("COORD-003 Fix 2: unstart fails closed on review evidence (recorded finding
       { id: `${ticketId}-F1`, severity: "MED", summary: "x", status: "open", round: 1, qref: "L1" },
     ];
     fs.writeFileSync(ctx.boardPath, `${JSON.stringify(board, null, 2)}\n`, "utf8");
+    // COORD-273: re-anchor the journal baseline to this fixture edit so the
+    // command under test runs over a consistent journal (intent: exercise the
+    // review-evidence guard, not the out-of-band seal).
+    __testing.advanceGovernanceProvenanceBaseline("coord003-review-fixture");
     assert.throws(
       () => __testing.unstartTicket(ticketId, {}),
       (error) => error instanceof GovernanceError && /review findings recorded/.test(error.message)
@@ -1069,6 +850,9 @@ test("COORD-003 Fix 2: unstart fails closed on landing evidence (landing_index r
     const board = JSON.parse(fs.readFileSync(ctx.boardPath, "utf8"));
     board.landing_index[ticketId] = { commit_sha: "abc1234", evidence: ["dev landing"] };
     fs.writeFileSync(ctx.boardPath, `${JSON.stringify(board, null, 2)}\n`, "utf8");
+    // COORD-273: re-anchor the journal baseline to this fixture edit (intent:
+    // exercise the landing-evidence guard, not the out-of-band seal).
+    __testing.advanceGovernanceProvenanceBaseline("coord003-landing-fixture");
     assert.throws(
       () => __testing.unstartTicket(ticketId, {}),
       (error) => error instanceof GovernanceError && /landing_index evidence recorded/.test(error.message)
@@ -1169,6 +953,9 @@ test("COORD-009: unstart succeeds on an unworked ticket seeded with Likely Files
     record.intended_files = [...seed];
     record.scaffold_placeholders = { intended_files: [...seed] };
     fs.writeFileSync(recordPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+    // COORD-273: re-anchor the journal baseline to this plan-record fixture edit
+    // (intent: exercise the start-seed comparison, not the out-of-band seal).
+    __testing.advanceGovernanceProvenanceBaseline("coord009-seed-fixture");
 
     assert.doesNotThrow(() => __testing.unstartTicket(ticketId, {}));
     const row = readBoardRow(ctx.boardPath, ticketId);
@@ -1199,6 +986,9 @@ test("COORD-009: unstart fails closed when intended_files is edited beyond the s
     record.intended_files = [...seed, "src/auth/NEW-authored.ts"];
     record.scaffold_placeholders = { intended_files: [...seed] };
     fs.writeFileSync(recordPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+    // COORD-273: re-anchor the journal baseline to this plan-record fixture edit
+    // (intent: exercise the authored-content guard, not the out-of-band seal).
+    __testing.advanceGovernanceProvenanceBaseline("coord009-edited-fixture");
 
     assert.throws(
       () => __testing.unstartTicket(ticketId, {}),
@@ -1287,6 +1077,11 @@ function makeForeignOwned(ctx, ticketId) {
     lock.session_id = "claudea99-stale";
     fs.writeFileSync(ctx.lockPath, `${JSON.stringify(lock, null, 2)}\n`, "utf8");
   }
+  // COORD-273: this fixture edits the board out-of-band (re-owning the row) after
+  // the harness anchored its journal baseline. Re-anchor the baseline to the
+  // edited state so the command under test runs over a consistent journal — the
+  // intent here is to exercise lock-abandon's own guards, not the out-of-band seal.
+  __testing.advanceGovernanceProvenanceBaseline("coord004-foreign-owner-fixture");
 }
 
 test("COORD-004: lock-abandon returns a foreign-owned evidence-free doing ticket to todo", () => {
@@ -1352,6 +1147,9 @@ test("COORD-004: lock-abandon fails closed on review evidence and directs to sup
       { id: `${ticketId}-F1`, severity: "MED", summary: "x", status: "open", round: 1, qref: "L1" },
     ];
     fs.writeFileSync(ctx.boardPath, `${JSON.stringify(board, null, 2)}\n`, "utf8");
+    // COORD-273: re-anchor again after the extra review-evidence fixture edit
+    // (intent: exercise lock-abandon's evidence guard, not the out-of-band seal).
+    __testing.advanceGovernanceProvenanceBaseline("coord004-review-fixture");
     assert.throws(
       () => __testing.lockAbandonTicket(ticketId, { humanAdminOverride: "stale foreign session" }),
       (error) => error instanceof GovernanceError &&
@@ -1637,9 +1435,16 @@ const COORD007_VERB_CONTRACT_MD = fs.readFileSync(
 // lifecycle.test.js — those bodies carry lifecycle-verb tokens (finalize / land
 // / mark-done / move-review / plan), so add lifecycle.test.js here to keep verb
 // parity drift-proof if a verb's only regression token ever lives there.
+// COORD-280: the block/unblock regression coverage lives in
+// ticket-transitions.test.js (and single-writer-board.test.js). Previously the
+// block/unblock verb tokens were incidentally present in this file via the
+// ~1,633-key EXPECTED_TESTING_KEYS literal (blockTicket / unblockTicket ...).
+// That literal was removed (it was a merge-conflict magnet), so concatenate the
+// files that hold the ACTUAL block/unblock regression tests — pointing parity at
+// real coverage instead of relying on an incidental substring.
 const COORD007_TEST_SRC = [
   fs.readFileSync(__filename, "utf8"),
-  ...["governance-validation.test.js", "lifecycle-flags.test.js", "prompt-coverage.test.js", "paths.test.js", "lifecycle.test.js"]
+  ...["governance-validation.test.js", "lifecycle-flags.test.js", "prompt-coverage.test.js", "paths.test.js", "lifecycle.test.js", "ticket-transitions.test.js", "single-writer-board.test.js"]
     .map((name) => path.join(__dirname, name))
     .filter((p) => fs.existsSync(p))
     .map((p) => fs.readFileSync(p, "utf8")),
@@ -2019,3 +1824,82 @@ test("set-type refuses a ticket in a terminal status", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// COORD-285: approval-gated intake — the `proposed` quarantine status + the two
+// human-only governed verbs `gov approve` (proposed -> todo) and `gov reject`
+// (proposed -> superseded). These exercise the full governed lane (executeCommand
+// -> cli dispatch -> withBoardTransaction) against a real board + agent registry.
+// ---------------------------------------------------------------------------
+
+function countJournalEvents() {
+  const logPath = __testing.paths.GOVERNANCE_EVENT_LOG_PATH;
+  if (!fs.existsSync(logPath)) {
+    return 0;
+  }
+  return fs.readFileSync(logPath, "utf8").trim().split("\n").filter(Boolean).length;
+}
+
+test("COORD-285 APPROVE-PROMOTES: gov approve moves proposed -> todo in exactly one journal event, then start works", () => {
+  withRegisterPromptHarness("prop-approve-", { ticketId: "PROP-700", status: "proposed" }, ({ readBoard }) => {
+    const before = countJournalEvents();
+    const result = executeCommand(["approve", "PROP-700", "--owner", "claudea11"]);
+    assert.equal(result.ok, true, `approve should succeed: ${result.error || result.stderr || result.stdout}`);
+    assert.equal(readBoard().sections[0].rows.find((r) => r.ID === "PROP-700").Status, "todo");
+    assert.equal(countJournalEvents(), before + 1, "approve appends exactly one journal event");
+    assert.match(String(result.stdout), /proposed -> todo/);
+  });
+});
+
+test("COORD-285 APPROVE fails closed on a non-proposed ticket", () => {
+  withRegisterPromptHarness("prop-approve-bad-", { ticketId: "PROP-700", status: "todo" }, ({ readBoard }) => {
+    const result = executeCommand(["approve", "PROP-700", "--owner", "claudea11"]);
+    assert.equal(result.ok, false, "approving a non-proposed ticket must fail closed");
+    assert.match(String(result.error || result.stderr || result.stdout), /only promotes a "proposed" ticket/);
+    assert.equal(readBoard().sections[0].rows.find((r) => r.ID === "PROP-700").Status, "todo", "status unchanged");
+  });
+});
+
+test("COORD-285 REJECT-RECORDS: gov reject moves proposed -> superseded, records the reason inline + journaled", () => {
+  withRegisterPromptHarness("prop-reject-", { ticketId: "PROP-700", status: "proposed" }, ({ readBoard }) => {
+    const before = countJournalEvents();
+    const result = executeCommand(["reject", "PROP-700", "--owner", "claudea11", "--reason", "duplicate of PROP-1"]);
+    assert.equal(result.ok, true, `reject should succeed: ${result.error || result.stderr || result.stdout}`);
+    const row = readBoard().sections[0].rows.find((r) => r.ID === "PROP-700");
+    assert.equal(row.Status, "superseded");
+    assert.equal(row["Supersede Reason"], "duplicate of PROP-1", "decline reason recorded inline on the row");
+    assert.equal(countJournalEvents(), before + 1, "reject appends exactly one journal event");
+    // The reason is journaled in the reject event details.
+    const events = fs.readFileSync(__testing.paths.GOVERNANCE_EVENT_LOG_PATH, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    const rejectEvent = events.reverse().find((e) => e.command === "reject" && e.ticket === "PROP-700");
+    assert.ok(rejectEvent, "a reject event was journaled");
+    assert.equal(rejectEvent.details.reason, "duplicate of PROP-1");
+    assert.equal(rejectEvent.after_status, "superseded");
+  });
+});
+
+test("COORD-285 REJECT requires --reason (fails closed without it)", () => {
+  withRegisterPromptHarness("prop-reject-noreason-", { ticketId: "PROP-700", status: "proposed" }, ({ readBoard }) => {
+    const result = executeCommand(["reject", "PROP-700", "--owner", "claudea11"]);
+    assert.equal(result.ok, false, "reject without --reason must fail closed");
+    assert.match(String(result.error || result.stderr || result.stdout), /reject requires --reason/);
+    assert.equal(readBoard().sections[0].rows.find((r) => r.ID === "PROP-700").Status, "proposed", "status unchanged");
+  });
+});
+
+test("COORD-285 REJECT fails closed on a non-proposed ticket", () => {
+  withRegisterPromptHarness("prop-reject-bad-", { ticketId: "PROP-700", status: "todo" }, ({ readBoard }) => {
+    const result = executeCommand(["reject", "PROP-700", "--owner", "claudea11", "--reason", "x"]);
+    assert.equal(result.ok, false, "rejecting a non-proposed ticket must fail closed");
+    assert.match(String(result.error || result.stderr || result.stdout), /only declines a "proposed" ticket/);
+    assert.equal(readBoard().sections[0].rows.find((r) => r.ID === "PROP-700").Status, "todo", "status unchanged");
+  });
+});
+
+test("COORD-285 START-REFUSED: gov start refuses a proposed ticket and directs to gov approve", () => {
+  withRegisterPromptHarness("prop-start-", { ticketId: "PROP-700", status: "proposed" }, ({ readBoard }) => {
+    const result = executeCommand(["start", "PROP-700", "--owner", "claudea11", "--allow-shared-worktree"]);
+    assert.equal(result.ok, false, "starting a proposed ticket must fail closed");
+    assert.match(String(result.error || result.stderr || result.stdout), /is "proposed".*gov approve PROP-700/s);
+    assert.equal(readBoard().sections[0].rows.find((r) => r.ID === "PROP-700").Status, "proposed", "status unchanged");
+  });
+});

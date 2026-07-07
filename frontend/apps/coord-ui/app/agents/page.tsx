@@ -25,6 +25,8 @@ function fmt(ts?: string): string {
   }
 }
 
+export const dynamic = 'force-dynamic';
+
 export default function AgentsPage() {
   const a = loadAgents();
   return (

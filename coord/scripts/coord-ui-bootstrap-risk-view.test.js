@@ -1,45 +1,24 @@
 "use strict";
 
-// COORD-163: read-only invariant + reuse guard for the coord-ui /bootstrap-risk view.
-//
-// The /bootstrap-risk surface (app/bootstrap-risk/page.tsx) + its data layer
-// (lib/bootstrap-risk.ts) surface, per ticket carrying server-bootstrap /
-// backfill / generated-data risk, the COORD-159 bootstrap_risk plan field
-// (work class / runs-at-boot / shares-app-process / resource envelope /
-// idempotency / checkpoint / verification signal / rollback-disable /
-// observability / data-access shape), the COORD-161 receipt (job completion),
-// and the COORD-160/162 unresolved advisory warnings. The HARD constraint
-// (SEC-001/SEC-002 + the ticket text) is that this surface is STRICTLY
-// READ-ONLY: no mutation, no toggle, no write/POST, NO job execution, NO
-// shelling out, NO live cloud/API call. Role-aware (ENT-012): viewer sees
-// redacted summaries only. SERVER READINESS and JOB COMPLETION are modelled as
-// separate states.
-//
-// This suite reads the TS source as text (the same source-scanning approach
-// coord-ui-live-mcp-view.test.js uses) and asserts:
-//   (A) the data layer carries NO write/spawn/exec/network primitive;
-//   (B) the data layer REUSES the COORD-160 advisory + COORD-162 query scan +
-//       COORD-161 receipt readers and the shared role-aware redaction;
-//   (C) the data layer surfaces every required field AND models server-readiness
-//       SEPARATELY from job-completion;
-//   (D) the page carries NO form/POST/onClick/onChange/button mutation surface,
-//       is role-gated, read-only, and labels readiness vs completion separately.
-// Read-only: no board/runtime side effects.
+// COORD-163 / COORD-438: read-only invariant plus executable behavior checks
+// for the coord-ui /bootstrap-risk view-model. The test protects the concrete
+// readiness/completion split and receipt/advisory behavior without requiring a
+// frontend test runner in this repo.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const UI = path.join(REPO_ROOT, "frontend", "apps", "coord-ui");
 const LIB = path.join(UI, "lib", "bootstrap-risk.ts");
 const PAGE = path.join(UI, "app", "bootstrap-risk", "page.tsx");
+const core = require("./coord-ui-bootstrap-risk-view-model.js");
 
-// Mutation/IO/exec/network primitives that would indicate a write, job
-// execution, shell-out, or live call. The data layer must only READ.
 const FORBIDDEN_LIB = [
-  /\bfs\.\w*[wW]rite\w*/, // writeFile, writeFileSync, write
+  /\bfs\.\w*[wW]rite\w*/,
   /\bfs\.append\w*/,
   /\bfs\.mkdir\w*/,
   /\bfs\.rm\w*/,
@@ -53,7 +32,7 @@ const FORBIDDEN_LIB = [
   /\bhttp\b/,
 ];
 
-test("bootstrap-risk data layer exists and is read-only (no write/spawn/exec/network primitive)", () => {
+test("bootstrap-risk data layer remains read-only and delegates behavior to the view-model core", () => {
   assert.ok(fs.existsSync(LIB), "lib/bootstrap-risk.ts must exist");
   const src = fs.readFileSync(LIB, "utf8");
   for (const re of FORBIDDEN_LIB) {
@@ -62,68 +41,161 @@ test("bootstrap-risk data layer exists and is read-only (no write/spawn/exec/net
       `bootstrap-risk.ts must not contain a mutation/exec/IO primitive matching ${re}`
     );
   }
-  // It reads plan records / receipts (readFileSync / readdirSync) — read-only fs.
-  assert.match(src, /fs\.readFileSync|fs\.readdirSync/, "data layer must read its sources");
+  assert.match(src, /coord-ui-bootstrap-risk-view-model\.js/, "data layer must load the executable view-model core");
   assert.match(src, /readOnly:\s*true/, "view must be marked read-only");
 });
 
-test("bootstrap-risk data layer REUSES the COORD-159/160/161/162 substrate + shared redaction", () => {
-  const src = fs.readFileSync(LIB, "utf8");
-  // COORD-160 advisory — unresolved warnings + missing evidence, not recomputed.
-  assert.match(src, /buildBootstrapAdvisory/, "must reuse buildBootstrapAdvisory (COORD-160)");
-  assert.match(src, /bootstrap-advisory\.js/, "must load the COORD-160 advisory module");
-  // COORD-162 broad-query scan.
-  assert.match(src, /scanBackfillQueryText/, "must reuse scanBackfillQueryText (COORD-162)");
-  assert.match(src, /backfill-query-advisory\.js/, "must load the COORD-162 advisory module");
-  // COORD-161 bootstrap receipt readers.
-  assert.match(src, /latestReceipt|readReceipt/, "must reuse the COORD-161 receipt readers");
-  assert.match(src, /runtime-evidence\.js/, "must load the COORD-161 receipt module");
-  assert.match(src, /'bootstrap'/, "must read the bootstrap receipt kind (COORD-161)");
-  // COORD-159 plan field — read straight off the plan record, not recomputed.
-  assert.match(src, /bootstrap_risk/, "must read the COORD-159 bootstrap_risk plan field");
-  // ENT-012 role-aware redaction via the shared access helper, not reimplemented.
-  assert.match(src, /shouldRedact/, "must reuse the shared role-aware redaction (ENT-012)");
-});
-
-test("bootstrap-risk data layer surfaces every required field", () => {
-  const src = fs.readFileSync(LIB, "utf8");
-  for (const field of [
-    "serverReadiness",
-    "runsAtBoot",
-    "sharesAppProcess",
-    "resourceEnvelope",
-    "idempotency",
-    "checkpoint",
-    "verificationSignal",
-    "rollbackOrDisable",
-    "observability",
-    "dataAccessShape",
-    "jobCompletion",
-    "matchedSignals",
-    "missingEvidence",
-    "queryWarnings",
-  ]) {
-    assert.match(src, new RegExp(field), `view must surface ${field}`);
-  }
-});
-
-test("bootstrap-risk data layer models SERVER READINESS separately from JOB COMPLETION", () => {
-  const src = fs.readFileSync(LIB, "utf8");
-  // Two distinct exported interfaces — readiness (design) and completion (receipt).
-  assert.match(src, /interface\s+ServerReadiness\b/, "must define a ServerReadiness type");
-  assert.match(src, /interface\s+JobCompletion\b/, "must define a JobCompletion type");
-  // The two are distinct fields on the ticket view, not collapsed into one.
-  assert.match(src, /serverReadiness:\s*ServerReadiness/, "ticket view must carry serverReadiness");
-  assert.match(src, /jobCompletion:\s*JobCompletion/, "ticket view must carry jobCompletion");
-  // The completion evidence is the receipt; readiness must NOT be sourced from it.
-  assert.match(
-    src,
-    /readiness[^]*NOT[^]*proof|NOT[^]*finished[\s\S]{0,400}job/i,
-    "the source must document that readiness is not proof the job ran"
+test("bootstrap-risk view-model classifies server readiness from declared design only", () => {
+  assert.deepEqual(core.serverReadiness(null), {
+    workClass: null,
+    runsAtBoot: null,
+    sharesAppProcess: null,
+    posture: "undeclared",
+  });
+  assert.deepEqual(
+    core.serverReadiness({
+      startup_work_class: " server_bootstrap_job ",
+      runs_at_boot: true,
+      shares_app_process: true,
+    }),
+    {
+      workClass: "server_bootstrap_job",
+      runsAtBoot: true,
+      sharesAppProcess: true,
+      posture: "declared-risky",
+    }
+  );
+  assert.equal(
+    core.serverReadiness({ runs_at_boot: false, shares_app_process: true }).posture,
+    "declared-safe"
   );
 });
 
-test("bootstrap-risk page is read-only (no form/POST/onClick/onChange/button/exec) and role-gated", () => {
+test("bootstrap-risk view-model keeps job completion as receipt evidence, separate from readiness", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "coord-bootstrap-receipt-"));
+  const receipt = path.join(dir, "COORD-X.json");
+  fs.writeFileSync(receipt, JSON.stringify({ result: "success" }));
+  const receipts = {
+    latestReceipt: (kind, ticket, options) => {
+      assert.equal(kind, "bootstrap");
+      assert.equal(ticket, "COORD-X");
+      assert.equal(options.coordDir, path.join(REPO_ROOT, "coord"));
+      return receipt;
+    },
+    readReceipt: (file) => JSON.parse(fs.readFileSync(file, "utf8")),
+  };
+  const queryEngine = {
+    scanBackfillQueryText: (text) => {
+      assert.match(text, /SELECT \*/);
+      return { findings: [{ rule: "broad_select", severity: "warning", message: "query is broad" }] };
+    },
+  };
+  const advisory = {
+    triggered: true,
+    matched_signals: ["backfill"],
+    missing_evidence: ["checkpoint_strategy"],
+    message: "Bootstrap risk detected",
+  };
+  const ticket = core.buildTicketView({
+    id: "COORD-X",
+    row: { Status: " review " },
+    planState: {
+      bootstrap_risk: {
+        startup_work_class: "server_bootstrap_job",
+        runs_at_boot: false,
+        shares_app_process: true,
+        resource_envelope: {
+          memory_mb: 512,
+          timeout_s: 60,
+          expected_rows: 1000,
+          batch_size: 100,
+          db_pool_impact: "read-only pool",
+        },
+        idempotency_strategy: "claim lease before work",
+        checkpoint_strategy: "checkpoint every batch",
+        verification_signal: "receipt row count",
+        rollback_or_disable: "feature flag",
+        observability_requirements: ["logs", "metrics"],
+        data_access_shape: "SELECT * FROM boards",
+      },
+    },
+    source: "plan-field",
+    advisory,
+    queryEngine,
+    receipts,
+    redacted: false,
+    coordDir: path.join(REPO_ROOT, "coord"),
+    projectRoot: REPO_ROOT,
+  });
+
+  assert.equal(ticket.status, "review");
+  assert.equal(ticket.serverReadiness.posture, "declared-safe");
+  assert.deepEqual(ticket.jobCompletion, {
+    state: "present",
+    result: "success",
+    path: path.relative(REPO_ROOT, receipt).split(path.sep).join("/"),
+  });
+  assert.equal(ticket.resourceEnvelope.summary, "memory=512mb, timeout=60s, rows=1000, batch=100, db=read-only pool");
+  assert.deepEqual(ticket.observability.items, ["logs", "metrics"]);
+  assert.deepEqual(ticket.missingEvidence, ["checkpoint_strategy"]);
+  assert.deepEqual(ticket.queryWarnings, [{ rule: "broad_select", severity: "warning", message: "query is broad" }]);
+});
+
+test("bootstrap-risk view-model redacts viewer detail without hiding risk posture", () => {
+  const ticket = core.buildTicketView({
+    id: "COORD-X",
+    row: { Status: "todo" },
+    planState: {
+      bootstrap_risk: {
+        runs_at_boot: true,
+        shares_app_process: true,
+        resource_envelope: { memory_mb: 2048 },
+        idempotency_strategy: "tenant-specific key",
+        observability_requirements: ["cloudwatch"],
+      },
+    },
+    source: "plan-field",
+    advisory: { triggered: false, matched_signals: [], missing_evidence: [], message: null },
+    queryEngine: null,
+    receipts: null,
+    redacted: true,
+    coordDir: path.join(REPO_ROOT, "coord"),
+    projectRoot: REPO_ROOT,
+  });
+  assert.equal(ticket.serverReadiness.posture, "declared-risky");
+  assert.deepEqual(ticket.resourceEnvelope, { state: "present", summary: null });
+  assert.deepEqual(ticket.idempotency, { state: "present", detail: null });
+  assert.deepEqual(ticket.observability, { state: "present", items: null });
+  assert.deepEqual(ticket.jobCompletion, { state: "unknown", result: null, path: null });
+});
+
+test("bootstrap-risk view-model surfaces advisory-only rows without inventing declared readiness", () => {
+  const ticket = core.buildTicketView({
+    id: "COORD-X",
+    row: undefined,
+    planState: {},
+    source: "advisory-only",
+    advisory: {
+      triggered: true,
+      matched_signals: ["runBackfillOnceOnBoot"],
+      missing_evidence: ["bootstrap_risk"],
+      message: "Potential boot-time work",
+    },
+    queryEngine: null,
+    receipts: null,
+    redacted: false,
+    coordDir: path.join(REPO_ROOT, "coord"),
+    projectRoot: REPO_ROOT,
+  });
+  assert.equal(ticket.status, "unknown");
+  assert.equal(ticket.source, "advisory-only");
+  assert.equal(ticket.serverReadiness.posture, "undeclared");
+  assert.equal(ticket.jobCompletion.state, "unknown");
+  assert.deepEqual(ticket.matchedSignals, ["runBackfillOnceOnBoot"]);
+  assert.deepEqual(ticket.missingEvidence, ["bootstrap_risk"]);
+});
+
+test("bootstrap-risk page remains read-only, role-gated, and labels readiness vs completion", () => {
   assert.ok(fs.existsSync(PAGE), "app/bootstrap-risk/page.tsx must exist");
   const src = fs.readFileSync(PAGE, "utf8");
   const FORBIDDEN_PAGE = [
@@ -138,14 +210,13 @@ test("bootstrap-risk page is read-only (no form/POST/onClick/onChange/button/exe
     /\bspawn\w*\(/,
     /\bexec\w*\(/,
     /\bchild_process\b/,
-    /'use client'/, // server component; no client mutation surface
+    /'use client'/,
   ];
   for (const re of FORBIDDEN_PAGE) {
     assert.ok(!re.test(src), `bootstrap-risk page must not contain a mutation/exec surface matching ${re}`);
   }
   assert.match(src, /loadBootstrapRiskView/, "page must source from the read-only data layer");
   assert.match(src, /requireRole/, "page must gate access (SEC-001)");
-  // The page must label the two states separately so they are not conflated.
   assert.match(src, /Server readiness/i, "page must label server readiness");
   assert.match(src, /Job completion/i, "page must label job completion");
 });

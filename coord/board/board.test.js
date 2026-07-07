@@ -301,6 +301,15 @@ test("readPlanRecords validates record schema and returns canonical entries by t
     critical_invariants: ["Canonical render must be deterministic."],
     requirement_closure: ["Ticket ask: render markdown", "Implemented: rendered markdown", "Not implemented: none", "Deferred to: none", "Closeout verdict: complete"],
     repo_gates: ["node coord/board/board.js validate"],
+    adr_refs: ["ADR-0001"],
+    decision_required: {
+      required: true,
+      status: "investigating",
+      reason: "Governance policy behavior is changing.",
+      risk_class: "governance-policy",
+      owner: "orchestrator",
+      adr_refs: ["ADR-0001"],
+    },
     self_review_cycles: [],
     rollback_strategy: ["revert renderer"],
     governance: {
@@ -348,6 +357,8 @@ test("readPlanRecords validates record schema and returns canonical entries by t
     assert.equal(errors.length, 0);
     assert.equal(records.get("IMP-222").ticket_id, "IMP-222");
     assert.equal(records.get("IMP-222").review_round, 1);
+    assert.deepEqual(records.get("IMP-222").adr_refs, ["ADR-0001"]);
+    assert.equal(records.get("IMP-222").decision_required.status, "investigating");
   } finally {
     fs.readdirSync = originalReaddirSync;
     fs.existsSync = originalExistsSync;
@@ -711,6 +722,64 @@ test("validateBoard fails when the governance journal references a ticket missin
     }),
     /coord\/board\/tasks\.json does not contain that ticket/
   );
+});
+
+test("COORD-285: validateBoard accepts the quarantined `proposed` status as a legal board status", () => {
+  const board = {
+    metadata: {},
+    prompt_index: {},
+    pr_index: {},
+    landing_index: {},
+    review_findings: {},
+    waiver_index: {},
+    followup_exceptions: {},
+    sections: [
+      {
+        kind: "table",
+        level: 2,
+        heading: "Work",
+        separator_before: false,
+        columns: ["ID", "Repo", "Status", "Owner"],
+        rows: [
+          { ID: "ENG-001", Repo: "X", Status: "todo", Owner: "unassigned" },
+          // COORD-285: a proposed (machine-proposed, human-triage-pending) row.
+          { ID: "ENG-002", Repo: "X", Status: "proposed", Owner: "unassigned" },
+        ],
+      },
+    ],
+  };
+  const schema = { type: "object" };
+  const planSchema = { type: "object" };
+
+  // Point the journal-backed progression check at an empty journal so the live
+  // repo journal does not bleed into this isolated board fixture.
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "coord285-proposed-validate-"));
+  const journalPath = path.join(tempDir, "governance-events.ndjson");
+  fs.writeFileSync(journalPath, "", "utf8");
+  // Scope validation to the fixture ticket so the live repo's in-flight locks
+  // (e.g. the COORD-285 lock held while this very ticket is being implemented)
+  // are out of scope and do not bleed into this isolated board fixture.
+  const validateOpts = {
+    skipWorktreeValidation: true,
+    ignoreActiveTicketLockErrors: true,
+    ticketScopedValidation: true,
+    currentTicketId: "ENG-001",
+    governanceEventLogPath: journalPath,
+  };
+
+  // Board-side acceptance: validateBoard's isLegalStatus gate (LEGAL_STATUSES)
+  // must treat `proposed` as a valid status — no "invalid status" error.
+  assert.doesNotThrow(() => __testing.validateBoard(board, schema, planSchema, validateOpts));
+  const validated = __testing.validateBoard(board, schema, planSchema, validateOpts);
+  assert.equal(validated.ticketCount, 2);
+
+  // Schema-side acceptance: the canonical tasks.schema.json Status enum lists
+  // `proposed`, so an on-disk board carrying a proposed row passes schema validation.
+  const schemaOnDisk = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "tasks.schema.json"), "utf8")
+  );
+  const statusConsts = JSON.stringify(schemaOnDisk);
+  assert.match(statusConsts, /"const":\s*"proposed"/, "tasks.schema.json Status enum must include proposed");
 });
 
 test("validateBoard fails when the board regresses behind a terminal governance journal status", () => {
