@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
-  "pinned_at": "2026-07-03T22:33:07.456Z",
-  "manifest_version": "2026-07-03-ent-018",
+  "pinned_at": "2026-07-08T18:40:58.676Z",
+  "manifest_version": "2026-07-08-workflow-packs",
   "manifest_fingerprint": {
-    "sha256": "316d1550e438a5270d31ee1703597d33264d83ddb586eb4148f93cd232cb4fd1",
-    "bytes": 159842
+    "sha256": "ab77d95563ea13b35e274171e77ad71dff2a3d956244d084a1fa29640cc6a86e",
+    "bytes": 159893
   },
   "files": {
     "coord/AGENT_CAPABILITY_REGISTRY.md": {
-      "sha256": "9317ef8142cdf15fe8856254e69737448c63a233f8c346e6d73d869534f20b24",
-      "bytes": 13854
+      "sha256": "64ee63ea69ddb591227522c50fc57336d23c145dc3a391d110925ef7f11ddcc5",
+      "bytes": 17181
     },
     "coord/AGENT_PATHS.md": {
       "sha256": "76ab278dd1368ef80fbe7e943397a5a6ec306cb0f56bb904c3501ece97bd0e66",

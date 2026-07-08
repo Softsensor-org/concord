@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "manifest_version": "2026-07-03-ent-018",
-  "generated_at": "2026-07-03T12:48:25.592Z",
+  "manifest_version": "2026-07-08-workflow-packs",
+  "generated_at": "2026-07-08T00:00:00.000Z",
   "purpose": "Post-sync drift detection for reusable template-canonical governance surfaces.",
   "source_inventory": {
     "path": null,
@@ -31,13 +31,13 @@
     {
       "path": "coord/AGENT_CAPABILITY_REGISTRY.md",
       "match_policy": "exact",
-      "version_stamp": "sha256:9317ef8142cd",
+      "version_stamp": "sha256:64ee63ea69dd",
       "checksum": {
         "algo": "sha256",
-        "hex": "9317ef8142cdf15fe8856254e69737448c63a233f8c346e6d73d869534f20b24",
-        "bytes": 13854
+        "hex": "64ee63ea69ddb591227522c50fc57336d23c145dc3a391d110925ef7f11ddcc5",
+        "bytes": 17181
       },
-      "rationale": "Capability registry schema and update contract are reusable governance surfaces.",
+      "rationale": "Capability registry schema plus template and workflow-pack routing keys, including public-safe site SEO domain capabilities.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",

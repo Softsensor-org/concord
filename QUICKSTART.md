@@ -49,6 +49,10 @@ cd my-project
 # plus 3 starter tickets (skip step 2 below — onboarding already did it):
 cd my-existing-repo
 npx create-concord . --from-existing
+
+# Optional operating-governance packs:
+npx create-concord my-site --workflow-pack site-seo
+npx create-concord my-analytics --workflow-pack daily-analytics
 ```
 
 No Node on the box (devcontainer, WSL, CI, minimal image)? Use the standalone
@@ -56,12 +60,15 @@ Linux binary from the GitHub Release — same result, no runtime required:
 
 ```bash
 concord init .            # or: concord init my-project
+concord init my-site --workflow-pack site-seo
 ```
 
 `create-concord` vendors `coord/` in-tree (GCV-4), pins the engine version in
 `coord/.coord-engine.json`, writes the commit-vs-gitignore split + the
 `coord/WORKSPACE.md` runtime guide, and wires `npm run gov` /
-`npm run concord` / `npm run coord-ui`. Upgrade later with
+`npm run concord` / `npm run coord-ui`. Optional workflow packs copy
+`00-ops/...` and `data/...` operating templates into the scaffolded app, so the
+work runs from that app rather than from `coord-template`. Upgrade later with
 `npm run gov -- upgrade`.
 
 From the scaffolded app root, `npm run coord-ui` launches that app's own bundled

@@ -48,6 +48,26 @@ or dashboard on drift.
 - stage-foldered layout (`00_config` → `08_tests`) + `GROUND_RULES.md` (answer-first, certification gates,
   currency correctness, uncertainty labelling).
 
+## Daily analytics operating pack
+
+For lighter recurring analytics operations that are not yet certified data
+products, use `coord/product/workflow-packs/daily-analytics/`.
+
+That pack adds operating registers under `00-ops/data/` and
+`00-ops/utilities/`:
+
+- data source register;
+- utility register;
+- analytics guidance rules;
+- pipeline register;
+- update log;
+- mismatch ledger;
+- raw/staged/clean/mart/report folder contract.
+
+It intentionally does **not** modify the Concord engine. Use it first as
+documented governance, then promote stable requirements to validators only after
+the register shapes prove durable.
+
 ## Review policy (documented posture — COORD-185)
 
 | Track | Approvers | Required evidence |

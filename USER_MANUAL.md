@@ -88,6 +88,11 @@ cd my-project
 # plus starter tickets:
 cd my-existing-repo
 npx create-concord . --from-existing
+
+# Optional operating-governance packs:
+npx create-concord my-site --workflow-pack site-seo
+npx create-concord my-analytics --workflow-pack daily-analytics
+npx create-concord my-growth-stack --workflow-pack site-seo,daily-analytics
 ```
 
 `create-concord` vendors `coord/` in-tree, pins the engine version in
@@ -101,6 +106,12 @@ Flags:
 |------|--------|
 | `--from-existing` | Run shape-detecting onboarding (tier + preset + starter tickets) instead of a fresh board. |
 | `--channel <c>` | Distribution channel to pin (default `community`). |
+| `--workflow-pack <id[,id]>` | Copy optional operating-governance templates into the workspace. Current pack ids: `site-seo`, `daily-analytics`, or `all`. |
+
+Workflow packs add files such as `00-ops/seo`, `00-ops/data`,
+`00-ops/utilities`, and `data/raw` / `data/clean` templates. They are operating
+contracts first, not engine-enforced validators by default. See
+`coord/product/workflow-packs/README.md` after install.
 
 ### Channel B — standalone Linux binary (no Node required)
 
@@ -113,6 +124,7 @@ inside it — it scaffolds with **zero Node on `PATH`**.
 # Download concord-linux-<arch> from the GitHub Release, then:
 chmod +x concord-linux-x86_64
 ./concord-linux-x86_64 init my-project     # or: init .  (current repo)
+./concord-linux-x86_64 init my-site --workflow-pack site-seo
 ```
 
 The result is byte-identical to the `npx` scaffold (same vendored bundle).

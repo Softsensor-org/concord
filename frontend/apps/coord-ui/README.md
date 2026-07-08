@@ -19,6 +19,7 @@ sync by `coord/scripts/coord-ui-nav-readme-sync.test.js`.
 - `/triage` — read-only review queue of `proposed` tickets (machine-proposed debt awaiting approval): id, title, type/priority, finding/`[qkey:…]` marker, and suggested fix, with copyable `gov approve`/`gov reject` CLI hints. Display only — the cockpit never approves, rejects, or mutates governance state (SEC-001/002).
 - `/dispatch` — agent dispatch queue and next-command guidance
 - `/tests` — testing maturity and evidence
+- `/workflow-packs` — read-only workflow-pack view for optional operating-governance packs, showing whether site SEO and daily analytics register templates are available and whether their adopter-local `00-ops/...` files are present
 - `/health` — derived governance health
 - `/onboarding` — guided read-only onboarding cockpit: "ready for governed work?" verdict plus a step checklist (init workspace, map repos, setup decisions, run readiness, file first tickets) with copyable gov commands, coord setup checks, pilot blockers, and suggested first tickets (never mutates)
 - `/readiness` — read-only adoption/readiness cockpit from `coord/.runtime/readiness-report.json`

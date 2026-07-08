@@ -27,6 +27,7 @@ const NAV = [
   { href: '/', label: 'board', group: 'Work' },
   { href: '/dispatch', label: 'dispatch', group: 'Work' },
   { href: '/pipeline', label: 'pipeline', group: 'Work' },
+  { href: '/workflow-packs', label: 'workflow-packs', group: 'Work' },
   { href: '/timeline', label: 'timeline', group: 'Work' },
   { href: '/triage', label: 'triage', group: 'Work' },
   { href: '/gates', label: 'gates', group: 'Proof' },

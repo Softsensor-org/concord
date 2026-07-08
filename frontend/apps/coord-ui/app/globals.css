@@ -1234,6 +1234,11 @@ a.back:hover {
   border-color: var(--fail-line);
   color: var(--fail);
 }
+.trace-pill--missing {
+  background: var(--fail-soft);
+  border-color: var(--fail-line);
+  color: var(--fail);
+}
 .trace-pill--exempt {
   background: var(--bg-deep);
   border-color: var(--line-strong);

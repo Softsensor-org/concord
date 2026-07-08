@@ -70,6 +70,7 @@ harnesses that apply to one or more tracks:
 | **Governed memory** | decision extraction, summary tiers, semantic recall, graph memory, closeout summaries, execution insights, learned-rule promotion | all tracks |
 | **Quality dimensions** | architecture, contract, coverage, mutation, SAST, supply-chain, accessibility, performance-budget, and audit-policy checks | mainly development, with opt-in use by other tracks |
 | **Operator cockpit** | read-only live-MCP, bootstrap-risk, configuration, quality, runtime, gates, evidence, waivers, agents, cost, and pipeline views | all tracks |
+| **Workflow packs** | optional operating-governance templates under `coord/product/workflow-packs/`, installed with `create-concord --workflow-pack <id>` | site SEO, daily analytics, and future repeatable operating domains |
 
 ## Reuse, don't reinvent
 
@@ -85,6 +86,11 @@ hard-fail DQ gates (currency-suffix, `reconciles_to ±tol`, `baseline_metric` ba
 identity), certified-only-feeds-certified, scope guards + canonical `definitions.py`, stage-foldered
 importable pipeline, ground-rules docs. The reference data-platform pattern is batch/offline → its gate is **contract/certification**,
 distinct from product-engineering's **receipt/operation-class** gate.
+
+Workflow packs sit below full tracks. They supply copyable operating governance
+for recurring domains without adding new gate-procs on day one. When a pack
+becomes stable enough to enforce, open a follow-up to graduate selected rules
+into track gates or validators.
 
 ## Composition (tracks chain, not merge)
 

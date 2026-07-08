@@ -1,0 +1,2 @@
+mismatch_id,reporting_window,source_a,source_b,metric,source_a_value,source_b_value,reconciliation_label,known_reason,business_decision_blocked,owner_ticket,next_check_at,closed_at,closure_reason,notes
+MIS-0001,2026-01-15,Example Ads API,Example Orders,orders,12,10,unresolved-mismatch,attribution windows differ,true,ANALYTICS-001,2026-01-16,,,synthetic example row

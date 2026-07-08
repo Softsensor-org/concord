@@ -59,8 +59,21 @@ Only these capability keys are canonical in this file today:
 | `research_synthesis` | Broad document comparison, research-heavy synthesis, and large-context reads |
 | `governance_repair` | Board, lock, session, and governance-runtime diagnostics or repair work |
 | `wrapper_surface_design` | Wrapper UX, command-surface parity, and operator-path design |
+| `seo_data_ingestion` | Workflow-pack domain capability for parsing audit exports and normalizing URL rows |
+| `seo_strategy_triage` | Workflow-pack domain capability for separating current commercial SEO work from expected utility noise |
+| `seo_content_strategy` | Workflow-pack domain capability for improving page usefulness, intent fit, and internal link strategy |
+| `commerce_admin_ops` | Workflow-pack domain capability for safe commerce-admin reads/writes with before/read-back/live evidence |
+| `theme_seo_runtime` | Workflow-pack domain capability for theme/runtime SEO code changes routed through the product repo |
+| `live_seo_qa` | Workflow-pack domain capability for verifying rendered HTML, indexability, metadata, schema, and links |
+| `browser_search_console_ops` | Workflow-pack domain capability for browser/tool-mediated URL inspection and recrawl request work |
+| `analytics_monitoring` | Workflow-pack domain capability for monitoring movement after fixes and comparing fresh analytics/export evidence |
 
 If a new key is needed, update the enum, the starter rows, and the routing matrix in the same governed change. Do not smuggle a new key into prose without declaring it here.
+
+Workflow-pack domain keys are requirements that a project may attach to tickets.
+The template does not claim that every shipped agent family has those domain
+skills by default. A derived project should add project-local evidence rows when
+it has proved which operators or agents can satisfy them.
 
 ## What The Registry Tracks
 
@@ -226,6 +239,14 @@ This is the current template baseline for comparative-strength dispatch.
 | `research_synthesis` | Large document comparison, research-heavy synthesis, broad context reads | Gemini | Official Gemini CLI emphasizes large-context and research-friendly terminal workflows with MCP, web search, and web fetch | Template does not ship a Gemini-native wrapper layer beyond `GEMINI.md`; use the neutral facade and shared governance surfaces |
 | `governance_repair` | Governance repair, board inspection, lock/session diagnostics | Current active agent via `coord/scripts/agent` or `coord/scripts/gov` | The critical capability here is the shared governance core, not provider-native UX | Bias toward the most direct CLI/MCP path; do not force multi-agent routing for repair work |
 | `wrapper_surface_design` | Wrapper-parity or tool-surface design changes | Claude | Claude is the template default when the work is deciding wrapper/command UX and operator-path design | Use Codex when the wrapper change is primarily shared CLI/runtime implementation after the UX contract is settled; keep native ecosystems separate and converge only through the governed core |
+| `seo_data_ingestion` | Site SEO audit/source ingestion | Project-local capable operator or agent | Requires source-system and URL-normalization knowledge beyond the template baseline | Require source freshness evidence and register updates |
+| `seo_strategy_triage` | Site SEO issue classification and prioritization | Project-local capable operator or agent | Requires business/site context and expected-noise policy judgment | Require expected-noise and commercial-priority evidence |
+| `seo_content_strategy` | Content quality and internal-link batches | Project-local capable operator or agent | Requires search-intent and content judgment beyond generic implementation | Require before/after evidence and monitoring state |
+| `commerce_admin_ops` | Commerce-admin SEO edits, redirects, metadata, or content fields | Human-approved project-local operator | May mutate a live business platform | Require before snapshot, dry-run/read-back where available, live verification, and rollback note |
+| `theme_seo_runtime` | Theme/template/runtime SEO fixes | Development-track capable agent/operator | Code changes must use the product repo lifecycle, not coord notes | Require repo ticket, QA, commit, deploy decision, and live verification |
+| `live_seo_qa` | Live URL checks, rendered metadata, schema, links, robots/canonical | Project-local capable operator or agent | Browser and network access vary by environment | Require timestamped live evidence and caveats |
+| `browser_search_console_ops` | URL inspection or recrawl request work | Human-approved browser/tool operator | Logged-in tools and browser sessions are local and permission-sensitive | Record requested vs blocked-browser status and next check date |
+| `analytics_monitoring` | Fresh-export movement review and business decision support | Project-local analytics-capable operator or agent | Requires source-of-truth and reconciliation judgment | Require reconciliation labels, raw evidence path, and decision supported/blocked |
 
 ## Fallback Rules
 
