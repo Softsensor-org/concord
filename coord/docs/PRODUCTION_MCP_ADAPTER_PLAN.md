@@ -185,9 +185,9 @@ Example row shape:
   "ID": "LIVE-MCP-001",
   "Type": "live-mcp",
   "Environment": "prod",
-  "Adapter": "hos-prod-db",
+  "Adapter": "example-prod-db",
   "Operation Class": "read_sensitive",
-  "Scope": "client_code=AGNLI, board=current, driver=Solo 1",
+  "Scope": "tenant=example, workspace=current, record=sample-001",
   "Approved By": "human-admin",
   "Cleanup Required": "no",
   "Promote To Fixture": "yes"

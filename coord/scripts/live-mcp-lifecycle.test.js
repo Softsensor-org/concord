@@ -17,14 +17,14 @@ const { buildLiveMcpLifecycle, readLiveMcpDeclaration } = require("./live-mcp-li
 //     and detection does not false-trigger on a missing/malformed field.
 
 const FULL_SENSITIVE = {
-  adapter: "hos-prod-db",
-  operation: "case-read",
+  adapter: "example-prod-db",
+  operation: "record-read",
   operation_class: "read_sensitive",
   environment: "prod",
-  scope: "client_code=AGNLI, board=current",
+  scope: "tenant=example, workspace=current",
   redaction: "masked",
   approval: "human-admin",
-  receipt_path: "coord/evidence/live-mcp/case-read.json",
+  receipt_path: "coord/evidence/live-mcp/record-read.json",
 };
 
 function codes(result) {
