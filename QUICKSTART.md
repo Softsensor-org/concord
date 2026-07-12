@@ -68,8 +68,13 @@ concord init my-site --workflow-pack site-seo
 `coord/WORKSPACE.md` runtime guide, and wires `npm run gov` /
 `npm run concord` / `npm run coord-ui`. Optional workflow packs copy
 `00-ops/...` and `data/...` operating templates into the scaffolded app, so the
-work runs from that app rather than from `coord-template`. Upgrade later with
-`npm run gov -- upgrade`.
+work runs from that app rather than from `coord-template`. Upgrade later by
+reviewing the write-free plan and applying its exact digest:
+
+```bash
+npm run concord -- upgrade
+npm run concord -- upgrade --apply-plan <digest-from-plan>
+```
 
 From the scaffolded app root, `npm run coord-ui` launches that app's own bundled
 read-only cockpit against that app's `coord/`.

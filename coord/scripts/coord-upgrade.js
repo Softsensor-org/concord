@@ -45,7 +45,9 @@
 
 const nodeFs = require("node:fs");
 const nodePath = require("node:path");
+const crypto = require("node:crypto");
 const defaultCreateEnginePin = require("./engine-pin.js");
+const createUpgradeReleaseSource = require("./upgrade-release-source.js");
 
 const MANIFEST_REL = "coord/TEMPLATE_SYNC_MANIFEST.json";
 // GCV-4 upstream pin (COORD-451): records WHERE this engine came from
@@ -65,14 +67,15 @@ module.exports = function createCoordUpgrade(deps = {}) {
   // per-target (coordDir = <target>/coord) so the pin/verify run against the
   // upgraded surface, not this repo's.
   const createEnginePin = deps.createEnginePin || defaultCreateEnginePin;
+  const releaseSource = deps.releaseSource || createUpgradeReleaseSource(deps);
 
   function parseArgs(args = []) {
     const parsed = {
       from: null, dir: null, dryRun: false, json: false, help: false,
-      check: false, channel: null, entitlement: null, ref: null, sha: null, unknown: [],
+      check: false, channel: null, entitlement: null, ref: null, sha: null, applyPlan: null, unknown: [],
     };
     // Options that take a value: support both `--opt val` and `--opt=val`.
-    const valued = { "--from": "from", "--dir": "dir", "--channel": "channel", "--entitlement": "entitlement", "--ref": "ref", "--sha": "sha" };
+    const valued = { "--from": "from", "--dir": "dir", "--channel": "channel", "--entitlement": "entitlement", "--ref": "ref", "--sha": "sha", "--apply-plan": "applyPlan" };
     for (let i = 0; i < args.length; i += 1) {
       const arg = args[i];
       if (arg === "--dry-run") {
@@ -201,6 +204,22 @@ module.exports = function createCoordUpgrade(deps = {}) {
     return { manifest, actions };
   }
 
+  function digestPlan(actions, source = {}) {
+    const files = actions.map((action) => ({
+      path: action.rel,
+      action: action.action,
+      before: fs.existsSync(action.tgtAbs) ? crypto.createHash("sha256").update(fs.readFileSync(action.tgtAbs)).digest("hex") : null,
+      after: action.srcBuf ? crypto.createHash("sha256").update(action.srcBuf).digest("hex") : null,
+    }));
+    return crypto.createHash("sha256").update(JSON.stringify({ schema: 1, source, files })).digest("hex");
+  }
+
+  function writeUpgradeReceipt(targetRoot, receipt) {
+    const dir = nodePath.join(targetRoot, "coord", ".runtime", "upgrade-receipts");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(nodePath.join(dir, `${receipt.plan_digest}.json`), JSON.stringify(receipt, null, 2) + "\n");
+  }
+
   // Apply add/update actions, capturing an exact pre-write backup of every file
   // touched so rollback is byte-exact. Backup entry: { rel, tgtAbs, existed,
   // priorBuf }. priorBuf is the exact prior bytes (existed) or null (did not
@@ -232,9 +251,13 @@ module.exports = function createCoordUpgrade(deps = {}) {
   }
 
   function printUsage() {
-    log("Usage: coord upgrade --from <dir|bundle> [--dir <target>] [--channel <c>] [--dry-run] [--json]");
+    log("Usage: coord upgrade [--dir <target>] [--channel <c>] [--json]");
+    log("       coord upgrade --apply-plan <digest> [--dir <target>] [--json]");
+    log("       coord upgrade --from <dir|bundle> [--dir <target>] [--channel <c>] [--dry-run] [--json]");
     log("       coord upgrade --check [--dir <target>] [--json]");
     log("");
+    log("Without --from, resolve the pinned channel's latest immutable commit and");
+    log("print a write-free plan. Apply it only with --apply-plan <digest>.");
     log("Apply a new engine version into a repo's coord surface, re-pin, then");
     log("verify. Idempotent; fail-closed: a verify failure rolls the applied files");
     log("back to their exact pre-upgrade bytes and exits non-zero. On success it");
@@ -245,6 +268,7 @@ module.exports = function createCoordUpgrade(deps = {}) {
     log("                        containing the new coord/scripts surface +");
     log("                        coord/TEMPLATE_SYNC_MANIFEST.json. (required unless --check)");
     log("  --dir <target>        Target repo root. Defaults to the current directory.");
+    log("  --apply-plan <digest> Re-resolve and apply only the exact reviewed automatic plan.");
     log("  --channel <c>         Distribution channel to pin: community | enterprise.");
     log("                        Switching to enterprise requires --entitlement (licensed).");
     log("  --entitlement <tok>   Entitlement token for the enterprise channel (or set");
@@ -344,17 +368,20 @@ module.exports = function createCoordUpgrade(deps = {}) {
       return runCheck(opts, targetRoot);
     }
 
-    if (!opts.from) {
-      log("coord upgrade: --from <dir|bundle> is required.");
-      log("Run `coord upgrade --help` for usage.");
-      return { code: 1 };
-    }
-
     // Enterprise is a licensed channel: switching to (or upgrading on) it requires
     // an entitlement token — fail-closed so a Community repo can't silently pull
     // the private enterprise surface. The token gates ACCESS to the private source
     // (supplied out-of-band as --from); we record only that it was present.
-    if (opts.channel === "enterprise") {
+    const targetRoot = opts.dir ? nodePath.resolve(cwd(), opts.dir) : nodePath.resolve(cwd());
+    let priorPin;
+    try {
+      priorPin = readEnginePin(targetRoot);
+    } catch (error) {
+      log(`coord upgrade: ${error.message}`);
+      return { code: 1, error: error.message };
+    }
+    const effectiveChannel = opts.channel || priorPin?.source?.channel || "community";
+    if (effectiveChannel === "enterprise") {
       const token = opts.entitlement || process.env.CONCORD_ENTITLEMENT || "";
       if (!token.trim()) {
         log("coord upgrade: --channel enterprise requires an entitlement token.");
@@ -363,8 +390,25 @@ module.exports = function createCoordUpgrade(deps = {}) {
       }
     }
 
-    const sourceRoot = nodePath.resolve(cwd(), opts.from);
-    const targetRoot = opts.dir ? nodePath.resolve(cwd(), opts.dir) : nodePath.resolve(cwd());
+    let resolved = null;
+    let sourceRoot;
+    if (opts.from) {
+      sourceRoot = nodePath.resolve(cwd(), opts.from);
+    } else {
+      try {
+        resolved = releaseSource.resolveLatest({
+          repo: priorPin?.source?.repo || DEFAULT_REPO,
+          channel: effectiveChannel,
+          entitlement: opts.entitlement || process.env.CONCORD_ENTITLEMENT || "",
+        });
+        sourceRoot = resolved.sourceRoot;
+        opts.ref = resolved.ref;
+        opts.sha = resolved.sha;
+      } catch (error) {
+        log(`coord upgrade: unable to resolve latest ${effectiveChannel} release: ${error.message}`);
+        return { code: 1, error: error.message };
+      }
+    }
 
     let planned;
     try {
@@ -379,6 +423,10 @@ module.exports = function createCoordUpgrade(deps = {}) {
       return { code: 1, error: error.message };
     }
 
+    const resolvedVersion = resolved ? sourceEngineVersion(sourceRoot, planned.manifest) : null;
+    const sourceIdentity = resolved ? { channel: effectiveChannel, ref: resolved.ref, sha: resolved.sha, archive_sha256: resolved.archiveSha256 } : null;
+    const planDigest = resolved ? digestPlan(planned.actions, sourceIdentity) : null;
+    if (resolved?.cleanup) resolved.cleanup();
     const { actions } = planned;
     const adds = actions.filter((a) => a.action === "add");
     const updates = actions.filter((a) => a.action === "update");
@@ -388,8 +436,22 @@ module.exports = function createCoordUpgrade(deps = {}) {
     const human = [];
     human.push(`coord upgrade — from: ${sourceRoot}`);
     human.push(`               target: ${targetRoot}`);
+    if (resolved) human.push(`               source: ${effectiveChannel} ${resolved.sha}`);
     if (opts.dryRun) human.push("(dry run — no files will be written)");
     human.push("");
+
+    if (resolved && !opts.applyPlan) {
+      human.push(`Plan digest: ${planDigest}`);
+      human.push(`Review the plan above, then run: npm run concord -- upgrade --apply-plan ${planDigest}`);
+      emit(opts, human, { verdict: "plan", plan_digest: planDigest, source: sourceIdentity, would_apply: adds.length + updates.length, added: adds.length, updated: updates.length, unchanged: unchanged.length });
+      return { code: 0, planned: true, planDigest, wouldApply: adds.length + updates.length };
+    }
+    if (resolved && opts.applyPlan !== planDigest) {
+      human.push(`coord upgrade: REFUSED — plan digest changed (expected ${opts.applyPlan}, current ${planDigest}).`);
+      human.push("Re-run `npm run concord -- upgrade`, review the new plan, and apply its digest.");
+      emit(opts, human, { verdict: "refused", expected_plan_digest: opts.applyPlan, current_plan_digest: planDigest });
+      return { code: 1, error: "plan digest mismatch", planDigest };
+    }
     for (const a of actions) {
       if (a.action === "add") human.push(`  add        ${a.rel}`);
       else if (a.action === "update") human.push(`  update     ${a.rel}`);
@@ -420,7 +482,7 @@ module.exports = function createCoordUpgrade(deps = {}) {
     // what's recorded — so a metadata-only re-pin (e.g. flipping channel with an
     // unchanged surface) still takes effect — but write nothing on a true no-op.
     if (changeCount === 0 && !opts.dryRun) {
-      const newVersion = sourceEngineVersion(sourceRoot, planned.manifest);
+      const newVersion = resolvedVersion || sourceEngineVersion(sourceRoot, planned.manifest);
       const prior = readEnginePin(targetRoot);
       const priorChannel = prior && prior.source ? prior.source.channel : null;
       const priorVersion = prior ? prior.engine_version : null;
@@ -504,7 +566,7 @@ module.exports = function createCoordUpgrade(deps = {}) {
     // the ONLY write to the pin, and it happens last: engine-pin.json (integrity)
     // is regenerated above; .coord-engine.json (identity) captures the version we
     // just applied and, when --channel is given, the channel we switched to.
-    const newVersion = sourceEngineVersion(sourceRoot, planned.manifest);
+    const newVersion = resolvedVersion || sourceEngineVersion(sourceRoot, planned.manifest);
     const upstream = writeEnginePin(
       targetRoot,
       {
@@ -515,6 +577,16 @@ module.exports = function createCoordUpgrade(deps = {}) {
       },
       deps.now
     );
+    if (resolved) {
+      writeUpgradeReceipt(targetRoot, {
+        schema: 1,
+        plan_digest: planDigest,
+        source: sourceIdentity,
+        engine_version: newVersion,
+        applied: changeCount,
+        completed_at: deps.now || new Date().toISOString(),
+      });
+    }
 
     human.push(
       `Applied ${changeCount} file(s) (add ${adds.length}, update ${updates.length}), ` +
@@ -543,7 +615,7 @@ module.exports = function createCoordUpgrade(deps = {}) {
   }
 
   return {
-    parseArgs, plan, surfacePaths, applyActions, rollback, run, printUsage,
+    parseArgs, plan, digestPlan, surfacePaths, applyActions, rollback, run, printUsage,
     readEnginePin, writeEnginePin, sourceEngineVersion, runCheck,
   };
 };

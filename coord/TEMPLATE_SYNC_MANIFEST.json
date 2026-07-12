@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "manifest_version": "2026-07-11-runtime-authority",
-  "generated_at": "2026-07-11T00:00:00.000Z",
+  "manifest_version": "2026-07-12-automatic-upgrade",
+  "generated_at": "2026-07-12T00:00:00.000Z",
   "purpose": "Post-sync drift detection for reusable template-canonical governance surfaces.",
   "source_inventory": {
     "path": null,
@@ -881,11 +881,11 @@
     {
       "path": "coord/scripts/coord-upgrade.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:8ac48d688acc",
+      "version_stamp": "sha256:ef862d3e053e",
       "checksum": {
         "algo": "sha256",
-        "hex": "8ac48d688acc02367fc33b4115cdbab9882934c70edaa6325e7e99df8b5bfde8",
-        "bytes": 24571
+        "hex": "ef862d3e053ecc7829119a81af783398fce711789f7d4f089122066040e05d0a",
+        "bytes": 28557
       },
       "rationale": "`coord upgrade` (COORD-118): managed engine-upgrade automation. Applies a new engine surface (--from <dir|bundle>) into an adopter repo, re-pins via engine-pin.js, then verifies; idempotent, --dry-run, and exact byte-rollback on verify failure. Builds ON engine-pin.js (no fingerprint/verify reimplementation); only ever writes manifest-tracked reusable surface, never project-local files. DI-factory so tests inject fs/log/engine-pin.",
       "source_inventory": {
@@ -898,17 +898,51 @@
     {
       "path": "coord/scripts/coord-upgrade.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:23a5e146875a",
+      "version_stamp": "sha256:14af60b1fcc6",
       "checksum": {
         "algo": "sha256",
-        "hex": "23a5e146875af3189645d3ceed7628df1713a1346e0b54dc8c9e216f8875194d",
-        "bytes": 19312
+        "hex": "14af60b1fcc690cdfe788e62e67148e6247bed836818d7326e405e36e02349a5",
+        "bytes": 20915
       },
       "rationale": "Module-owned tests for `coord upgrade` (COORD-118): apply (update changed + add new surface file, regenerate engine-pin.json, real-engine verify pass), idempotent re-run no-op, --dry-run no-writes, forced-verify-failure exact byte-rollback (incl. removing added files), surface-only guarantee (board/project.config.js never touched), and dispatcher routing. os.tmpdir scratch source+target trees.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
         "recorded_at": "2026-06-18T14:35:42.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/upgrade-release-source.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:1c6d89129451",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "1c6d891294516ff8d57db40a0fa3a569f905b0b7109b3189fef96d50cb0201d2",
+        "bytes": 4203
+      },
+      "rationale": "COORD-501 immutable channel resolver and archive containment for automatic customer upgrades.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-12T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/upgrade-release-source.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:aa7e2db5a717",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "aa7e2db5a717e45a315ee5585515a83835e79cc0999f63d9850f17ec90b3473c",
+        "bytes": 1649
+      },
+      "rationale": "COORD-501 tests for repository normalization, archive path containment, and release digests.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-12T00:00:00.000Z",
         "template_head_sha": null
       }
     },
@@ -2547,11 +2581,11 @@
         "recorded_at": "2026-06-29T14:26:11.242Z",
         "template_head_sha": "local"
       },
-      "version_stamp": "sha256:58131215bc07",
+      "version_stamp": "sha256:68ea9a44589a",
       "checksum": {
         "algo": "sha256",
-        "hex": "58131215bc07ae3b44fede5ffbc9c966103d97438099181b73e0b594cdaae66e",
-        "bytes": 47837
+        "hex": "68ea9a44589aee641d70a0f91bac7ee1edc555d443dcda8ae801c18f3e55ae60",
+        "bytes": 47983
       }
     },
     {

@@ -104,7 +104,12 @@ No Node on the box (devcontainer, WSL, CI, minimal image)? Use the standalone
 `create-concord` vendors `coord/`, pins the engine in `coord/.coord-engine.json`,
 writes the commit-vs-gitignore split + the `coord/WORKSPACE.md` runtime guide, and
 wires `npm run gov` / `npm run concord` / `npm run coord-ui`. Upgrade later with
-`npm run gov -- upgrade`.
+an inspected, digest-bound plan:
+
+```bash
+npm run concord -- upgrade
+npm run concord -- upgrade --apply-plan <digest-from-plan>
+```
 Prefer a manual copy? See the [User Manual](USER_MANUAL.md#fallback--manual-copy).
 
 After scaffolding an app, launch that app's own cockpit from the app root:

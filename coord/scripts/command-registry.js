@@ -330,7 +330,7 @@ const PRODUCT_COMMANDS = [
     namespace: "product",
     maturity: "stable",
     safety: "managed_write_with_rollback",
-    summary: "Apply a new engine version (--from <dir|bundle>) into a repo, re-pin + verify; rollback on failure.",
+    summary: "Plan the latest pinned-channel engine update, apply only its reviewed digest, re-pin + verify, and roll back on failure.",
     docs: "coord/scripts/README.md#product-cli-coord",
     ui_palette: false,
   },

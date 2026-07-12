@@ -17,7 +17,7 @@
 //   - rollback: a forced verify failure restores every applied target file to its
 //     exact pre-upgrade bytes (and removes added files) + non-zero exit;
 //   - project-local files (board, project.config.js) are NEVER touched;
-//   - --from is required; --help / unknown-arg handling;
+//   - no-argument automatic upgrade is plan-only and digest-gated;
 //   - dispatcher registry now routes `upgrade`.
 
 const test = require("node:test");
@@ -206,11 +206,45 @@ test("surface-only: project-local files are never written even on success", () =
   }
 });
 
-test("--from is required → exit 1", () => {
-  const cap = capture();
-  const result = createCoordUpgrade({ log: cap.log }).run(["--dir", "/tmp/x"]);
-  assert.strictEqual(result.code, 1);
-  assert.match(cap.text(), /--from .* is required/);
+test("automatic latest upgrade is plan-only, digest-gated, and writes a receipt", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    writeFile(target, "coord/.coord-engine.json", JSON.stringify({
+      schema: 1,
+      engine_version: "engine-v1",
+      source: { repo: "https://github.com/Softsensor-org/concord", channel: "community", ref: "old", sha: "1".repeat(40) },
+    }) + "\n");
+    const releaseSource = {
+      resolveLatest: () => ({
+        sourceRoot: source,
+        ref: "refs/heads/main",
+        sha: "2".repeat(40),
+        archiveSha256: "3".repeat(64),
+        cleanup: () => {},
+      }),
+    };
+    const cap = capture();
+    const command = createCoordUpgrade({ log: cap.log, cwd: () => tmp, releaseSource, now: "2026-07-12T00:00:00Z" });
+    const planned = command.run(["--dir", target]);
+    assert.strictEqual(planned.code, 0);
+    assert.strictEqual(planned.planned, true);
+    assert.match(planned.planDigest, /^[0-9a-f]{64}$/);
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), "module.exports = 1; // v1\n");
+
+    const refused = command.run(["--dir", target, "--apply-plan", "0".repeat(64)]);
+    assert.strictEqual(refused.code, 1);
+    assert.match(cap.text(), /REFUSED/);
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), "module.exports = 1; // v1\n");
+
+    const applied = command.run(["--dir", target, "--apply-plan", planned.planDigest]);
+    assert.strictEqual(applied.code, 0);
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), "module.exports = 2; // v2\n");
+    assert.ok(fs.existsSync(path.join(target, "coord/.runtime/upgrade-receipts", `${planned.planDigest}.json`)));
+    const pin = JSON.parse(read(target, "coord/.coord-engine.json"));
+    assert.strictEqual(pin.source.sha, "2".repeat(40));
+  } finally {
+    cleanup(tmp);
+  }
 });
 
 test("--help prints usage and exits 0", () => {

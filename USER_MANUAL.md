@@ -337,17 +337,31 @@ records **where** your engine came from (version / channel / ref / sha);
 
 ```bash
 # Check for drift (read-only): is the vendored engine surface untouched?
-npm run gov -- upgrade --check
+npm run concord -- upgrade --check
 
-# Apply a new engine version from a release bundle/dir:
-npm run gov -- upgrade --from <bundle-or-dir>
+# Resolve the configured channel to an immutable upstream commit and print a
+# write-free plan. Review the paths and retain the digest it prints:
+npm run concord -- upgrade
+
+# Re-resolve the source and apply only if the upstream SHA and every before/after
+# file hash still produce the reviewed digest:
+npm run concord -- upgrade --apply-plan <digest-from-plan>
+
+# Offline/operator-supplied source remains supported:
+npm run concord -- upgrade --from <bundle-or-dir>
 ```
 
-What `upgrade` does: diffs the source engine surface against yours, backs up every
-file it will write, applies only engine-managed paths, **preserves your board /
-journal / plans / project.config / product docs untouched**, re-pins, and
-verifies. If verification fails it rolls back to the exact pre-upgrade bytes and
-exits non-zero. Upgrading to the same version is a no-op.
+Automatic resolution reads the repository and channel from
+`coord/.coord-engine.json`, resolves the channel head to an immutable Git commit,
+downloads that exact archive into OS temporary storage, and rejects traversal,
+absolute-path, symlink, and hard-link archive entries. Planning does not write to
+the project. Applying rechecks the digest, diffs the source engine surface,
+backs up every file it will write, applies only engine-managed paths,
+**preserves your board / journal / plans / project.config / product docs and Git
+state untouched**, re-pins, verifies, and writes a redacted receipt under
+`coord/.runtime/upgrade-receipts/`. If verification fails it rolls back to the
+exact pre-upgrade bytes and exits non-zero. Upgrading to the same version is a
+no-op.
 
 `upgrade --check` distinguishes **engine drift** (a vendored file was hand-edited
 — fix it or re-apply) from **project drift** (changes to *your* board / config /
@@ -364,7 +378,7 @@ share the exact same board / journal / plan / config data model, so upgrading is
 
 ```bash
 # Licensed, fail-closed: requires an entitlement token.
-npm run gov -- upgrade --from <enterprise-bundle> \
+npm run concord -- upgrade --from <enterprise-bundle> \
   --channel enterprise --entitlement <token>
 # (or set CONCORD_ENTITLEMENT in the environment)
 ```

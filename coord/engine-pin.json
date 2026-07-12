@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "pinned_at": "2026-07-12T03:44:47.441Z",
-  "manifest_version": "2026-07-11-runtime-authority",
+  "pinned_at": "2026-07-12T21:56:45.758Z",
+  "manifest_version": "2026-07-12-automatic-upgrade",
   "manifest_fingerprint": {
-    "sha256": "5b649b33fe4009434d666adf6e6102c867878f8447d4f24acea84409baabbeeb",
-    "bytes": 167859
+    "sha256": "9fb2e939ad1c7e2be4e7be3da5d3592d72ce44b8cb27c4fa253295d2ca458ad2",
+    "bytes": 169107
   },
   "files": {
     ".claude/settings.json": {
@@ -208,12 +208,20 @@
       "bytes": 6025
     },
     "coord/scripts/coord-upgrade.js": {
-      "sha256": "8ac48d688acc02367fc33b4115cdbab9882934c70edaa6325e7e99df8b5bfde8",
-      "bytes": 24571
+      "sha256": "ef862d3e053ecc7829119a81af783398fce711789f7d4f089122066040e05d0a",
+      "bytes": 28557
     },
     "coord/scripts/coord-upgrade.test.js": {
-      "sha256": "23a5e146875af3189645d3ceed7628df1713a1346e0b54dc8c9e216f8875194d",
-      "bytes": 19312
+      "sha256": "14af60b1fcc690cdfe788e62e67148e6247bed836818d7326e405e36e02349a5",
+      "bytes": 20915
+    },
+    "coord/scripts/upgrade-release-source.js": {
+      "sha256": "1c6d891294516ff8d57db40a0fa3a569f905b0b7109b3189fef96d50cb0201d2",
+      "bytes": 4203
+    },
+    "coord/scripts/upgrade-release-source.test.js": {
+      "sha256": "aa7e2db5a717e45a315ee5585515a83835e79cc0999f63d9850f17ec90b3473c",
+      "bytes": 1649
     },
     "coord/scripts/coverage-policy.js": {
       "sha256": "0b8265a212d6df31f756d23ea9928197d616070206da92b29f2c64b954bc06cc",
@@ -332,8 +340,8 @@
       "bytes": 1315
     },
     "coord/scripts/gates/review-closeout.js": {
-      "sha256": "d6a40bf82c5a194089ddb035ba3b0fe8f0a3a72ac6c2d488a696f6b57d46ef55",
-      "bytes": 13825
+      "sha256": "8579ecbda868634d212093b50baea18897113a97d3f0f150cca56e61836a278f",
+      "bytes": 14550
     },
     "coord/scripts/git-ops.js": {
       "sha256": "385662fb1622ca3e41c97e3df0a2810ee9ca514025c83ca2063c5f92b1d3b66b",
@@ -404,8 +412,8 @@
       "bytes": 899
     },
     "coord/scripts/governance-validation.js": {
-      "sha256": "4ad437cdf3c9efb1c575ca7e84c64f4063d7678967f457c0930f8c9d6f2389f1",
-      "bytes": 57828
+      "sha256": "e902ed7936ba5bb9ba9eefcc9753859c83a6ab3fec5d38f14096ffabe0702bc4",
+      "bytes": 57311
     },
     "coord/scripts/governance-validation.test.js": {
       "sha256": "ca15b40beba2dfae2c54f59e60b974bfbd7902e329802b6c51c644e05c9552b3",
@@ -604,8 +612,8 @@
       "bytes": 10891
     },
     "coord/scripts/README.md": {
-      "sha256": "13abaf33c883ddc4b0e6da5c029daecb8d6733120c05f950d072fbe4d8177ada",
-      "bytes": 47934
+      "sha256": "36de29a75c41d119875c2513afcc7375d668a383bc26df354b715c145328b59e",
+      "bytes": 48080
     },
     "coord/scripts/repo-registry.js": {
       "sha256": "5df8854454d333de4a2c677bd39242814a504b072ff8abae8bbdfa1c2ed5f8d6",

@@ -28,6 +28,8 @@ coord/scripts/coord onboard [<repo-path>] [--dry-run] [--write]
 coord/scripts/coord track-presets [--json]
 coord/scripts/coord authority-check [--canonical-input <path>] [--json]
 coord/scripts/coord conformance [--json] [--attest] [--verify [<file>]]
+coord/scripts/coord upgrade [--dir <target>] [--channel <c>] [--json]
+coord/scripts/coord upgrade --apply-plan <digest> [--dir <target>] [--json]
 coord/scripts/coord upgrade --from <dir|bundle> [--dir <target>] [--channel <c>] [--entitlement <tok>] [--ref <r>] [--sha <s>] [--dry-run] [--json]
 coord/scripts/coord upgrade --check [--dir <target>] [--json]
 ```
