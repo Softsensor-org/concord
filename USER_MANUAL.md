@@ -79,20 +79,21 @@ Best for developers who already run agent CLIs (Claude Code, Codex, Cursor) —
 Node is already present.
 
 ```bash
-# New project (fresh governed board):
-npx create-concord my-project
+# New project: review a write-free plan, then apply its digest.
+npx create-concord my-project --dry-run
+npx create-concord my-project --apply-plan <digest-from-plan>
 cd my-project
 
 # OR overlay onto an EXISTING repo — detects the repo shape, proposes a
 # governance tier + track preset, and writes a tailored coord/project.config.js
 # plus starter tickets:
 cd my-existing-repo
-npx create-concord . --from-existing
+npx create-concord . --from-existing --dry-run
+npx create-concord . --from-existing --apply-plan <digest-from-plan>
 
 # Optional operating-governance packs:
-npx create-concord my-site --workflow-pack site-seo
-npx create-concord my-analytics --workflow-pack daily-analytics
-npx create-concord my-growth-stack --workflow-pack site-seo,daily-analytics
+npx create-concord my-site --workflow-pack site-seo --dry-run
+npx create-concord my-site --workflow-pack site-seo --apply-plan <digest-from-plan>
 ```
 
 `create-concord` vendors `coord/` in-tree, pins the engine version in
@@ -105,6 +106,8 @@ Flags:
 | Flag | Effect |
 |------|--------|
 | `--from-existing` | Run shape-detecting onboarding (tier + preset + starter tickets) instead of a fresh board. |
+| `--dry-run` | Print the deterministic plan and write no target bytes. |
+| `--apply-plan <digest>` | Apply only the previously reviewed plan digest. |
 | `--channel <c>` | Distribution channel to pin (default `community`). |
 | `--workflow-pack <id[,id]>` | Copy optional operating-governance templates into the workspace. Current pack ids: `site-seo`, `daily-analytics`, or `all`. |
 

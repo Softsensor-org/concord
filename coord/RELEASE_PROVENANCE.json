@@ -2,11 +2,11 @@
   "schema_version": 1,
   "artifact": "softsensor-concord",
   "cut": "Community",
-  "donor_commit": "9a6adc9440e64c37c0120a73780d30713b6f2ae4",
-  "donor_commit_short": "9a6adc94",
+  "donor_commit": "fb6a25975dc3cc9d515aedc368d906fac0503474",
+  "donor_commit_short": "fb6a2597",
   "donor_branch": "main",
   "donor_tree_state": "clean",
-  "build_timestamp": "2026-07-10T04:45:30Z",
+  "build_timestamp": "2026-07-12T12:09:55Z",
   "builder": "release/build-public-release.sh",
   "builder_version": "2"
 }

@@ -78,22 +78,27 @@ for what to look at.
 
 ### 2. Install Concord
 
-**One command — vendors the engine in-tree, no global install:**
+**Two-step reviewed install — no global install:**
 
 ```bash
-# New project (fresh governed board):
-npx create-concord my-project && cd my-project
+# New project: first print a write-free plan, then apply that exact digest.
+npx create-concord my-project --dry-run
+npx create-concord my-project --apply-plan <digest-from-plan>
+cd my-project
 
 # OR overlay onto an EXISTING repo — detects the repo shape, proposes a
 # governance tier + track preset, and writes a tailored config + starter tickets:
-cd my-existing-repo && npx create-concord . --from-existing
+cd my-existing-repo
+npx create-concord . --from-existing --dry-run
+npx create-concord . --from-existing --apply-plan <digest-from-plan>
 ```
 
 No Node on the box (devcontainer, WSL, CI, minimal image)? Use the standalone
 **Linux binary** from the GitHub Release — same result, no runtime required:
 
 ```bash
-./concord-linux-x86_64 init .
+./concord-linux-x86_64 init . --dry-run
+./concord-linux-x86_64 init . --apply-plan <digest-from-plan>
 ```
 
 `create-concord` vendors `coord/`, pins the engine in `coord/.coord-engine.json`,
@@ -306,10 +311,12 @@ Concord supports multi-track work beyond code. Each track has its own proof harn
 
 ## Adopting Into an Existing Project
 
-Concord is an overlay — your repos, CI, tickets, and PRD/URS artifacts stay exactly where they are. The fastest overlay is one command:
+Concord is an overlay — your repos, CI, tickets, and PRD/URS artifacts stay exactly where they are. Review the write-free plan before applying it:
 
 ```bash
-cd my-existing-repo && npx create-concord . --from-existing
+cd my-existing-repo
+npx create-concord . --from-existing --dry-run
+npx create-concord . --from-existing --apply-plan <digest-from-plan>
 ```
 
 This detects your repo shape, proposes a governance tier + track preset, and

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "manifest_version": "2026-07-08-workflow-packs",
-  "generated_at": "2026-07-08T00:00:00.000Z",
+  "manifest_version": "2026-07-11-runtime-authority",
+  "generated_at": "2026-07-11T00:00:00.000Z",
   "purpose": "Post-sync drift detection for reusable template-canonical governance surfaces.",
   "source_inventory": {
     "path": null,
@@ -28,6 +28,23 @@
     }
   },
   "items": [
+    {
+      "path": ".claude/settings.json",
+      "match_policy": "exact",
+      "version_stamp": "sha256:891073abfcea",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "891073abfcea22d348df9a2c2f1fa29fa995306fa7216d09fc8a763cc7d63a04",
+        "bytes": 5661
+      },
+      "rationale": "Runtime authority hook wiring and public enforcement-boundary documentation.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
     {
       "path": "coord/AGENT_CAPABILITY_REGISTRY.md",
       "match_policy": "exact",
@@ -199,6 +216,23 @@
       }
     },
     {
+      "path": "coord/docs/RUNTIME_AUTHORITY.md",
+      "match_policy": "exact",
+      "version_stamp": "sha256:e8cdf59e9f08",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "e8cdf59e9f08ab8d5ec4187c4705fec75ae1dfc9b12eb03d2c3f87cb8cdc63dd",
+        "bytes": 1885
+      },
+      "rationale": "Runtime authority hook wiring and public enforcement-boundary documentation.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
       "path": "coord/GOVERNANCE_ARCHITECTURE.md",
       "match_policy": "exact",
       "version_stamp": "sha256:fcf00b331eab",
@@ -230,6 +264,23 @@
         "algo": "sha256",
         "hex": "c89447f14e784ad461c4f5a0bea8ff6620a4e72cc6bdec3f2be85147ddf275f2",
         "bytes": 2975
+      }
+    },
+    {
+      "path": "coord/scripts/adoption-command-dispatch.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:0802ae1b11b7",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "0802ae1b11b7a5c59b917e0306021ea26eb11887249cfe5ce5f7632525be7a94",
+        "bytes": 1051
+      },
+      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
       }
     },
     {
@@ -332,6 +383,142 @@
         "status": "template-only",
         "recorded_at": "2026-06-15T09:43:01.000Z",
         "template_head_sha": "433c1fc"
+      }
+    },
+    {
+      "path": "coord/scripts/auto-mode-adapters.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:cb3853e7e20d",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "cb3853e7e20d0018be11003dd3b8ce038d441d08217f8f9c4497567ccebbb024",
+        "bytes": 2362
+      },
+      "rationale": "Provider-neutral runtime authority, containment, audit, and focused verification surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/auto-mode-adapters.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:59fea6c61e30",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "59fea6c61e302a9d9eab693e276b371695f0ac1afb6532661786798798a022d0",
+        "bytes": 1290
+      },
+      "rationale": "Provider-neutral runtime authority, containment, audit, and focused verification surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/auto-mode-containment.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:75c5d9a2a374",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "75c5d9a2a37464e12dfa2c94506b1ee01e22a52d262f9fa256ee8b09aaa02a22",
+        "bytes": 2546
+      },
+      "rationale": "Provider-neutral runtime authority, containment, audit, and focused verification surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/auto-mode-containment.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:a9eb88209541",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "a9eb88209541c441d7c2e49b8bbbc9592420129276bdbba8e53436eba9b2594b",
+        "bytes": 1276
+      },
+      "rationale": "Provider-neutral runtime authority, containment, audit, and focused verification surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/auto-mode-ledger.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:ea307e3e2731",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "ea307e3e273116caf4b4f9eeb9a84c3b919bd0983ac1076375e49c792fd25838",
+        "bytes": 3447
+      },
+      "rationale": "Provider-neutral runtime authority, containment, audit, and focused verification surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/auto-mode-ledger.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:dc2932a83897",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "dc2932a83897a1d40c125ae74be5da6e6d144e77fa6c590420f7164e93827ff2",
+        "bytes": 1370
+      },
+      "rationale": "Provider-neutral runtime authority, containment, audit, and focused verification surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/auto-mode-policy.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:c40f156fc040",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "c40f156fc04007f9d366d643ce0b718252a6dd2bf548e6151ae92380b8ce3850",
+        "bytes": 2777
+      },
+      "rationale": "Provider-neutral runtime authority, containment, audit, and focused verification surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/auto-mode-policy.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:ddfaaceac4dd",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "ddfaaceac4dd5ad8205c2a660c59545f7f95fafb98847362e62fc71e95271256",
+        "bytes": 1187
+      },
+      "rationale": "Provider-neutral runtime authority, containment, audit, and focused verification surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
+        "template_head_sha": null
       }
     },
     {
@@ -658,23 +845,6 @@
       }
     },
     {
-      "path": "coord/scripts/coord-ui-launch.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:9b4550a1d897",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "9b4550a1d897c45229db9998dd966bc0ceabd586b0ab06ed262fa1f9625787d8",
-        "bytes": 6025
-      },
-      "rationale": "App-local read-only coord-ui launcher wired by create-concord and concord init as `npm run coord-ui`; resolves the scaffolded repo root from coord/scripts, points the UI at that repo's coord/, and avoids sending adopters back to the donor checkout.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-07-07T00:00:00.000Z",
-        "template_head_sha": null
-      }
-    },
-    {
       "path": "coord/scripts/coord-init.js",
       "match_policy": "exact",
       "version_stamp": "sha256:16eefe010d20",
@@ -688,6 +858,23 @@
         "direction": "template-canonical",
         "status": "template-only",
         "recorded_at": "2026-06-18T14:35:42.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/coord-ui-launch.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:9b4550a1d897",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "9b4550a1d897c45229db9998dd966bc0ceabd586b0ab06ed262fa1f9625787d8",
+        "bytes": 6025
+      },
+      "rationale": "App-local read-only coord-ui launcher wired by create-concord and concord init as `npm run coord-ui`; resolves the scaffolded repo root from coord/scripts, points the UI at that repo's coord/, and avoids sending adopters back to the donor checkout.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-07T00:00:00.000Z",
         "template_head_sha": null
       }
     },
@@ -1197,11 +1384,11 @@
     {
       "path": "coord/scripts/gates/review-closeout.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:d6a40bf82c5a",
+      "version_stamp": "sha256:8579ecbda868",
       "checksum": {
         "algo": "sha256",
-        "hex": "d6a40bf82c5a194089ddb035ba3b0fe8f0a3a72ac6c2d488a696f6b57d46ef55",
-        "bytes": 13825
+        "hex": "8579ecbda868634d212093b50baea18897113a97d3f0f150cca56e61836a278f",
+        "bytes": 14550
       },
       "rationale": "Extracted governance gate module is reusable governance control-plane code.",
       "source_inventory": {
@@ -1467,13 +1654,47 @@
       }
     },
     {
-      "path": "coord/scripts/governance-validation.js",
+      "path": "coord/scripts/governance-tier.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:58f3ac75ea8a",
+      "version_stamp": "sha256:142de7e890ed",
       "checksum": {
         "algo": "sha256",
-        "hex": "58f3ac75ea8af88ab027e16e9fb3e1c8ab37b142843b4486d4cc34dd2dacb9d3",
-        "bytes": 57219
+        "hex": "142de7e890ed5eccb360f8257d5a485e1697e722f47abbf57de12203ac91440c",
+        "bytes": 3416
+      },
+      "rationale": "Reusable adoption-friction governance command surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
+      }
+    },
+    {
+      "path": "coord/scripts/governance-tier.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:79614414b076",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "79614414b0767cec77218f1d84a18d97c70219a441a73682ec8657bc44b39f6c",
+        "bytes": 899
+      },
+      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
+      }
+    },
+    {
+      "path": "coord/scripts/governance-validation.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:e902ed7936ba",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "e902ed7936ba5bb9ba9eefcc9753859c83a6ab3fec5d38f14096ffabe0702bc4",
+        "bytes": 57311
       },
       "rationale": "Module-owned validation / readiness orchestrator. COORD-374 moved business-context and ADR readiness dimensions behind the pure GateCheck registry while preserving the exported validation facade.",
       "source_inventory": {
@@ -1532,6 +1753,40 @@
         "status": "template-newer",
         "recorded_at": "2026-06-12T10:46:58.616Z",
         "template_head_sha": "3e79c6304cb61a85c19b5bce6b39508e7ef654ee"
+      }
+    },
+    {
+      "path": "coord/scripts/guided-closeout.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:d819c14d0011",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "d819c14d001190ee011ba93eb5e222c142a364293a9379bf1f8c6a583dcd38e3",
+        "bytes": 7293
+      },
+      "rationale": "Reusable adoption-friction governance command surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
+      }
+    },
+    {
+      "path": "coord/scripts/guided-closeout.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:6deba159adbb",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "6deba159adbbbf7faafc7f9fc89ce61c79ec19ac771bbe42e9064edbbe7dbcab",
+        "bytes": 6556
+      },
+      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
       }
     },
     {
@@ -1943,6 +2198,40 @@
       }
     },
     {
+      "path": "coord/scripts/onboard.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:83a62a072fcf",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "83a62a072fcfd48b881ae17e7d7136d0be8bdfbeb6aace646269a14856524900",
+        "bytes": 4586
+      },
+      "rationale": "Reusable adoption-friction governance command surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
+      }
+    },
+    {
+      "path": "coord/scripts/onboard.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:af9182ad15e4",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "af9182ad15e497bc2ddcb7058031e5141213479cf774a66ee53f73b6bbf79f8e",
+        "bytes": 1644
+      },
+      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
+      }
+    },
+    {
       "path": "coord/scripts/otlp-export.js",
       "match_policy": "exact",
       "version_stamp": "sha256:0b171397fd8f",
@@ -2147,6 +2436,40 @@
       }
     },
     {
+      "path": "coord/scripts/publishability-check.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:7052b1e053c1",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "7052b1e053c18a88575b1d8dcaa6c4f8e523773b302aa6116dd710f584aa8d97",
+        "bytes": 3531
+      },
+      "rationale": "Reusable adoption-friction governance command surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
+      }
+    },
+    {
+      "path": "coord/scripts/publishability-check.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:0723d827492a",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "0723d827492ab5bc958e677480e69c50e8d20056ba015527ae9a2e95ec59bd63",
+        "bytes": 1270
+      },
+      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
+      }
+    },
+    {
       "path": "coord/scripts/quality-scan.js",
       "match_policy": "exact",
       "version_stamp": "sha256:70372325dfab",
@@ -2262,6 +2585,57 @@
         "direction": "template-canonical",
         "status": "template-only",
         "recorded_at": "2026-06-13T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/runtime-authority-hook.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:807fc2091695",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "807fc20916951472b6e136fd54a24f3f9a85dff94463523cfed75fc8f5e0fd7e",
+        "bytes": 3780
+      },
+      "rationale": "Provider-neutral runtime authority, containment, audit, and focused verification surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/runtime-authority.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:5a3a1a8917e4",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "5a3a1a8917e49318efdf9ced81aa97cd798f00d32f862b065ecb69e6345de078",
+        "bytes": 8310
+      },
+      "rationale": "Provider-neutral runtime authority, containment, audit, and focused verification surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
+        "template_head_sha": null
+      }
+    },
+    {
+      "path": "coord/scripts/runtime-authority.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:0e5d63c27b9e",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "0e5d63c27b9e729030d0c105a5637629e9e634cb10825faa4c4e3e948ad55a5f",
+        "bytes": 3007
+      },
+      "rationale": "Provider-neutral runtime authority, containment, audit, and focused verification surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-11T00:00:00.000Z",
         "template_head_sha": null
       }
     },
@@ -2657,6 +3031,40 @@
       }
     },
     {
+      "path": "coord/scripts/track-presets.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:dad150a297b3",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "dad150a297b3dda016626a9f29a2df68a0124187e6094085f8016d8184e660a0",
+        "bytes": 3062
+      },
+      "rationale": "Reusable adoption-friction governance command surface.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
+      }
+    },
+    {
+      "path": "coord/scripts/track-presets.test.js",
+      "match_policy": "exact",
+      "version_stamp": "sha256:dcab1ab7b727",
+      "checksum": {
+        "algo": "sha256",
+        "hex": "dcab1ab7b7272c9deb20ec18d01eb5dca80dfd0b03b23f32f231d8764b87e789",
+        "bytes": 792
+      },
+      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
+      "source_inventory": {
+        "direction": "template-canonical",
+        "status": "template-only",
+        "recorded_at": "2026-07-03T12:39:21.394Z",
+        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
+      }
+    },
+    {
       "path": "coord/scripts/verb-parity.js",
       "match_policy": "exact",
       "version_stamp": "sha256:dd82f43b3ac9",
@@ -2722,193 +3130,6 @@
         "status": "template-only",
         "recorded_at": "2026-04-14T13:06:58.590Z",
         "template_head_sha": "7776ed5d5ae208391e2059453f15427880e7ed86"
-      }
-    },
-    {
-      "path": "coord/scripts/adoption-command-dispatch.test.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:0802ae1b11b7",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "0802ae1b11b7a5c59b917e0306021ea26eb11887249cfe5ce5f7632525be7a94",
-        "bytes": 1051
-      },
-      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-07-03T12:39:21.394Z",
-        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
-      }
-    },
-    {
-      "path": "coord/scripts/governance-tier.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:142de7e890ed",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "142de7e890ed5eccb360f8257d5a485e1697e722f47abbf57de12203ac91440c",
-        "bytes": 3416
-      },
-      "rationale": "Reusable adoption-friction governance command surface.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-07-03T12:39:21.394Z",
-        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
-      }
-    },
-    {
-      "path": "coord/scripts/governance-tier.test.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:79614414b076",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "79614414b0767cec77218f1d84a18d97c70219a441a73682ec8657bc44b39f6c",
-        "bytes": 899
-      },
-      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-07-03T12:39:21.394Z",
-        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
-      }
-    },
-    {
-      "path": "coord/scripts/guided-closeout.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:d819c14d0011",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "d819c14d001190ee011ba93eb5e222c142a364293a9379bf1f8c6a583dcd38e3",
-        "bytes": 7293
-      },
-      "rationale": "Reusable adoption-friction governance command surface.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-07-03T12:39:21.394Z",
-        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
-      }
-    },
-    {
-      "path": "coord/scripts/guided-closeout.test.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:6deba159adbb",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "6deba159adbbbf7faafc7f9fc89ce61c79ec19ac771bbe42e9064edbbe7dbcab",
-        "bytes": 6556
-      },
-      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-07-03T12:39:21.394Z",
-        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
-      }
-    },
-    {
-      "path": "coord/scripts/onboard.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:83a62a072fcf",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "83a62a072fcfd48b881ae17e7d7136d0be8bdfbeb6aace646269a14856524900",
-        "bytes": 4586
-      },
-      "rationale": "Reusable adoption-friction governance command surface.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-07-03T12:39:21.394Z",
-        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
-      }
-    },
-    {
-      "path": "coord/scripts/onboard.test.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:af9182ad15e4",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "af9182ad15e497bc2ddcb7058031e5141213479cf774a66ee53f73b6bbf79f8e",
-        "bytes": 1644
-      },
-      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-07-03T12:39:21.394Z",
-        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
-      }
-    },
-    {
-      "path": "coord/scripts/publishability-check.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:7052b1e053c1",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "7052b1e053c18a88575b1d8dcaa6c4f8e523773b302aa6116dd710f584aa8d97",
-        "bytes": 3531
-      },
-      "rationale": "Reusable adoption-friction governance command surface.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-07-03T12:39:21.394Z",
-        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
-      }
-    },
-    {
-      "path": "coord/scripts/publishability-check.test.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:0723d827492a",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "0723d827492ab5bc958e677480e69c50e8d20056ba015527ae9a2e95ec59bd63",
-        "bytes": 1270
-      },
-      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-07-03T12:39:21.394Z",
-        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
-      }
-    },
-    {
-      "path": "coord/scripts/track-presets.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:dad150a297b3",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "dad150a297b3dda016626a9f29a2df68a0124187e6094085f8016d8184e660a0",
-        "bytes": 3062
-      },
-      "rationale": "Reusable adoption-friction governance command surface.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-07-03T12:39:21.394Z",
-        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
-      }
-    },
-    {
-      "path": "coord/scripts/track-presets.test.js",
-      "match_policy": "exact",
-      "version_stamp": "sha256:dcab1ab7b727",
-      "checksum": {
-        "algo": "sha256",
-        "hex": "dcab1ab7b7272c9deb20ec18d01eb5dca80dfd0b03b23f32f231d8764b87e789",
-        "bytes": 792
-      },
-      "rationale": "Regression coverage for reusable adoption-friction governance command surfaces.",
-      "source_inventory": {
-        "direction": "template-canonical",
-        "status": "template-only",
-        "recorded_at": "2026-07-03T12:39:21.394Z",
-        "template_head_sha": "11aba96cd7e3f78b34ac5032dab573d28f14e9a9"
       }
     }
   ]

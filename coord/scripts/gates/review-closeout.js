@@ -1,7 +1,11 @@
 "use strict";
 
+const path = require("path");
+const { supervisionReport } = require("../runtime-authority.js");
+
 function createReviewCloseoutGate(deps) {
   const {
+    coordDir,
     effectiveTierMinimum,
     fieldHasMeaningfulValue,
     isMeaningfulText,
@@ -263,12 +267,23 @@ function createReviewCloseoutGate(deps) {
     return issues;
   }
 
+  function collectSubagentSupervisionIssues(ticketId) {
+    const report = supervisionReport(path.join(coordDir, ".runtime", "subagents", `${ticketId}.json`), ticketId);
+    if (report.ok) return [];
+    return [{
+      code: "subagent_supervision",
+      message: `Ticket ${ticketId} cannot close with active or unexplained subagent work (active=${report.active.join(",") || "none"}; unexplained=${report.unexplained.join(",") || "none"}).`,
+      next_steps: ["Finish or stop every child session, record its result and action digest, then rerun gov explain."],
+    }];
+  }
+
   return {
     buildReviewCycleSnapshots,
     collectBoundedRepairEligibilityIssues,
     collectClosureReadinessIssues,
     collectRequirementClosureIssues,
     collectSelfReviewCycleIssues,
+    collectSubagentSupervisionIssues,
     isNoneLikePlanValue,
   };
 }

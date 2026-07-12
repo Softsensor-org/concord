@@ -162,7 +162,7 @@ function createGovernanceValidation(deps) {
   } = contextPackAcknowledgementGate;
 
   const reviewCloseoutGate = createReviewCloseoutGate({
-    effectiveTierMinimum,
+    coordDir: COORD_DIR, effectiveTierMinimum,
     fieldHasMeaningfulValue,
     isMeaningfulText,
     isTestingInfrastructureTicket,
@@ -190,7 +190,7 @@ function createGovernanceValidation(deps) {
       ({ ticketId, row, planState }) => collectContextPackAcknowledgementIssues(ticketId, row, planState),
       ({ ticketId, row, planState }) => collectAdrRequirementIssues(ticketId, row, planState),
       ({ ticketId, row, planState, cycles }) => collectAdrReviewCycleIssues(ticketId, row, planState, cycles),
-      ({ ticketId, row, planState }) => collectAdrCloseoutCitationIssues(ticketId, row, planState),
+      ({ ticketId, row, planState }) => [...collectAdrCloseoutCitationIssues(ticketId, row, planState), ...reviewCloseoutGate.collectSubagentSupervisionIssues(ticketId)],
     ],
   });
 

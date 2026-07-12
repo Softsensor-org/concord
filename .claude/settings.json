@@ -11,6 +11,28 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node coord/scripts/runtime-authority-hook.js --subagent-start",
+            "description": "Register the subagent under the parent ticket with narrower-or-equal authority"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node coord/scripts/runtime-authority-hook.js --subagent-stop",
+            "description": "Require attributable subagent completion evidence before ticket closeout"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash",
@@ -66,6 +88,21 @@
             "type": "command",
             "command": "echo \"$TOOL_INPUT\" | grep -qE 'git (merge|cherry-pick|push).*dev' && echo 'BLOCKED: Never merge to dev manually. Use gov land or gov finalize.' && exit 1 || true",
             "description": "Block direct merges to dev — must use governed landing"
+          },
+          {
+            "type": "command",
+            "command": "printf '%s' \"$TOOL_INPUT\" | node coord/scripts/runtime-authority-hook.js",
+            "description": "Deny permanent deletion, destructive Git, and writes outside the active ticket worktree"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s' \"$TOOL_INPUT\" | node coord/scripts/runtime-authority-hook.js",
+            "description": "Enforce the active ticket's immutable filesystem authority"
           }
         ]
       }

@@ -41,8 +41,11 @@ coord/scripts/coord init
 ```
 
 The onboard path is read-only by default: it detects the repo shape, recommends
-a governance tier and track preset, and prints next steps. The init path is
-no-clobber. It creates missing governance seams and preserves existing files.
+a governance tier and track preset, and prints next steps. `coord init` is
+intended to create missing governance seams without replacing existing files;
+verify the installer and target state before relying on that behavior. The
+existing-repo overlay installer remains subject to the collision and rollback
+limitations documented in the release backlog until its transaction tests pass.
 
 ## 2. Review The Repo Map
 
