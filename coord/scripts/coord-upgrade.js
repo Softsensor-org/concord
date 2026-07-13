@@ -318,12 +318,15 @@ module.exports = function createCoordUpgrade(deps = {}) {
     const version = pin ? pin.engine_version : (report.live_version || "unknown");
     const channel = pin && pin.source ? pin.source.channel : "community";
     const engineDrift = !report.ok ? report.problems.length : 0;
+    const unpinned = !report.ok && report.problems.length > 0 && report.problems.every((problem) => (problem && problem.code) === "no_pin");
     const human = [
       `coord upgrade --check — ${targetRoot}`,
       `  engine version : ${version}`,
       `  channel        : ${channel}`,
       pin ? "" : "  (no .coord-engine.json — pre-COORD-451 scaffold; run `gov upgrade` to pin)",
-      report.ok
+      unpinned
+        ? "  engine pin     : absent — legacy installation, not engine-file drift"
+        : report.ok
         ? "  engine drift   : none — vendored surface matches its pin"
         : `  engine drift   : ${engineDrift} file(s) hand-edited vs the pinned surface`,
       "  project drift  : not checked — your board/config/product/.runtime are yours to change",
@@ -332,14 +335,14 @@ module.exports = function createCoordUpgrade(deps = {}) {
       for (const p of report.problems) human.push(`      - ${typeof p === "string" ? p : JSON.stringify(p)}`);
     }
     emit(opts, human, {
-      verdict: report.ok ? "clean" : "engine-drift",
+      verdict: report.ok ? "clean" : unpinned ? "unpinned" : "engine-drift",
       engine_version: version,
       channel,
       pinned: Boolean(pin),
-      engine_drift: engineDrift,
+      engine_drift: unpinned ? 0 : engineDrift,
       problems: report.ok ? [] : report.problems,
     });
-    return { code: report.ok ? 0 : 1, engineDrift };
+    return { code: report.ok ? 0 : 1, engineDrift: unpinned ? 0 : engineDrift, unpinned };
   }
 
   function run(args = []) {

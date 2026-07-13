@@ -118,6 +118,23 @@ After scaffolding an app, launch that app's own cockpit from the app root:
 npm run coord-ui
 ```
 
+### Legacy installation bootstrap
+
+Installations that predate automatic release resolution cannot update themselves
+with a command they do not yet contain. Download `concord-bootstrap.js` from an
+immutable Concord commit, inspect it, then run it outside the vendored engine:
+
+```bash
+node concord-bootstrap.js upgrade --target .
+node concord-bootstrap.js upgrade --target . --apply-plan <digest-from-plan>
+```
+
+The bootstrap detects `community` versus `enterprise` from the pin and installed
+surface, refuses conflicting edition evidence, requires Enterprise entitlement,
+and delegates to the legacy `coord-cli.js upgrade --from` only after the source
+SHA and target-state digest still match. The direct Node CLI is canonical;
+`npm run concord` is an installer-provided convenience alias.
+
 ### 3. Map your repos
 
 `npx create-concord . --from-existing` already wrote a tailored config — just

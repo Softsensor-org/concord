@@ -335,6 +335,27 @@ The vendored engine is upgraded explicitly, never silently. `coord/.coord-engine
 records **where** your engine came from (version / channel / ref / sha);
 `coord/engine-pin.json` fingerprints the in-tree surface for **integrity**.
 
+### Legacy bootstrap
+
+For a pre-COORD-451 installation, the in-tree updater cannot provide automatic
+resolution because that code is not installed yet. Obtain `concord-bootstrap.js`
+from an immutable Community release commit (or the entitled Enterprise channel),
+review it, and run:
+
+```bash
+node concord-bootstrap.js upgrade --target .
+node concord-bootstrap.js upgrade --target . --apply-plan <digest-from-plan>
+```
+
+This bootstrap is independent of the installed engine. It identifies an absent
+upstream pin as `unpinned` rather than file drift, detects the installed edition,
+downloads an immutable source SHA into temporary storage, checks archive path and
+link containment, runs the legacy `--from ... --dry-run` preview, and applies only
+when the recomputed digest matches. It then invokes engine verification and writes
+a mode-0600 receipt under `coord/.runtime/upgrade-receipts/`. A requested channel
+that conflicts with the installed surface is refused; Enterprise requires an
+entitlement token.
+
 ```bash
 # Check for drift (read-only): is the vendored engine surface untouched?
 npm run concord -- upgrade --check

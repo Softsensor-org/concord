@@ -457,6 +457,26 @@ test("COORD-451 --check tolerates a pre-COORD-451 scaffold with no .coord-engine
   }
 });
 
+test("COORD-502 --check reports no_pin as unpinned, not engine-file drift", () => {
+  const { tmp, target } = makeFixture();
+  try {
+    const out = [];
+    const command = createCoordUpgrade({
+      log: (line) => out.push(String(line)),
+      cwd: () => tmp,
+      createEnginePin: () => ({ verify: () => ({ ok: false, problems: [{ code: "no_pin" }], live_version: "legacy" }) }),
+    });
+    const result = command.run(["--check", "--dir", target, "--json"]);
+    assert.strictEqual(result.code, 1);
+    assert.strictEqual(result.unpinned, true);
+    const parsed = JSON.parse(out.join("\n"));
+    assert.strictEqual(parsed.verdict, "unpinned");
+    assert.strictEqual(parsed.engine_drift, 0);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
 test("COORD-451 surface-unchanged + --channel switch reconciles the pin (repin, exit 0)", () => {
   const { tmp, source, target } = makeFixture();
   try {

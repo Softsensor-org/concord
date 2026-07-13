@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "manifest_version": "2026-07-12-automatic-upgrade",
-  "generated_at": "2026-07-12T00:00:00.000Z",
+  "manifest_version": "2026-07-13-legacy-bootstrap",
+  "generated_at": "2026-07-13T00:00:00.000Z",
   "purpose": "Post-sync drift detection for reusable template-canonical governance surfaces.",
   "source_inventory": {
     "path": null,
@@ -881,11 +881,11 @@
     {
       "path": "coord/scripts/coord-upgrade.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:ef862d3e053e",
+      "version_stamp": "sha256:aacaf5465fd9",
       "checksum": {
         "algo": "sha256",
-        "hex": "ef862d3e053ecc7829119a81af783398fce711789f7d4f089122066040e05d0a",
-        "bytes": 28557
+        "hex": "aacaf5465fd9ae14bfb7fe47b4d1ee179614ea4013c82818cead85e283f52b74",
+        "bytes": 28879
       },
       "rationale": "`coord upgrade` (COORD-118): managed engine-upgrade automation. Applies a new engine surface (--from <dir|bundle>) into an adopter repo, re-pins via engine-pin.js, then verifies; idempotent, --dry-run, and exact byte-rollback on verify failure. Builds ON engine-pin.js (no fingerprint/verify reimplementation); only ever writes manifest-tracked reusable surface, never project-local files. DI-factory so tests inject fs/log/engine-pin.",
       "source_inventory": {
@@ -898,11 +898,11 @@
     {
       "path": "coord/scripts/coord-upgrade.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:14af60b1fcc6",
+      "version_stamp": "sha256:77e4d1123ead",
       "checksum": {
         "algo": "sha256",
-        "hex": "14af60b1fcc690cdfe788e62e67148e6247bed836818d7326e405e36e02349a5",
-        "bytes": 20915
+        "hex": "77e4d1123ead1fb9a67091f64f1f1865433a4f27c49c126e23cb81137625a5b0",
+        "bytes": 21653
       },
       "rationale": "Module-owned tests for `coord upgrade` (COORD-118): apply (update changed + add new surface file, regenerate engine-pin.json, real-engine verify pass), idempotent re-run no-op, --dry-run no-writes, forced-verify-failure exact byte-rollback (incl. removing added files), surface-only guarantee (board/project.config.js never touched), and dispatcher routing. os.tmpdir scratch source+target trees.",
       "source_inventory": {
