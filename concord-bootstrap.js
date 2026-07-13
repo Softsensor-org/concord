@@ -10,6 +10,7 @@ const { execFileSync } = require("node:child_process");
 const PUBLIC_REPO = "https://github.com/Softsensor-org/concord";
 const ENTERPRISE_REPO = "https://github.com/Softsensor-org/concord-enterprise";
 const PIN_REL = "coord/.coord-engine.json";
+const OFFICIAL_REPOS = Object.freeze({ community: PUBLIC_REPO, enterprise: ENTERPRISE_REPO });
 
 function hash(value) { return crypto.createHash("sha256").update(value).digest("hex"); }
 function stable(value) {
@@ -18,9 +19,17 @@ function stable(value) {
   return JSON.stringify(value);
 }
 function parseRepo(value) {
-  const match = String(value || "").match(/github\.com[/:]([^/]+)\/([^/#]+?)(?:\.git)?$/i);
+  const match = String(value || "").match(/^(?:https:\/\/github\.com\/|git@github\.com:)([^/]+)\/([^/#]+?)(?:\.git)?$/i);
   if (!match) throw new Error(`unsupported GitHub repository: ${value || "missing"}`);
   return `${match[1]}/${match[2]}`;
+}
+function validateSourceRepo(value, channel) {
+  const expected = parseRepo(OFFICIAL_REPOS[channel]);
+  const actual = parseRepo(value);
+  if (actual.toLowerCase() !== expected.toLowerCase()) {
+    throw new Error(`untrusted ${channel} release repository: ${actual}; expected ${expected}`);
+  }
+  return actual;
 }
 function readJson(file) { return JSON.parse(fs.readFileSync(file, "utf8")); }
 
@@ -34,6 +43,7 @@ function detectInstalled(target) {
   const pinnedChannel = pin?.source?.channel || null;
   if (pinnedChannel && !["community", "enterprise"].includes(pinnedChannel)) throw new Error(`invalid pinned channel: ${pinnedChannel}`);
   if (pinnedChannel === "community" && enterprisePresent) throw new Error("installed edition is ambiguous: Community pin with Enterprise surface");
+  if (pinnedChannel === "enterprise" && !enterprisePresent) throw new Error("installed edition is ambiguous: Enterprise pin without Enterprise surface");
   const channel = pinnedChannel || (enterprisePresent ? "enterprise" : "community");
   return {
     target,
@@ -54,12 +64,12 @@ function validateEntries(raw) {
   return entries;
 }
 function validateLinks(raw) {
-  for (const line of String(raw || "").split(/\r?\n/).filter((value) => /^[lh]/.test(value))) {
-    const match = line.match(/\s(\S+)\s(?:->|link to)\s(.+)$/);
-    if (!match) throw new Error("unparseable archive link");
-    const source = match[1], target = match[2], root = source.split("/")[0];
-    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(source), target));
-    if (target.startsWith("/") || (resolved !== root && !resolved.startsWith(`${root}/`))) throw new Error(`archive link escapes root: ${source}`);
+  const lines = String(raw || "").split(/\r?\n/).filter(Boolean);
+  if (!lines.length) throw new Error("release archive has no verbose listing");
+  for (const line of lines) {
+    const type = line[0];
+    if (type === "l" || type === "h") throw new Error("release archive links are not permitted");
+    if (type !== "-" && type !== "d") throw new Error(`unsupported archive entry type: ${type || "unknown"}`);
   }
 }
 
@@ -80,20 +90,26 @@ function createResolver(deps = {}) {
   }
   function resolve({ repo, channel, entitlement }) {
     if (channel === "enterprise" && !String(entitlement || "").trim()) throw new Error("Enterprise bootstrap requires --entitlement or CONCORD_ENTITLEMENT");
+    const slug = validateSourceRepo(repo, channel);
     const stage = fs.mkdtempSync(path.join(os.tmpdir(), "concord-bootstrap-"));
-    const slug = parseRepo(repo);
     const token = channel === "enterprise" ? entitlement : "";
-    const meta = JSON.parse(curl(`https://api.github.com/repos/${slug}/commits/main`, null, token, stage));
-    if (!/^[0-9a-f]{40}$/i.test(String(meta.sha || ""))) throw new Error("release source returned an invalid SHA");
-    const sha = meta.sha.toLowerCase(), archive = path.join(stage, "release.tar.gz"), extract = path.join(stage, "extract");
-    fs.mkdirSync(extract);
-    curl(`https://api.github.com/repos/${slug}/tarball/${sha}`, archive, token, stage);
-    const entries = validateEntries(run("tar", ["-tzf", archive], { encoding: "utf8" }));
-    validateLinks(run("tar", ["-tvzf", archive], { encoding: "utf8" }));
-    run("tar", ["-xzf", archive, "-C", extract, "--no-same-owner", "--no-same-permissions"]);
-    const roots = [...new Set(entries.map((entry) => entry.split("/")[0]))];
-    if (roots.length !== 1) throw new Error("release archive must have one root");
-    return { source: path.join(extract, roots[0]), sha, archive_sha256: hash(fs.readFileSync(archive)), cleanup: () => fs.rmSync(stage, { recursive: true, force: true }) };
+    try {
+      const meta = JSON.parse(curl(`https://api.github.com/repos/${slug}/commits/main`, null, token, stage));
+      if (!/^[0-9a-f]{40}$/i.test(String(meta.sha || ""))) throw new Error("release source returned an invalid SHA");
+      const sha = meta.sha.toLowerCase(), archive = path.join(stage, "release.tar.gz"), extract = path.join(stage, "extract");
+      const tarOptions = { encoding: "utf8", env: { ...process.env, LC_ALL: "C", LANG: "C" } };
+      fs.mkdirSync(extract);
+      curl(`https://api.github.com/repos/${slug}/tarball/${sha}`, archive, token, stage);
+      const entries = validateEntries(run("tar", ["-tzf", archive], tarOptions));
+      validateLinks(run("tar", ["-tvzf", archive], tarOptions));
+      run("tar", ["-xzf", archive, "-C", extract, "--no-same-owner", "--no-same-permissions"], tarOptions);
+      const roots = [...new Set(entries.map((entry) => entry.split("/")[0]))];
+      if (roots.length !== 1) throw new Error("release archive must have one root");
+      return { source: path.join(extract, roots[0]), sha, archive_sha256: hash(fs.readFileSync(archive)), cleanup: () => fs.rmSync(stage, { recursive: true, force: true }) };
+    } catch (error) {
+      fs.rmSync(stage, { recursive: true, force: true });
+      throw error;
+    }
   }
   return { resolve };
 }
@@ -123,6 +139,7 @@ function runBootstrap(argv, deps = {}) {
   const target = path.resolve(opts.target), installed = detectInstalled(target);
   if (opts.channel && opts.channel !== installed.channel) throw new Error(`requested ${opts.channel} but installed edition is ${installed.channel}`);
   const channel = opts.channel || installed.channel;
+  validateSourceRepo(installed.repo, channel);
   const resolver = deps.resolver || createResolver(deps);
   const resolved = resolver.resolve({ repo: installed.repo, channel, entitlement: opts.entitlement });
   try {
@@ -133,10 +150,17 @@ function runBootstrap(argv, deps = {}) {
     if (opts.applyPlan !== plan.digest) throw new Error(`plan digest changed: expected ${opts.applyPlan}, current ${plan.digest}`);
     const applyArgs = previewArgs.slice(0, -1);
     const output = (deps.execFileSync || execFileSync)(process.execPath, applyArgs, { cwd: target, encoding: "utf8" });
-    (deps.execFileSync || execFileSync)(process.execPath, [installed.cli, "upgrade", "--check"], { cwd: target, encoding: "utf8" });
+    try {
+      (deps.execFileSync || execFileSync)(process.execPath, [installed.cli, "upgrade", "--check"], { cwd: target, encoding: "utf8" });
+    } catch (error) {
+      throw new Error(`engine applied but independent post-apply verification failed; inspect the target before retrying: ${error.message}`);
+    }
     const receiptDir = path.join(target, "coord/.runtime/upgrade-receipts");
     fs.mkdirSync(receiptDir, { recursive: true });
-    fs.writeFileSync(path.join(receiptDir, `bootstrap-${plan.digest}.json`), JSON.stringify({ schema: 1, plan_digest: plan.digest, source_sha: resolved.sha, channel, prior_version: installed.version, completed_at: new Date().toISOString() }, null, 2) + "\n", { mode: 0o600 });
+    const receipt = path.join(receiptDir, `bootstrap-${plan.digest}.json`);
+    const receiptTemp = `${receipt}.tmp-${process.pid}`;
+    fs.writeFileSync(receiptTemp, JSON.stringify({ schema: 1, plan_digest: plan.digest, source_sha: resolved.sha, channel, prior_version: installed.version, completed_at: new Date().toISOString() }, null, 2) + "\n", { mode: 0o600, flag: "wx" });
+    fs.renameSync(receiptTemp, receipt);
     return { code: 0, verdict: "pass", plan_digest: plan.digest, source_sha: resolved.sha, output };
   } finally { resolved.cleanup(); }
 }
@@ -153,4 +177,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { buildPlan, createResolver, detectInstalled, parseRepo, runBootstrap, validateEntries, validateLinks };
+module.exports = { buildPlan, createResolver, detectInstalled, parseRepo, runBootstrap, validateEntries, validateLinks, validateSourceRepo };

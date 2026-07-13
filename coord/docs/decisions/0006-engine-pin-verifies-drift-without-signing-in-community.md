@@ -1,7 +1,7 @@
 # ADR 0006: Engine-pin verifies drift without cryptographic signing in Community
 
 - **Status:** Accepted
-- **Ticket:** COORD-435 (records the ENT-011 decision)
+- **Ticket:** COORD-435, COORD-503, ENT-011
 - **Date:** 2026-07
 - **Linked scope:** `coord/engine-pin.json`; `TEMPLATE_SYNC_MANIFEST.json`; the engine-pin check; `gov upgrade` re-pin/verify/rollback.
 
@@ -17,6 +17,7 @@ verifies drift **without** signing, and where signing lives instead.
 
 ## Linked Scope
 
+- Linked ticket: COORD-503.
 `coord/engine-pin.json` (the pinned manifest version/digest), the template-sync
 manifest checksums, the engine-pin verification, and the `gov upgrade` flow that
 re-pins, verifies, and rolls back on failure.
