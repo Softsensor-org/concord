@@ -10,9 +10,8 @@
 //   - the pinned engine version (the TEMPLATE_SYNC_MANIFEST manifest_version),
 //   - the sha256 fingerprint of TEMPLATE_SYNC_MANIFEST.json (reusing ENT-010's
 //     conformance-attestation fingerprint computation so the two AGREE), and
-//   - a per-file checksum snapshot of the exact-match engine surface the manifest
-//     declares, so drift can be reported per offending PATH (not just "the
-//     fingerprint changed").
+//   - per-file checksums and POSIX permission modes (where supported) for the
+//     exact-match engine surface, so drift can be reported per offending PATH.
 //
 // `gov verify-engine --pin` (re)pins to the CURRENT surface — the ONLY mutation.
 // `gov verify-engine` is READ-ONLY: it re-derives the live surface and compares
@@ -38,6 +37,7 @@ function sha256Hex(buf) {
 
 module.exports = function createEnginePin(deps = {}) {
   const { coordDir, fail } = deps;
+  const supportsPosixModes = (deps.platform || process.platform) !== "win32";
 
   const failFn =
     fail ||
@@ -77,10 +77,9 @@ module.exports = function createEnginePin(deps = {}) {
     };
   }
 
-  // Snapshot the per-file checksums of the exact-match engine surface the manifest
-  // declares. Mirrors check-template-sync's checksum contract (sha256 + bytes) but
-  // captures the LIVE state so drift can be reported per offending path. A missing
-  // file is recorded as { missing: true } so dropping a tracked file is drift too.
+  // Snapshot checksums and, where POSIX mode bits are meaningful, permission
+  // modes for the exact-match engine surface. Windows intentionally omits mode
+  // enforcement because its ACL/read-only model does not represent POSIX execute bits.
   function deriveSurfaceFiles(manifest) {
     const repoRoot = path.join(coordDir, "..");
     const files = {};
@@ -93,7 +92,11 @@ module.exports = function createEnginePin(deps = {}) {
         continue;
       }
       const buf = fs.readFileSync(absPath);
-      files[item.path] = { sha256: sha256Hex(buf), bytes: buf.length };
+      files[item.path] = {
+        sha256: sha256Hex(buf),
+        bytes: buf.length,
+        ...(supportsPosixModes ? { mode: fs.statSync(absPath).mode & 0o777 } : {}),
+      };
     }
     return files;
   }
@@ -191,16 +194,19 @@ module.exports = function createEnginePin(deps = {}) {
         driftedFiles.push({ path: filePath, kind: "missing", detail: "tracked file is missing on disk" });
       } else if (pinnedEntry.missing) {
         driftedFiles.push({ path: filePath, kind: "appeared", detail: "file was missing at pin time, now present" });
-      } else if (
-        pinnedEntry.sha256 !== liveEntry.sha256 ||
-        pinnedEntry.bytes !== liveEntry.bytes
-      ) {
+      } else if (pinnedEntry.sha256 !== liveEntry.sha256 || pinnedEntry.bytes !== liveEntry.bytes) {
         driftedFiles.push({
           path: filePath,
           kind: "changed",
           detail:
             `pinned sha256=${pinnedEntry.sha256} bytes=${pinnedEntry.bytes}, ` +
             `live sha256=${liveEntry.sha256} bytes=${liveEntry.bytes}`,
+        });
+      } else if (supportsPosixModes && pinnedEntry.mode !== liveEntry.mode) {
+        driftedFiles.push({
+          path: filePath,
+          kind: "mode-changed",
+          detail: `pinned mode=${pinnedEntry.mode?.toString(8)}, live mode=${liveEntry.mode?.toString(8)}`,
         });
       }
     }

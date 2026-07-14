@@ -276,7 +276,7 @@ module.exports = function createConformanceVerbs(deps = {}) {
 
   // ENT-011: pin the engine surface to a known-good version + detect drift from it.
   //   - --pin:   (re)pin to the CURRENT surface (manifest version + fingerprint +
-  //              per-file checksum snapshot). The ONLY mutation — writes
+  //              per-file checksum and supported POSIX-mode snapshot). The ONLY mutation — writes
   //              coord/engine-pin.json.
   //   - default: READ-ONLY drift check — re-derive the live surface and compare it
   //              against the pin; report in-sync or DRIFTED (which files / whether

@@ -25,18 +25,30 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
+const { spawn, spawnSync } = require("node:child_process");
+const { once } = require("node:events");
 
 const createCoordUpgrade = require("./coord-upgrade.js");
 const { dispatch, buildRegistry } = require("./coord-cli.js");
 
 // A minimal exact-match manifest tracking two engine files. (The manifest file
 // itself is always part of the applied surface.)
-function manifest(version, items) {
+function checksum(content) {
+  const bytes = Buffer.from(content);
+  return {
+    algo: "sha256",
+    hex: crypto.createHash("sha256").update(bytes).digest("hex"),
+    bytes: bytes.length,
+  };
+}
+
+function manifest(version, items, contents = {}) {
   return JSON.stringify(
     {
       schema_version: 1,
       manifest_version: version,
-      items: items.map((p) => ({ path: p, match_policy: "exact" })),
+      items: items.map((p) => ({ path: p, match_policy: "exact", checksum: checksum(contents[p] || "") })),
     },
     null,
     2
@@ -58,6 +70,27 @@ function capture() {
   return { log: (l) => lines.push(String(l)), text: () => lines.join("\n") };
 }
 
+function fixedReleaseSource(source) {
+  return {
+    resolveLatest: () => ({
+      sourceRoot: source,
+      ref: "refs/heads/main",
+      sha: "2".repeat(40),
+      archiveSha256: "3".repeat(64),
+      cleanup: () => {},
+    }),
+  };
+}
+
+async function waitForFile(file, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(file)) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`timed out waiting for ${file}`);
+}
+
 // Build a SOURCE engine (new version) and a TARGET repo (old version). The
 // source bumps alpha.js, adds gamma.js, leaves beta.js identical. The target
 // also has project-local files that must never be touched.
@@ -67,15 +100,22 @@ function makeFixture(opts = {}) {
   const target = path.join(tmp, "target");
 
   const tracked = ["coord/scripts/alpha.js", "coord/scripts/beta.js", "coord/scripts/gamma.js"];
+  const sourceContents = {
+    "coord/scripts/alpha.js": "module.exports = 2; // v2\n",
+    "coord/scripts/beta.js": "module.exports = 'beta';\n",
+    "coord/scripts/gamma.js": "module.exports = 'gamma-new';\n",
+  };
 
   // SOURCE (new engine v2): alpha changed, beta same, gamma new.
-  writeFile(source, "coord/TEMPLATE_SYNC_MANIFEST.json", manifest("engine-v2", tracked));
-  writeFile(source, "coord/scripts/alpha.js", "module.exports = 2; // v2\n");
-  writeFile(source, "coord/scripts/beta.js", "module.exports = 'beta';\n");
-  writeFile(source, "coord/scripts/gamma.js", "module.exports = 'gamma-new';\n");
+  writeFile(source, "coord/TEMPLATE_SYNC_MANIFEST.json", manifest("engine-v2", tracked, sourceContents));
+  for (const [rel, content] of Object.entries(sourceContents)) writeFile(source, rel, content);
 
   // TARGET (old engine v1): alpha old, beta same, gamma absent. Plus project-local.
-  writeFile(target, "coord/TEMPLATE_SYNC_MANIFEST.json", manifest("engine-v1", tracked));
+  writeFile(target, "coord/TEMPLATE_SYNC_MANIFEST.json", manifest("engine-v1", tracked, {
+    "coord/scripts/alpha.js": "module.exports = 1; // v1\n",
+    "coord/scripts/beta.js": "module.exports = 'beta';\n",
+    "coord/scripts/gamma.js": "",
+  }));
   writeFile(target, "coord/scripts/alpha.js", "module.exports = 1; // v1\n");
   writeFile(target, "coord/scripts/beta.js", "module.exports = 'beta';\n");
   writeFile(target, "coord/project.config.js", "module.exports = { repos: {} }; // LOCAL\n");
@@ -247,6 +287,402 @@ test("automatic latest upgrade is plan-only, digest-gated, and writes a receipt"
   }
 });
 
+test("reviewed plan refuses a user surface edit and requires a new digest", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    writeFile(target, "coord/.coord-engine.json", JSON.stringify({
+      schema: 1,
+      engine_version: "engine-v1",
+      source: { repo: "https://github.com/Softsensor-org/concord", channel: "community", ref: "old", sha: "1".repeat(40) },
+    }) + "\n");
+    const command = createCoordUpgrade({ log: () => {}, cwd: () => tmp, releaseSource: fixedReleaseSource(source) });
+    const planned = command.run(["--dir", target]);
+    assert.strictEqual(planned.code, 0);
+    writeFile(target, "coord/scripts/alpha.js", "developer edit after review\n");
+
+    const refused = command.run(["--dir", target, "--apply-plan", planned.planDigest]);
+    assert.strictEqual(refused.code, 1);
+    assert.strictEqual(refused.error, "plan digest mismatch");
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), "developer edit after review\n");
+    assert.ok(!fs.existsSync(path.join(target, "coord/scripts/gamma.js")));
+
+    const replanned = command.run(["--dir", target]);
+    assert.notStrictEqual(replanned.planDigest, planned.planDigest);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("reviewed plan digest binds the upstream pin identity", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const pin = {
+      schema: 1,
+      engine_version: "engine-v1",
+      source: { repo: "https://github.com/Softsensor-org/concord", channel: "community", ref: "old", sha: "1".repeat(40) },
+    };
+    writeFile(target, "coord/.coord-engine.json", JSON.stringify(pin) + "\n");
+    const command = createCoordUpgrade({ log: () => {}, cwd: () => tmp, releaseSource: fixedReleaseSource(source) });
+    const planned = command.run(["--dir", target]);
+    pin.source.sha = "4".repeat(40);
+    writeFile(target, "coord/.coord-engine.json", JSON.stringify(pin) + "\n");
+
+    const refused = command.run(["--dir", target, "--apply-plan", planned.planDigest]);
+    assert.strictEqual(refused.code, 1);
+    assert.strictEqual(refused.error, "plan digest mismatch");
+    assert.strictEqual(JSON.parse(read(target, "coord/.coord-engine.json")).source.sha, "4".repeat(40));
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), "module.exports = 1; // v1\n");
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("final pre-apply revalidation refuses an edit made inside the locked invocation", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const manifestBefore = read(target, "coord/TEMPLATE_SYNC_MANIFEST.json");
+    const result = createCoordUpgrade({
+      log: () => {},
+      cwd: () => tmp,
+      checkpoint: (name) => {
+        if (name === "before-preapply-revalidation") {
+          writeFile(target, "coord/scripts/alpha.js", "concurrent developer edit\n");
+        }
+      },
+    }).run(["--from", source, "--dir", target]);
+
+    assert.strictEqual(result.code, 1);
+    assert.strictEqual(result.error, "target changed after planning");
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), "concurrent developer edit\n");
+    assert.strictEqual(read(target, "coord/TEMPLATE_SYNC_MANIFEST.json"), manifestBefore);
+    assert.ok(!fs.existsSync(path.join(target, "coord/scripts/gamma.js")));
+    assert.ok(!fs.existsSync(path.join(target, "coord/engine-pin.json")));
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("two live upgrade processes cannot interleave on one target", { skip: process.platform === "win32" }, async () => {
+  const { tmp, source, target } = makeFixture();
+  const ready = path.join(tmp, "holder-ready");
+  const release = path.join(tmp, "holder-release");
+  const contenderResult = path.join(tmp, "contender-result.json");
+  const modulePath = path.resolve(__dirname, "coord-upgrade.js");
+  const holderScript = [
+    "const fs = require('node:fs');",
+    "const create = require(process.argv[1]);",
+    "const ready = process.argv[4]; const release = process.argv[5];",
+    "const wait = new Int32Array(new SharedArrayBuffer(4));",
+    "const result = create({ log: () => {}, checkpoint(name) {",
+    "  if (name === 'after-upgrade-lock-acquired') {",
+    "    fs.writeFileSync(ready, 'ready');",
+    "    while (!fs.existsSync(release)) Atomics.wait(wait, 0, 0, 25);",
+    "  }",
+    "} }).run(['--from', process.argv[2], '--dir', process.argv[3]]);",
+    "process.exitCode = result.code;",
+  ].join("\n");
+  const contenderScript = [
+    "const fs = require('node:fs');",
+    "const create = require(process.argv[1]);",
+    "const result = create({ log: () => {} }).run(['--from', process.argv[2], '--dir', process.argv[3]]);",
+    "fs.writeFileSync(process.argv[4], JSON.stringify(result)); process.exitCode = result.code;",
+  ].join("\n");
+  const holder = spawn(process.execPath, ["-e", holderScript, modulePath, source, target, ready, release], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  try {
+    await waitForFile(ready);
+    const liveLockDir = path.join(target, "coord/.runtime/upgrade-lock");
+    assert.strictEqual(fs.statSync(liveLockDir).mode & 0o777, 0o700);
+    assert.strictEqual(fs.statSync(path.join(liveLockDir, "owner.json")).mode & 0o777, 0o600);
+    const contender = spawnSync(process.execPath, ["-e", contenderScript, modulePath, source, target, contenderResult], { encoding: "utf8" });
+    assert.strictEqual(contender.status, 1);
+    assert.ok(fs.existsSync(contenderResult), contender.stderr || "contender produced no result");
+    const refused = JSON.parse(fs.readFileSync(contenderResult, "utf8"));
+    assert.match(refused.error, /upgrade lock busy/);
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), "module.exports = 1; // v1\n");
+    assert.ok(!fs.existsSync(path.join(target, "coord/scripts/gamma.js")));
+
+    fs.writeFileSync(release, "release");
+    const [code] = await once(holder, "close");
+    assert.strictEqual(code, 0);
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), "module.exports = 2; // v2\n");
+    assert.ok(!fs.existsSync(path.join(target, "coord/.runtime/upgrade-lock")));
+  } finally {
+    if (holder.exitCode === null && holder.signalCode === null) holder.kill("SIGKILL");
+    cleanup(tmp);
+  }
+});
+
+test("dead same-host lock recovery records the prior holder and decision", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const lockDir = path.join(target, "coord/.runtime/upgrade-lock");
+    fs.mkdirSync(lockDir, { recursive: true, mode: 0o700 });
+    writeFile(lockDir, "owner.json", JSON.stringify({
+      schema: 1,
+      lock_id: "a".repeat(32),
+      pid: 424242,
+      host: os.hostname(),
+      acquired_at: "2026-07-14T00:00:00.000Z",
+    }) + "\n");
+    const cap = capture();
+    const result = createCoordUpgrade({
+      log: cap.log,
+      cwd: () => tmp,
+      signalProcess: () => {
+        const error = new Error("not running");
+        error.code = "ESRCH";
+        throw error;
+      },
+      nowMs: () => Date.parse("2026-07-14T12:00:00.000Z"),
+    }).run(["--from", source, "--dir", target, "--dry-run"]);
+
+    assert.strictEqual(result.code, 0);
+    assert.ok(!fs.existsSync(lockDir));
+    const receiptDir = path.join(target, "coord/.runtime/upgrade-receipts");
+    const receiptName = fs.readdirSync(receiptDir).find((name) => name.startsWith("lock-recovery-"));
+    assert.ok(receiptName);
+    const receipt = JSON.parse(fs.readFileSync(path.join(receiptDir, receiptName), "utf8"));
+    assert.strictEqual(receipt.outcome, "stale-lock-recovered");
+    assert.strictEqual(receipt.prior_holder.pid, 424242);
+    assert.match(receipt.recovery_reason, /no longer running/);
+    assert.strictEqual(fs.statSync(path.join(receiptDir, receiptName)).mode & 0o777, 0o600);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("foreign-host lock is fail-closed and is not recovered by age alone", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const lockDir = path.join(target, "coord/.runtime/upgrade-lock");
+    fs.mkdirSync(lockDir, { recursive: true, mode: 0o700 });
+    writeFile(lockDir, "owner.json", JSON.stringify({
+      schema: 1,
+      lock_id: "b".repeat(32),
+      pid: 10,
+      host: "another-host",
+      acquired_at: "2000-01-01T00:00:00.000Z",
+    }) + "\n");
+    const result = createCoordUpgrade({ log: () => {}, cwd: () => tmp, hostname: () => "this-host" })
+      .run(["--from", source, "--dir", target, "--dry-run"]);
+    assert.strictEqual(result.code, 1);
+    assert.match(result.error, /foreign-host ownership cannot be verified safely/);
+    assert.ok(fs.existsSync(lockDir));
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("--check reports a live upgrade lock without mutating it", () => {
+  const { tmp, target } = makeFixture();
+  try {
+    const lockDir = path.join(target, "coord/.runtime/upgrade-lock");
+    fs.mkdirSync(lockDir, { recursive: true, mode: 0o700 });
+    writeFile(lockDir, "owner.json", JSON.stringify({
+      schema: 1,
+      lock_id: "c".repeat(32),
+      pid: process.pid,
+      host: os.hostname(),
+      acquired_at: "2026-07-14T12:00:00.000Z",
+    }) + "\n");
+    const before = fs.readFileSync(path.join(lockDir, "owner.json"));
+    const result = createCoordUpgrade({ log: () => {} }).run(["--check", "--dir", target]);
+    assert.strictEqual(result.code, 1);
+    assert.match(result.error, /currently owns the target lock/);
+    assert.deepStrictEqual(fs.readFileSync(path.join(lockDir, "owner.json")), before);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("invalid target path is refused without creating a repository skeleton", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "coord-508-invalid-"));
+  const missing = path.join(tmp, "typo-target");
+  try {
+    const result = createCoordUpgrade({ log: () => {}, cwd: () => tmp })
+      .run(["--from", tmp, "--dir", missing]);
+    assert.strictEqual(result.code, 1);
+    assert.match(result.error, /ENOENT|target root must be a real directory/);
+    assert.ok(!fs.existsSync(missing));
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("POSIX upgrades copy executable modes and treat mode-only drift as a managed change", { skip: process.platform === "win32" }, () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    fs.chmodSync(path.join(source, "coord/scripts/alpha.js"), 0o755);
+    fs.chmodSync(path.join(source, "coord/scripts/beta.js"), 0o755);
+    fs.chmodSync(path.join(source, "coord/scripts/gamma.js"), 0o750);
+    fs.chmodSync(path.join(target, "coord/scripts/alpha.js"), 0o640);
+    fs.chmodSync(path.join(target, "coord/scripts/beta.js"), 0o644);
+
+    const result = createCoordUpgrade({ log: () => {}, cwd: () => tmp })
+      .run(["--from", source, "--dir", target]);
+    assert.strictEqual(result.code, 0);
+    assert.strictEqual(result.modeChanged, 1, "unchanged beta bytes still require a mode action");
+    assert.strictEqual(fs.statSync(path.join(target, "coord/scripts/alpha.js")).mode & 0o777, 0o755);
+    assert.strictEqual(fs.statSync(path.join(target, "coord/scripts/beta.js")).mode & 0o777, 0o755);
+    assert.strictEqual(fs.statSync(path.join(target, "coord/scripts/gamma.js")).mode & 0o777, 0o750);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("mode verification failure rolls bytes and prior modes back exactly", { skip: process.platform === "win32" }, () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const alphaPath = path.join(target, "coord/scripts/alpha.js");
+    const betaPath = path.join(target, "coord/scripts/beta.js");
+    const alphaBefore = fs.readFileSync(alphaPath);
+    fs.chmodSync(alphaPath, 0o640);
+    fs.chmodSync(betaPath, 0o600);
+    fs.chmodSync(path.join(source, "coord/scripts/alpha.js"), 0o755);
+    fs.chmodSync(path.join(source, "coord/scripts/beta.js"), 0o755);
+    let corruptOnce = true;
+    const result = createCoordUpgrade({
+      log: () => {},
+      cwd: () => tmp,
+      checkpoint: (name) => {
+        if (corruptOnce && name === "after-write:coord/scripts/alpha.js") {
+          corruptOnce = false;
+          fs.chmodSync(alphaPath, 0o644);
+        }
+      },
+    }).run(["--from", source, "--dir", target]);
+
+    assert.strictEqual(result.code, 1);
+    assert.strictEqual(result.error, "independent target verification failed");
+    assert.deepStrictEqual(fs.readFileSync(alphaPath), alphaBefore);
+    assert.strictEqual(fs.statSync(alphaPath).mode & 0o777, 0o640);
+    assert.strictEqual(fs.statSync(betaPath).mode & 0o777, 0o600);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("retired exact-match engine files are removed and listed in the success receipt", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const tracked = ["coord/scripts/alpha.js", "coord/scripts/gamma.js"];
+    const contents = Object.fromEntries(tracked.map((rel) => [rel, read(source, rel)]));
+    writeFile(source, "coord/TEMPLATE_SYNC_MANIFEST.json", manifest("engine-v3", tracked, contents));
+    const result = createCoordUpgrade({ log: () => {}, cwd: () => tmp })
+      .run(["--from", source, "--dir", target]);
+
+    assert.strictEqual(result.code, 0);
+    assert.strictEqual(result.removed, 1);
+    assert.ok(!fs.existsSync(path.join(target, "coord/scripts/beta.js")));
+    assert.strictEqual(read(target, "coord/project.config.js"), "module.exports = { repos: {} }; // LOCAL\n");
+    const receiptDir = path.join(target, "coord/.runtime/upgrade-receipts");
+    const success = fs.readdirSync(receiptDir)
+      .map((name) => JSON.parse(fs.readFileSync(path.join(receiptDir, name), "utf8")))
+      .find((receipt) => receipt.outcome === "success");
+    assert.deepStrictEqual(success.removed, ["coord/scripts/beta.js"]);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("developer-modified retired file is refused before any mutation", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const tracked = ["coord/scripts/alpha.js", "coord/scripts/gamma.js"];
+    const contents = Object.fromEntries(tracked.map((rel) => [rel, read(source, rel)]));
+    writeFile(source, "coord/TEMPLATE_SYNC_MANIFEST.json", manifest("engine-v3", tracked, contents));
+    writeFile(target, "coord/scripts/beta.js", "developer-owned change\n");
+    const alphaBefore = read(target, "coord/scripts/alpha.js");
+    const manifestBefore = read(target, "coord/TEMPLATE_SYNC_MANIFEST.json");
+    const result = createCoordUpgrade({ log: () => {}, cwd: () => tmp })
+      .run(["--from", source, "--dir", target]);
+
+    assert.strictEqual(result.code, 1);
+    assert.strictEqual(result.error, "retired engine file modified");
+    assert.deepStrictEqual(result.conflicts, ["coord/scripts/beta.js"]);
+    assert.strictEqual(read(target, "coord/scripts/beta.js"), "developer-owned change\n");
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), alphaBefore);
+    assert.strictEqual(read(target, "coord/TEMPLATE_SYNC_MANIFEST.json"), manifestBefore);
+    assert.ok(!fs.existsSync(path.join(target, "coord/scripts/gamma.js")));
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("exact-to-advisory transition relinquishes ownership without deleting the file", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const alpha = read(source, "coord/scripts/alpha.js");
+    const gamma = read(source, "coord/scripts/gamma.js");
+    const advisoryManifest = {
+      schema_version: 1,
+      manifest_version: "engine-v3",
+      items: [
+        { path: "coord/scripts/alpha.js", match_policy: "exact", checksum: checksum(alpha) },
+        { path: "coord/scripts/beta.js", match_policy: "advisory" },
+        { path: "coord/scripts/gamma.js", match_policy: "exact", checksum: checksum(gamma) },
+      ],
+    };
+    writeFile(source, "coord/TEMPLATE_SYNC_MANIFEST.json", JSON.stringify(advisoryManifest, null, 2) + "\n");
+    const betaBefore = read(target, "coord/scripts/beta.js");
+    const result = createCoordUpgrade({ log: () => {}, cwd: () => tmp })
+      .run(["--from", source, "--dir", target]);
+    assert.strictEqual(result.code, 0);
+    assert.strictEqual(result.removed, 0);
+    assert.strictEqual(read(target, "coord/scripts/beta.js"), betaBefore);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("failure after retired-file removal restores its bytes and mode", { skip: process.platform === "win32" }, () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const tracked = ["coord/scripts/alpha.js", "coord/scripts/gamma.js"];
+    const contents = Object.fromEntries(tracked.map((rel) => [rel, read(source, rel)]));
+    writeFile(source, "coord/TEMPLATE_SYNC_MANIFEST.json", manifest("engine-v3", tracked, contents));
+    const betaPath = path.join(target, "coord/scripts/beta.js");
+    const betaBefore = fs.readFileSync(betaPath);
+    fs.chmodSync(betaPath, 0o750);
+    const result = createCoordUpgrade({
+      log: () => {},
+      cwd: () => tmp,
+      checkpoint: (name) => {
+        if (name === "after-remove:coord/scripts/beta.js") throw new Error("injected removal failure");
+      },
+    }).run(["--from", source, "--dir", target]);
+
+    assert.strictEqual(result.code, 1);
+    assert.deepStrictEqual(fs.readFileSync(betaPath), betaBefore);
+    assert.strictEqual(fs.statSync(betaPath).mode & 0o777, 0o750);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("Windows policy skips executable-bit drift and preserves modes for updated files", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const alphaPath = path.join(target, "coord/scripts/alpha.js");
+    const betaPath = path.join(target, "coord/scripts/beta.js");
+    fs.chmodSync(alphaPath, 0o640);
+    fs.chmodSync(betaPath, 0o644);
+    fs.chmodSync(path.join(source, "coord/scripts/alpha.js"), 0o755);
+    fs.chmodSync(path.join(source, "coord/scripts/beta.js"), 0o755);
+    const result = createCoordUpgrade({ log: () => {}, cwd: () => tmp, platform: "win32" })
+      .run(["--from", source, "--dir", target]);
+
+    assert.strictEqual(result.code, 0);
+    assert.strictEqual(result.modeChanged, 0);
+    assert.strictEqual(fs.statSync(alphaPath).mode & 0o777, 0o640);
+    assert.strictEqual(fs.statSync(betaPath).mode & 0o777, 0o644);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
 test("--help prints usage and exits 0", () => {
   const cap = capture();
   const result = createCoordUpgrade({ log: cap.log }).run(["--help"]);
@@ -274,6 +710,318 @@ test("malformed source: manifest-tracked file missing from source tree → exit 
     // Refused before any write.
     assert.strictEqual(read(target, "coord/scripts/alpha.js"), alphaBefore);
     assert.ok(!fs.existsSync(path.join(target, "coord/engine-pin.json")));
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("source checksum mismatch is rejected before target mutation", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const before = read(target, "coord/scripts/alpha.js");
+    writeFile(source, "coord/scripts/alpha.js", "tampered after manifest generation\n");
+    const cap = capture();
+    const result = createCoordUpgrade({ log: cap.log, cwd: () => tmp })
+      .run(["--from", source, "--dir", target]);
+    assert.strictEqual(result.code, 1);
+    assert.match(cap.text(), /source checksum mismatch/);
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), before);
+    assert.ok(!fs.existsSync(path.join(target, "coord/engine-pin.json")));
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("manifest traversal and case-ambiguous duplicate paths are rejected", () => {
+  const command = createCoordUpgrade({ log: () => {} });
+  assert.throws(
+    () => command.surfacePaths({ items: [{ path: "../outside", match_policy: "exact" }] }),
+    /unsafe engine manifest path/
+  );
+  assert.throws(
+    () => command.surfacePaths({ items: [{ path: "../outside", match_policy: "advisory" }] }),
+    /unsafe engine manifest path/
+  );
+  assert.throws(
+    () => command.surfacePaths({
+      items: [
+        { path: "coord/scripts/A.js", match_policy: "exact" },
+        { path: "coord/scripts/a.js", match_policy: "exact" },
+      ],
+    }),
+    /duplicate or case-ambiguous/
+  );
+});
+
+test("target symlink is refused without modifying its destination", { skip: process.platform === "win32" }, () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const targetFile = path.join(target, "coord/scripts/alpha.js");
+    const victim = path.join(tmp, "victim.txt");
+    fs.writeFileSync(victim, "victim-bytes\n");
+    fs.rmSync(targetFile);
+    fs.symlinkSync(victim, targetFile);
+    const cap = capture();
+    const result = createCoordUpgrade({ log: cap.log, cwd: () => tmp })
+      .run(["--from", source, "--dir", target]);
+    assert.strictEqual(result.code, 1);
+    assert.match(cap.text(), /target engine path contains a symbolic link/);
+    assert.strictEqual(fs.readFileSync(victim, "utf8"), "victim-bytes\n");
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("source symlink is refused before target mutation", { skip: process.platform === "win32" }, () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const sourceFile = path.join(source, "coord/scripts/alpha.js");
+    const outside = path.join(tmp, "outside-source.txt");
+    fs.writeFileSync(outside, "module.exports = 2; // v2\n");
+    fs.rmSync(sourceFile);
+    fs.symlinkSync(outside, sourceFile);
+    const before = read(target, "coord/scripts/alpha.js");
+    const cap = capture();
+    const result = createCoordUpgrade({ log: cap.log, cwd: () => tmp })
+      .run(["--from", source, "--dir", target]);
+    assert.strictEqual(result.code, 1);
+    assert.match(cap.text(), /source engine path contains a symbolic link/);
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), before);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("independent post-write verification catches corruption and rolls back before pinning", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const alphaPath = path.join(target, "coord/scripts/alpha.js");
+    const before = fs.readFileSync(alphaPath);
+    let corruptNextAlphaWrite = true;
+    const corruptingFs = Object.create(fs);
+    corruptingFs.renameSync = (from, to) => {
+      if (corruptNextAlphaWrite && to === alphaPath) {
+        corruptNextAlphaWrite = false;
+        const staged = fs.readFileSync(from);
+        fs.writeFileSync(from, staged.subarray(0, 8));
+      }
+      return fs.renameSync(from, to);
+    };
+    const cap = capture();
+    const result = createCoordUpgrade({ fs: corruptingFs, log: cap.log, cwd: () => tmp })
+      .run(["--from", source, "--dir", target]);
+    assert.strictEqual(result.code, 1);
+    assert.strictEqual(result.error, "independent target verification failed");
+    assert.match(cap.text(), /independent target verification failed/);
+    assert.deepStrictEqual(fs.readFileSync(alphaPath), before);
+    assert.ok(!fs.existsSync(path.join(target, "coord/engine-pin.json")));
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("write-time failure restores the full surface and records a redacted rollback receipt", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const alphaBefore = read(target, "coord/scripts/alpha.js");
+    const manifestBefore = read(target, "coord/TEMPLATE_SYNC_MANIFEST.json");
+    const result = createCoordUpgrade({
+      log: () => {},
+      cwd: () => tmp,
+      checkpoint: (name) => {
+        if (name === "after-write:coord/scripts/alpha.js") throw new Error(`injected write interruption at ${target}`);
+      },
+    }).run(["--from", source, "--dir", target]);
+
+    assert.strictEqual(result.code, 1);
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), alphaBefore);
+    assert.strictEqual(read(target, "coord/TEMPLATE_SYNC_MANIFEST.json"), manifestBefore);
+    assert.ok(!fs.existsSync(path.join(target, "coord/scripts/gamma.js")));
+    assert.deepStrictEqual(
+      fs.readdirSync(path.join(target, "coord/.runtime/upgrade-transactions")),
+      [],
+      "completed rollback must remove durable backup state"
+    );
+    const receiptsDir = path.join(target, "coord/.runtime/upgrade-receipts");
+    const receipts = fs.readdirSync(receiptsDir);
+    assert.strictEqual(receipts.length, 1);
+    const receipt = JSON.parse(fs.readFileSync(path.join(receiptsDir, receipts[0]), "utf8"));
+    assert.strictEqual(receipt.outcome, "rolled-back");
+    assert.match(receipt.original_error, /injected write interruption at \[REDACTED\]/);
+    assert.ok(!receipt.original_error.includes(target));
+    assert.strictEqual(fs.statSync(path.join(receiptsDir, receipts[0])).mode & 0o777, 0o600);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("post-pin failure restores the prior integrity and upstream pins byte-for-byte", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const oldIntegrityPin = "{\"old_integrity\":true}\n";
+    const oldUpstreamPin = "{\"old_upstream\":true}\n";
+    writeFile(target, "coord/engine-pin.json", oldIntegrityPin);
+    writeFile(target, "coord/.coord-engine.json", oldUpstreamPin);
+    const alphaBefore = read(target, "coord/scripts/alpha.js");
+    const result = createCoordUpgrade({
+      log: () => {},
+      cwd: () => tmp,
+      checkpoint: (name) => {
+        if (name === "after-integrity-pin") throw new Error("injected post-pin failure");
+      },
+    }).run(["--from", source, "--dir", target]);
+
+    assert.strictEqual(result.code, 1);
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), alphaBefore);
+    assert.strictEqual(read(target, "coord/engine-pin.json"), oldIntegrityPin);
+    assert.strictEqual(read(target, "coord/.coord-engine.json"), oldUpstreamPin);
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("every apply mutation boundary restores exact pre-state and redacts entitlement material", async (t) => {
+  const boundaries = [
+    "after-transaction-prepared",
+    "after-transaction-applying",
+    "after-write:coord/TEMPLATE_SYNC_MANIFEST.json",
+    "after-write:coord/scripts/alpha.js",
+    "after-write:coord/scripts/gamma.js",
+    "after-transaction-verifying",
+    "after-independent-verification",
+    "after-integrity-pin",
+    "after-transaction-committing",
+    "after-upstream-pin",
+    "after-success-receipt",
+  ];
+  for (const boundary of boundaries) {
+    await t.test(boundary, () => {
+      const { tmp, source, target } = makeFixture();
+      try {
+        const secret = "tok-507-secret";
+        const oldIntegrityPin = "{\"old_integrity\":true}\n";
+        const oldUpstreamPin = "{\"old_upstream\":true}\n";
+        writeFile(target, "coord/engine-pin.json", oldIntegrityPin);
+        writeFile(target, "coord/.coord-engine.json", oldUpstreamPin);
+        const alphaBefore = read(target, "coord/scripts/alpha.js");
+        const manifestBefore = read(target, "coord/TEMPLATE_SYNC_MANIFEST.json");
+        const cap = capture();
+        const result = createCoordUpgrade({
+          log: cap.log,
+          cwd: () => tmp,
+          checkpoint: (name) => {
+            if (name === boundary) throw new Error(`injected ${secret} at ${boundary}`);
+          },
+        }).run([
+          "--from", source, "--dir", target,
+          "--channel", "enterprise", "--entitlement", secret,
+        ]);
+
+        assert.strictEqual(result.code, 1);
+        assert.strictEqual(read(target, "coord/scripts/alpha.js"), alphaBefore);
+        assert.strictEqual(read(target, "coord/TEMPLATE_SYNC_MANIFEST.json"), manifestBefore);
+        assert.ok(!fs.existsSync(path.join(target, "coord/scripts/gamma.js")));
+        assert.strictEqual(read(target, "coord/engine-pin.json"), oldIntegrityPin);
+        assert.strictEqual(read(target, "coord/.coord-engine.json"), oldUpstreamPin);
+        assert.ok(!cap.text().includes(secret));
+        assert.ok(!JSON.stringify(result).includes(secret));
+        const transactionRoot = path.join(target, "coord/.runtime/upgrade-transactions");
+        if (fs.existsSync(transactionRoot)) assert.deepStrictEqual(fs.readdirSync(transactionRoot), []);
+        const runtime = path.join(target, "coord/.runtime");
+        if (fs.existsSync(runtime)) {
+          const json = fs.readdirSync(runtime, { recursive: true })
+            .filter((name) => String(name).endsWith(".json"))
+            .map((name) => fs.readFileSync(path.join(runtime, name), "utf8"))
+            .join("\n");
+          assert.ok(!json.includes(secret));
+        }
+      } finally {
+        cleanup(tmp);
+      }
+    });
+  }
+});
+
+test("rollback attempts every path and retains the journal when one restore fails", () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const alphaPath = path.join(target, "coord/scripts/alpha.js");
+    const alphaBefore = fs.readFileSync(alphaPath);
+    const manifestBefore = read(target, "coord/TEMPLATE_SYNC_MANIFEST.json");
+    let failRestore = false;
+    const failingFs = Object.create(fs);
+    failingFs.renameSync = (from, to) => {
+      if (failRestore && to === alphaPath && fs.readFileSync(from).equals(alphaBefore)) {
+        throw new Error("injected alpha restore failure");
+      }
+      return fs.renameSync(from, to);
+    };
+    const result = createCoordUpgrade({
+      fs: failingFs,
+      log: () => {},
+      cwd: () => tmp,
+      checkpoint: (name) => {
+        if (name === "after-independent-verification") {
+          failRestore = true;
+          throw new Error("injected apply failure");
+        }
+      },
+    }).run(["--from", source, "--dir", target]);
+
+    assert.strictEqual(result.code, 1);
+    assert.ok(result.rollbackFailures.some((failure) => failure.path === "coord/scripts/alpha.js"));
+    assert.strictEqual(read(target, "coord/TEMPLATE_SYNC_MANIFEST.json"), manifestBefore);
+    assert.ok(!fs.existsSync(path.join(target, "coord/scripts/gamma.js")), "other paths must still restore");
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), "module.exports = 2; // v2\n");
+    const txDirs = fs.readdirSync(path.join(target, "coord/.runtime/upgrade-transactions"));
+    assert.strictEqual(txDirs.length, 1, "failed recovery must retain its durable backups");
+    const journal = JSON.parse(read(target, `coord/.runtime/upgrade-transactions/${txDirs[0]}/transaction.json`));
+    assert.strictEqual(journal.status, "incomplete-recovery");
+    assert.ok(journal.rollback_failures.some((failure) => failure.path === "coord/scripts/alpha.js"));
+  } finally {
+    cleanup(tmp);
+  }
+});
+
+test("SIGKILL leaves a detectable transaction that the next run can recover", { skip: process.platform === "win32" }, () => {
+  const { tmp, source, target } = makeFixture();
+  try {
+    const alphaBefore = read(target, "coord/scripts/alpha.js");
+    const manifestBefore = read(target, "coord/TEMPLATE_SYNC_MANIFEST.json");
+    const modulePath = path.resolve(__dirname, "coord-upgrade.js");
+    const script = [
+      "const create = require(process.argv[1]);",
+      "const command = create({ log: () => {}, checkpoint(name) {",
+      "  if (name === 'after-write:coord/scripts/alpha.js') process.kill(process.pid, 'SIGKILL');",
+      "} });",
+      "command.run(['--from', process.argv[2], '--dir', process.argv[3]]);",
+    ].join("\n");
+    const child = spawnSync(process.execPath, ["-e", script, modulePath, source, target]);
+    assert.strictEqual(child.signal, "SIGKILL");
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), "module.exports = 2; // v2\n");
+
+    const cap = capture();
+    const command = createCoordUpgrade({ log: cap.log });
+    const check = command.run(["--check", "--dir", target]);
+    assert.strictEqual(check.code, 1);
+    assert.match(check.error, /incomplete upgrade transaction/);
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), "module.exports = 2; // v2\n", "check must be read-only");
+
+    const recoveryRun = createCoordUpgrade({
+      log: cap.log,
+      checkpoint: (name) => {
+        if (name === "after-interrupted-recovery") throw new Error("stop after recovery proof");
+      },
+    }).run(["--from", source, "--dir", target]);
+    assert.strictEqual(recoveryRun.code, 1);
+    assert.strictEqual(recoveryRun.error, "stop after recovery proof");
+    assert.match(cap.text(), /recovered 1 interrupted transaction/);
+    assert.strictEqual(read(target, "coord/scripts/alpha.js"), alphaBefore);
+    assert.strictEqual(read(target, "coord/TEMPLATE_SYNC_MANIFEST.json"), manifestBefore);
+    assert.ok(!fs.existsSync(path.join(target, "coord/scripts/gamma.js")));
+    assert.deepStrictEqual(command.pendingTransactionDirs(target), []);
+    const receipts = fs.readdirSync(path.join(target, "coord/.runtime/upgrade-receipts"));
+    assert.ok(receipts.some((name) => name.startsWith("rolled-back-")));
   } finally {
     cleanup(tmp);
   }

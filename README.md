@@ -110,6 +110,15 @@ an inspected, digest-bound plan:
 npm run concord -- upgrade
 npm run concord -- upgrade --apply-plan <digest-from-plan>
 ```
+The upgrade plan binds the immutable release, target engine hashes, and current
+upstream-pin bytes. Apply holds one target lock through verification and receipt
+publication. On POSIX it also copies and verifies executable modes; on Windows
+POSIX execute-bit enforcement is skipped. A file retired from the new managed
+manifest is removed only if its live bytes still match the old manifest, so a
+locally changed retired path is refused rather than deleted. Interrupted applies
+retain a local recovery journal and are reconciled before the next upgrade.
+See [Installer behavior and risk boundary](coord/docs/INSTALLER_BEHAVIOR.md).
+
 Prefer a manual copy? See the [User Manual](USER_MANUAL.md#fallback--manual-copy).
 
 After scaffolding an app, launch that app's own cockpit from the app root:

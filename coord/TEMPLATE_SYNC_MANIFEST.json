@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "manifest_version": "2026-07-13-legacy-bootstrap",
-  "generated_at": "2026-07-13T00:00:00.000Z",
+  "manifest_version": "2026-07-14-upgrade-transaction",
+  "generated_at": "2026-07-14T00:00:00.000Z",
   "purpose": "Post-sync drift detection for reusable template-canonical governance surfaces.",
   "source_inventory": {
     "path": null,
@@ -694,11 +694,11 @@
     {
       "path": "coord/scripts/conformance-verbs.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:2ec55a9a4402",
+      "version_stamp": "sha256:64582a990dd0",
       "checksum": {
         "algo": "sha256",
-        "hex": "2ec55a9a440204b47649bcd10819ee1ce3ad615d4c0e49c76a49909f1d03df1c",
-        "bytes": 17385
+        "hex": "64582a990dd087b5b809f854720cb072fcec1a83fd366fcb893bc42e95e1f67a",
+        "bytes": 17410
       },
       "rationale": "COORD-107: the ENT conformance / engine-integrity CLI verb surface (gov conform ENT-002 journal hash-chain self-verify + ENT-010 signed conformance attestation emit/verify, and gov verify-engine ENT-011 engine version-pin + drift-check) extracted from lifecycle.js to get it back under the documented honest 5000 logical-LOC composition-root ceiling by EXTRACTION (not a budget bump): lifecycle.js dropped 5036 -> 4911. DI-factory wired in lifecycle.js \u2014 the createConformanceAttestation + createEnginePin CREATORS, the journal verifyGovernanceChain, the GovernanceError fail, and COORD_DIR are all injected; conform/verifyEngine are destructured back out for the commands dispatch map + cli.js case. Pure presentation glue over the two injected factories; behavior byte-identical (covered by the existing CLI-level gov conform tests in journal.test.js plus the conformance-attestation.test.js / engine-pin.test.js factory unit tests). READ-ONLY except writing conform --attest's gitignored attestation artifact + first-run keypair and verify-engine --pin's committed coord/engine-pin.json.",
       "source_inventory": {
@@ -881,13 +881,13 @@
     {
       "path": "coord/scripts/coord-upgrade.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:aacaf5465fd9",
+      "version_stamp": "sha256:0559f01d6c92",
       "checksum": {
         "algo": "sha256",
-        "hex": "aacaf5465fd9ae14bfb7fe47b4d1ee179614ea4013c82818cead85e283f52b74",
-        "bytes": 28879
+        "hex": "0559f01d6c925a9ab4f01d63a5bdb2d9fca3ce5d9af577899c93c7f5f35f05b4",
+        "bytes": 65129
       },
-      "rationale": "`coord upgrade` (COORD-118): managed engine-upgrade automation. Applies a new engine surface (--from <dir|bundle>) into an adopter repo, re-pins via engine-pin.js, then verifies; idempotent, --dry-run, and exact byte-rollback on verify failure. Builds ON engine-pin.js (no fingerprint/verify reimplementation); only ever writes manifest-tracked reusable surface, never project-local files. DI-factory so tests inject fs/log/engine-pin.",
+      "rationale": "Managed customer engine upgrades (COORD-118/501/505-509): immutable automatic source resolution or offline --from, reviewed target-bound digests, exclusive target locking, independent checksum/mode verification, durable crash recovery, exact rollback or explicit incomplete-recovery evidence, safe retirement of unchanged old exact-match files, and separate upstream/integrity pins. Board, project config, and product files remain outside the managed surface; operational state is confined to coord/.runtime.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -898,13 +898,13 @@
     {
       "path": "coord/scripts/coord-upgrade.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:77e4d1123ead",
+      "version_stamp": "sha256:f849a9410cbd",
       "checksum": {
         "algo": "sha256",
-        "hex": "77e4d1123ead1fb9a67091f64f1f1865433a4f27c49c126e23cb81137625a5b0",
-        "bytes": 21653
+        "hex": "f849a9410cbdf0a40f5094a9adf5cf4f31180a5c43307d6cbc3803c181288f4f",
+        "bytes": 54834
       },
-      "rationale": "Module-owned tests for `coord upgrade` (COORD-118): apply (update changed + add new surface file, regenerate engine-pin.json, real-engine verify pass), idempotent re-run no-op, --dry-run no-writes, forced-verify-failure exact byte-rollback (incl. removing added files), surface-only guarantee (board/project.config.js never touched), and dispatcher routing. os.tmpdir scratch source+target trees.",
+      "rationale": "Module-owned coord-upgrade tests covering immutable plan/apply binding, source and target containment, concurrent-process exclusion, stale-lock evidence, atomic transaction recovery including SIGKILL, rollback faults and secret redaction, POSIX modes and Windows policy, retired-file conflicts/removal/rollback, project-file preservation, channel pins, and dispatcher routing. Temp fixtures only.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -915,13 +915,13 @@
     {
       "path": "coord/scripts/upgrade-release-source.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:1c6d89129451",
+      "version_stamp": "sha256:0b155627b14f",
       "checksum": {
         "algo": "sha256",
-        "hex": "1c6d891294516ff8d57db40a0fa3a569f905b0b7109b3189fef96d50cb0201d2",
-        "bytes": 4203
+        "hex": "0b155627b14fbc0033bfed6eb995473745f869abb075da4ed5f5df356ded553a",
+        "bytes": 5496
       },
-      "rationale": "COORD-501 immutable channel resolver and archive containment for automatic customer upgrades.",
+      "rationale": "COORD-501/505 immutable channel resolver for automatic upgrades: official repository allowlist, entitlement delivery outside argv, archive digest binding, regular-file/directory-only extraction, contained paths, deterministic locale, and all-path staging cleanup.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -932,13 +932,13 @@
     {
       "path": "coord/scripts/upgrade-release-source.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:aa7e2db5a717",
+      "version_stamp": "sha256:98148c4343a3",
       "checksum": {
         "algo": "sha256",
-        "hex": "aa7e2db5a717e45a315ee5585515a83835e79cc0999f63d9850f17ec90b3473c",
-        "bytes": 1649
+        "hex": "98148c4343a3bdb098eb2fb1cc3208cb9aff28ce40fcb3ada1fb33efbf751d8e",
+        "bytes": 6048
       },
-      "rationale": "COORD-501 tests for repository normalization, archive path containment, and release digests.",
+      "rationale": "COORD-501/505 tests for official repository validation, entitlement handling, archive digest and entry containment, link/special-file refusal, deterministic listing, cleanup, and release identity.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -1085,13 +1085,13 @@
     {
       "path": "coord/scripts/engine-pin.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:c377aa0fd288",
+      "version_stamp": "sha256:de3445bf22b4",
       "checksum": {
         "algo": "sha256",
-        "hex": "c377aa0fd288cb38c82f4ec215722b59646b21bf4ad765e65a1942ad96ebeb43",
-        "bytes": 8834
+        "hex": "de3445bf22b485ece725be77cbe37835df252d1b4888369f0c670cf7c519a224",
+        "bytes": 9159
       },
-      "rationale": "ENT-011 engine version-pin + drift-check (COMMUNITY per-team half of ENT-008; signing/registry authority is the Enterprise half ENT-008 and OUT OF SCOPE). DI-factory wired in lifecycle.js, exercised via gov verify-engine [--pin]. pin() snapshots the current engine surface (TEMPLATE_SYNC_MANIFEST manifest_version + its sha256 fingerprint, reusing ENT-010's conformance fingerprint, plus a per-file checksum snapshot of the exact-match files) into coord/engine-pin.json \u2014 the ONLY mutation. verify() is READ-ONLY: it re-derives the live surface and reports IN-SYNC or DRIFTED with the offending paths / whether the manifest fingerprint changed. Complementary to check-template-sync: that verifies internal manifest-vs-files consistency; this verifies drift from a FROZEN pinned version. NO signing.",
+      "rationale": "ENT-011/COORD-509 local engine version-pin and read-only drift check. pin() snapshots the manifest version/fingerprint plus per-file checksums and supported POSIX modes; Windows omits POSIX execute-bit enforcement. verify() reports content, missing-path, manifest, and mode drift. Signing and registry authority remain outside this Community module.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -1102,13 +1102,13 @@
     {
       "path": "coord/scripts/engine-pin.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:f8b43d09f25f",
+      "version_stamp": "sha256:944efc935da8",
       "checksum": {
         "algo": "sha256",
-        "hex": "f8b43d09f25ff2c6af313c7d6b7115e865ca0fe888a44701428dbb8f48b6c8cc",
-        "bytes": 7725
+        "hex": "944efc935da8fc1ed5a8771ac1b074434c5fc207e58e508136dc6e178402231a",
+        "bytes": 9081
       },
-      "rationale": "ENT-011 unit tests for the engine version-pin + drift-check module: pin captures the current manifest fingerprint + version; verify reports IN-SYNC right after pin; a mutated tracked engine file / a mutated manifest / a missing tracked file are each detected as drift with the offending path; the fingerprint is deterministic; no-pin reports no_pin without crashing; verify is read-only (never mutates the pin file). Temp fixtures only \u2014 no network, no live manifest/engine side effects.",
+      "rationale": "ENT-011/COORD-509 engine-pin unit tests: deterministic manifest and file snapshots, content/missing/manifest/POSIX-mode drift, explicit Windows mode omission, no-pin behavior, and read-only verification. Temp fixtures only.",
       "source_inventory": {
         "direction": "template-canonical",
         "status": "template-only",
@@ -2132,11 +2132,11 @@
     {
       "path": "coord/scripts/lifecycle-help.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:9d5e6913d2ab",
+      "version_stamp": "sha256:15036f410572",
       "checksum": {
         "algo": "sha256",
-        "hex": "9d5e6913d2abe8392e83186acc59c1bf2a8d19b14909289e7f9993e94d5cf629",
-        "bytes": 58910
+        "hex": "15036f410572a43c4dbdb78b5ee06506064e019c1f38ae3e814818f8a3710ee0",
+        "bytes": 58938
       },
       "rationale": "The lifecycle CLI presentation + thin read-only command-wrapper surface (printHelp/buildInitiateSummary/printInitiate help+primer, plus the recall/insights/coverage-rollup/prework/closeout-summary/learned-rule/sign-journal thin wrappers over their own engines), extracted from lifecycle.js (COORD-281) to hold the composition root under the arch 5000 monolith/size budget. createLifecycleHelp(deps) factory; the only injected collaborators are fail, ensureCurrentAgentIdentity, GovernanceError, the live state config (by reference), and COORD_DIR \u2014 NO governance-mutation internals. lifecycle.js wires it and destructures the returns back into scope so the commands dispatch table and the __testing facade (buildInitiateSummary) resolve byte-identically.",
       "source_inventory": {
@@ -2581,11 +2581,11 @@
         "recorded_at": "2026-06-29T14:26:11.242Z",
         "template_head_sha": "local"
       },
-      "version_stamp": "sha256:68ea9a44589a",
+      "version_stamp": "sha256:a38b36583b68",
       "checksum": {
         "algo": "sha256",
-        "hex": "68ea9a44589aee641d70a0f91bac7ee1edc555d443dcda8ae801c18f3e55ae60",
-        "bytes": 47983
+        "hex": "a38b36583b68d7c533ed7e307135d0b4d8028111d5b73d047c2d49e54d2f9582",
+        "bytes": 48343
       }
     },
     {

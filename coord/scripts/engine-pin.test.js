@@ -47,7 +47,11 @@ function makeFixture(overrides = {}) {
     JSON.stringify(manifest, null, 2) + "\n"
   );
 
-  const mod = createEnginePin({ coordDir, fail: (m) => { throw new Error(m); } });
+  const mod = createEnginePin({
+    coordDir,
+    platform: overrides.platform,
+    fail: (m) => { throw new Error(m); },
+  });
   return { root, coordDir, scriptsDir, mod };
 }
 
@@ -70,6 +74,12 @@ test("ENT-011: pin captures the current manifest fingerprint + version", () => {
       "coord/scripts/beta.js",
     ]);
     assert.match(pin.files["coord/scripts/alpha.js"].sha256, /^[0-9a-f]{64}$/);
+    if (process.platform !== "win32") {
+      assert.strictEqual(
+        pin.files["coord/scripts/alpha.js"].mode,
+        fs.statSync(path.join(coordDir, "scripts/alpha.js")).mode & 0o777
+      );
+    }
   } finally {
     cleanup(root);
   }
@@ -106,6 +116,37 @@ test("ENT-011: mutating a tracked engine file -> DRIFT with the offending path",
     assert.equal(drifted.kind, "changed");
     // The untouched file must NOT be reported.
     assert.ok(!fileProblem.files.some((f) => f.path === "coord/scripts/beta.js"));
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("COORD-509: POSIX executable-mode drift is part of engine verification", { skip: process.platform === "win32" }, () => {
+  const { root, scriptsDir, mod } = makeFixture();
+  try {
+    const alpha = path.join(scriptsDir, "alpha.js");
+    fs.chmodSync(alpha, 0o644);
+    mod.pin();
+    fs.chmodSync(alpha, 0o755);
+    const report = mod.verify();
+    assert.strictEqual(report.ok, false);
+    const drift = report.drifted_files.find((entry) => entry.path === "coord/scripts/alpha.js");
+    assert.strictEqual(drift.kind, "mode-changed");
+    assert.match(drift.detail, /644.*755/);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("COORD-509: Windows engine pins omit and ignore POSIX mode bits", () => {
+  const { root, scriptsDir, mod } = makeFixture({ platform: "win32" });
+  try {
+    const alpha = path.join(scriptsDir, "alpha.js");
+    fs.chmodSync(alpha, 0o644);
+    const pinned = mod.pin().pin;
+    assert.strictEqual(pinned.files["coord/scripts/alpha.js"].mode, undefined);
+    fs.chmodSync(alpha, 0o755);
+    assert.strictEqual(mod.verify().ok, true);
   } finally {
     cleanup(root);
   }

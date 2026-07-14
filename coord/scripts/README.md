@@ -81,13 +81,19 @@ coord/scripts/coord upgrade --check [--dir <target>] [--json]
   then **re-pins** and **verifies** — REUSING `engine-pin.js`
   (`createEnginePin(...).pin()`/`.verify()`); no fingerprint/verify logic is
   reimplemented. It diffs the source surface against the target (add / update /
-  unchanged) and only ever writes the manifest-tracked exact-match surface (plus
-  the manifest itself) — project-local files (the board, `project.config.js`,
-  product specs, `.runtime`) are never touched. Safe by default: every file
-  written is backed up first, so a verify failure triggers an **exact byte
-  rollback** (restoring prior bytes, removing added files) and a non-zero exit.
-  Idempotent: upgrading to the same version is a no-op (exit 0). `--dry-run`
-  prints the plan and writes nothing; `--json` emits a machine-readable result.
+  mode / remove / unchanged), while board, `project.config.js`, and product files
+  remain outside the managed surface. Locks, durable recovery journals, and
+  redacted receipts live under `.runtime`. One exclusive target lock spans
+  resolution through receipt publication. Automatic plan digests bind source
+  identity, target hashes, modes where supported, and upstream-pin bytes; apply
+  revalidates before mutation. POSIX modes are copied and verified. Windows
+  skips POSIX execute-bit enforcement and preserves existing update modes.
+  A retired exact-match file is removed only when its bytes still match the old
+  manifest; a locally changed retired path is refused. Failures attempt exact
+  byte/mode rollback, and incomplete restores retain their durable journal for
+  explicit recovery. Idempotent: upgrading to the same version is a no-op (exit
+  0). `--dry-run` does not change engine or pin files; `--json` emits a
+  machine-readable result.
   On success it also records the **GCV-4 upstream pin** `coord/.coord-engine.json`
   (`schema`/`engine_version`/`source.{repo,channel,ref,sha}`/`applied_at`) — the
   identity of WHERE the engine came from, distinct from `engine-pin.json` (in-tree
@@ -95,10 +101,10 @@ coord/scripts/coord upgrade --check [--dir <target>] [--json]
   distribution channel; switching to **enterprise** is fail-closed and requires
   `--entitlement <token>` (or `CONCORD_ENTITLEMENT`) — the licensed in-place
   Community→Enterprise upgrade. `--ref`/`--sha` record the upstream ref/sha.
-  `coord upgrade --check` is read-only: it reports **engine drift** (a
-  manifest-tracked vendored file was hand-edited vs the pin, exit 1) separately
-  from project drift (your own board/config/product/`.runtime` — yours to change,
-  never flagged), and surfaces the pinned version/channel.
+  `coord upgrade --check` is read-only: it reports **engine drift** (content or
+  POSIX mode changes vs the pin, exit 1), active locks, and interrupted recovery
+  journals separately from project drift, and surfaces the pinned
+  version/channel.
 - `coord-init-starter-board.js` — the canonical clean starter-board shape,
   reused by BOTH `coord init` and the public release builder's clean-board step,
   so init and the release cut never disagree on what a fresh board looks like.
