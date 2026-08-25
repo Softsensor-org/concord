@@ -109,6 +109,7 @@ function publishabilityCheckCommand(ticketId, options = {}) {
 module.exports = {
   buildPublishabilityReport,
   classifyPublishability,
+  planFiles,
   publishabilityCheckCommand,
   renderPublishability,
   splitFileArgs,

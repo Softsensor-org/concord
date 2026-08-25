@@ -366,3 +366,197 @@ test("COORD-362: read-only doctor includes the tree-mutation hazard in the sync 
   assert.match(failed, /Refusing tree-wide governance mutation/);
   assert.match(failed, /coord\/scripts\/foo\.js/);
 });
+
+// ---------------------------------------------------------------------------
+// COORD-477: bootstrap-pending classification for an unborn CONTROL-PLANE
+// repository. COORD-631/ADR-0008: the classified directory is coord/, never the
+// workspace container — the container is never a Git repository, so "coord/ is
+// merely inside some other repository" is `ancestor`, not bootstrap-pending.
+// ---------------------------------------------------------------------------
+
+const doctorReportModule = require("./doctor-report.js");
+
+test("COORD-477/COORD-631: classifyCoordGitState distinguishes outside / ancestor / unborn / established / unknown", () => {
+  const classify = doctorReportModule.classifyCoordGitState;
+  // No gitTry injected -> unknown (strict checks stay on; fail-safe).
+  assert.equal(classify({}).state, "unknown");
+  assert.equal(classify({}).root, null);
+  // Outside git entirely.
+  assert.equal(classify({ gitTry: () => ({ status: 128, stdout: "" }), coordDir: "/w/coord" }).state, "outside");
+  // COORD-631: toplevel resolves ABOVE coord/ — the container (or an ancestor)
+  // is the repository. That is NOT bootstrap-pending: the container is never
+  // initialized or committed, so the answer is a reviewed migration.
+  const ancestor = classify({
+    gitTry: (root, args) => (args.includes("--show-toplevel") ? { status: 0, stdout: "/w\n" } : { status: 128, stdout: "" }),
+    coordDir: "/w/coord",
+  });
+  assert.equal(ancestor.state, "ancestor");
+  assert.equal(ancestor.root, "/w");
+  assert.equal(ancestor.is_coord_repository, false);
+  // Unborn: coord/ IS the toplevel, HEAD does not resolve.
+  const unborn = classify({
+    gitTry: (root, args) => (args.includes("--show-toplevel") ? { status: 0, stdout: "/w/coord\n" } : { status: 128, stdout: "" }),
+    coordDir: "/w/coord",
+  });
+  assert.equal(unborn.state, "unborn");
+  assert.equal(unborn.root, "/w/coord");
+  assert.equal(unborn.is_coord_repository, true);
+  assert.equal(unborn.coord_dir, "/w/coord");
+  // Established: coord/ is the toplevel and HEAD resolves.
+  const established = classify({
+    gitTry: (root, args) => (args.includes("--show-toplevel") ? { status: 0, stdout: "/w/coord\n" } : { status: 0, stdout: "abc123\n" }),
+    coordDir: "/w/coord",
+  });
+  assert.equal(established.state, "established");
+  assert.equal(established.root, "/w/coord");
+  // A throwing gitTry degrades to unknown, never a crash.
+  assert.equal(classify({ gitTry: () => { throw new Error("no git"); }, coordDir: "/w/coord" }).state, "unknown");
+});
+
+test("COORD-477/COORD-631: buildBootstrapPendingNotice gives exact next steps for an unborn coord/ only, and names coord/", () => {
+  const build = doctorReportModule.buildBootstrapPendingNotice;
+  assert.equal(build(null), null);
+  assert.equal(build({ state: "established", root: "/w/coord" }), null);
+  assert.equal(build({ state: "outside", root: null }), null);
+  // COORD-631: an ancestor repository (e.g. a legacy parent-Git container) is
+  // never given bootstrap guidance — that would advise committing the container.
+  assert.equal(build({ state: "ancestor", root: "/w" }), null);
+  const notice = build({ state: "unborn", root: "/w/coord" });
+  assert.match(notice, /\[bootstrap-pending\]/);
+  assert.match(notice, /coord\/ control-plane repository \/w\/coord/);
+  assert.match(notice, /no commits yet \(unborn HEAD\)/);
+  assert.match(notice, /git -C coord status --short/);
+  assert.match(notice, /--git-stage/);
+  assert.match(notice, /Never run `git add \.` or `git add -A`/);
+  assert.match(notice, /--git-baseline-commit/);
+  assert.match(notice, /git -C coord commit --no-verify/);
+  // The guidance must never point the adopter at the container.
+  assert.match(notice, /the workspace container above it is not a Git repository and must never become one/);
+  assert.match(notice, /strict diagnostics resume after the first committed baseline/i);
+});
+
+// Shared benign stub set for board-wide doctor() factory tests.
+function bootstrapDoctorDeps(overrides = {}) {
+  const noop = () => {};
+  const emptyArr = () => [];
+  return {
+    fail: (msg) => { const e = new Error(msg); e.doctorFail = true; throw e; },
+    readBoard: () => ({ sections: [] }),
+    getTicketRef: () => null,
+    getRows: () => [],
+    rowsById: () => new Map(),
+    runBoardValidate: noop,
+    readAgentSessions: emptyArr,
+    repoNameForCode: (code) => String(code),
+    auditRepoWorktrees: () => ({ stale_ticket_worktrees: [], unknown_ticket_worktrees: [], missing_doing_worktrees: [] }),
+    appendGovernanceProvenanceIssues: noop,
+    detectColocatedForeignSessions: () => ({ foreign_sessions: [] }),
+    detectOutOfBandBoardMutation: () => ({ detected: false }),
+    verifyGovernanceChain: () => ({ ok: true, preChainCount: 0, chainedCount: 0, broken: [] }),
+    readGovernanceEventLog: emptyArr,
+    collectStaleTemplateFeedbackErrors: emptyArr,
+    detectMaturityStaleness: emptyArr,
+    detectRollbackDrift: () => ({ reasons: [] }),
+    detectGateProcOrphans: emptyArr,
+    computeSyncDelta: () => [],
+    canonicalSyncablePaths: emptyArr,
+    buildQuestionQueueReport: () => ({ total: 0, by_type: {}, by_severity: {}, by_aging: {} }),
+    readActiveOrchestratorQuestionRows: emptyArr,
+    formatBucketCounts: () => "",
+    buildDoctorResolutionGuidance: () => "",
+    collectLandingAuditReport: () => ({}),
+    formatLandingAuditSummary: emptyArr,
+    ...overrides,
+  };
+}
+
+// COORD-631: the classified toplevel is COORD_DIR itself — coord/ is the
+// control-plane repository. A toplevel ABOVE it is `ancestor`, which is
+// deliberately NOT bootstrap-pending.
+const { COORD_DIR: DOCTOR_COORD_DIR } = require("./governance-context.js");
+const unbornGitTry = (root, args) => (args.includes("--show-toplevel") ? { status: 0, stdout: `${DOCTOR_COORD_DIR}\n` } : { status: 128, stdout: "" });
+const establishedGitTry = (root, args) => (args.includes("--show-toplevel") ? { status: 0, stdout: `${DOCTOR_COORD_DIR}\n` } : { status: 0, stdout: "abc123\n" });
+const containerAncestorGitTry = (root, args) => (args.includes("--show-toplevel") ? { status: 0, stdout: `${require("node:path").dirname(DOCTOR_COORD_DIR)}\n` } : { status: 128, stdout: "" });
+
+test("COORD-477/COORD-631: doctor reports bootstrap-pending for an unborn coord/ instead of generic drift/provenance errors", () => {
+  const createDoctorReport = require("./doctor-report.js");
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...a) => logs.push(a.join(" "));
+  let provenanceCalled = false;
+  let outOfBandCalled = false;
+  let rollbackCalled = false;
+  let syncDeltaCalled = false;
+  let failed = null;
+  try {
+    const report = createDoctorReport(bootstrapDoctorDeps({
+      fail: (msg) => { failed = msg; throw new Error("doctor-fail"); },
+      gitTry: unbornGitTry,
+      appendGovernanceProvenanceIssues: (errors) => { provenanceCalled = true; errors.push("generic journal drift"); },
+      detectOutOfBandBoardMutation: () => { outOfBandCalled = true; return { detected: true, paths: ["board/tasks.json"], latestEvent: null }; },
+      detectRollbackDrift: () => { rollbackCalled = true; return { reasons: ["stale"] }; },
+      computeSyncDelta: () => { syncDeltaCalled = true; return ["PLAN.md", "rendered/TASKS.md"]; },
+      canonicalSyncablePaths: () => ["PLAN.md", "rendered/TASKS.md"],
+    }));
+    report.doctor({});
+  } finally {
+    console.log = originalLog;
+  }
+  assert.equal(failed, null, "an unborn root must not fail doctor with generic drift errors");
+  assert.equal(provenanceCalled, false, "journal provenance drift is deferred while bootstrap-pending");
+  assert.equal(outOfBandCalled, false, "out-of-band board mutation detection is deferred while bootstrap-pending");
+  assert.equal(rollbackCalled, false, "freshness/rollback drift is deferred while bootstrap-pending");
+  assert.equal(syncDeltaCalled, false, "canonical-derived drift is deferred while bootstrap-pending");
+  const joined = logs.join("\n");
+  assert.match(joined, /Governance doctor OK/);
+  assert.match(joined, new RegExp(`\\[bootstrap-pending\\] The coord/ control-plane repository ${DOCTOR_COORD_DIR} has no commits yet`));
+  assert.match(joined, /strict diagnostics resume after the first committed baseline/i);
+});
+
+// COORD-631/ADR-0008: a legacy container-Git installation (coord/ merely inside
+// some other repository) must NOT be reported as bootstrap-pending — that would
+// tell the adopter to stage and commit the workspace container, which is exactly
+// what the ADR forbids. Strict diagnostics stay ON.
+test("COORD-631: a container-Git ancestor is NOT bootstrap-pending and does not defer strict diagnostics", () => {
+  const createDoctorReport = require("./doctor-report.js");
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...a) => logs.push(a.join(" "));
+  let provenanceCalled = false;
+  let failed = null;
+  try {
+    const report = createDoctorReport(bootstrapDoctorDeps({
+      fail: (msg) => { failed = msg; throw new Error("doctor-fail"); },
+      gitTry: containerAncestorGitTry,
+      appendGovernanceProvenanceIssues: () => { provenanceCalled = true; },
+    }));
+    try { report.doctor({}); } catch { /* fail() throws by design */ }
+  } finally {
+    console.log = originalLog;
+  }
+  assert.equal(provenanceCalled, true, "strict provenance diagnostics are NOT deferred for an ancestor repository");
+  const joined = logs.join("\n");
+  assert.equal(/bootstrap-pending/.test(joined), false, "never advise bootstrapping the workspace container");
+  assert.equal(/Workspace root/.test(joined), false);
+  assert.equal(failed === null || !/bootstrap/.test(String(failed)), true);
+});
+
+test("COORD-477: strict diagnostics resume once coord/ is established (first baseline commit exists)", () => {
+  const createDoctorReport = require("./doctor-report.js");
+  let failed = null;
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    const report = createDoctorReport(bootstrapDoctorDeps({
+      fail: (msg) => { failed = msg; throw new Error("doctor-fail"); },
+      gitTry: establishedGitTry,
+      computeSyncDelta: () => ["rendered/TASKS.md"],
+      canonicalSyncablePaths: () => ["rendered/TASKS.md"],
+    }));
+    assert.throws(() => report.doctor({}), /doctor-fail/);
+  } finally {
+    console.log = originalLog;
+  }
+  assert.match(failed, /Canonical derived artifacts drift from HEAD/, "the strict drift error is back after the baseline commit");
+  assert.equal(/bootstrap-pending/.test(failed), false);
+});

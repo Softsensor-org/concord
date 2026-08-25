@@ -23,11 +23,62 @@
 // governance-context / governance-constants modules so this module observes the
 // SAME live config that lifecycle does.
 
+const path = require("node:path");
+
 const { defaultFail, COORD_DIR, DEFAULT_PATHS } = require("./governance-context.js");
 const { STATUS } = require("./governance-constants.js");
+// COORD-635 / ADR-0008: control-plane landing evidence (self-contained module).
+const { assertControlPlaneLandingIntegrity } = require("./control-plane-landing.js");
 const treeMutationSafety = require("./tree-mutation-safety.js");
 
 const REPO_ROOTS = DEFAULT_PATHS.repoRoots;
+
+// COORD-477: onboarding-specific classification of the git state an unborn
+// repository leaves behind. A repository whose current branch has no commits
+// yet — the state a consent-based `--git-init` bootstrap leaves before the
+// separately-consented baseline commit — must get bootstrap-pending guidance
+// with exact next steps, NOT generic journal / derived-artifact / provenance
+// drift errors. Strict diagnostics resume automatically once the first
+// baseline commit exists.
+//
+// COORD-631/ADR-0008: the classified directory is `coord/` — the independent
+// control-plane repository — NOT the workspace container, which is never a Git
+// repository. When coord/ is merely tracked by some other repository the state
+// is "ancestor": that is not bootstrap-pending, because the answer is a
+// reviewed migration, never initializing or committing the container.
+// Pure over an injected gitTry so it is unit-testable.
+function classifyCoordGitState({ gitTry, coordDir = COORD_DIR } = {}) {
+  const coord = path.resolve(coordDir);
+  const base = { coord_dir: coord, is_coord_repository: false };
+  if (typeof gitTry !== "function") return { ...base, state: "unknown", root: null };
+  let top = null;
+  try { top = gitTry(coord, ["rev-parse", "--show-toplevel"]); } catch { return { ...base, state: "unknown", root: null }; }
+  if (!top || top.status !== 0) return { ...base, state: "outside", root: null };
+  const root = String(top.stdout || "").trim();
+  if (!root) return { ...base, state: "unknown", root: null };
+  if (path.resolve(root) !== coord) return { ...base, state: "ancestor", root };
+  let head = null;
+  try { head = gitTry(root, ["rev-parse", "--verify", "HEAD"]); } catch { return { ...base, state: "unknown", root }; }
+  return { ...base, is_coord_repository: true, state: head && head.status === 0 ? "established" : "unborn", root };
+}
+
+// Pure formatter for the bootstrap-pending doctor notice. Returns null unless
+// the root is unborn. The steps are the EXACT bootstrap contract: review the
+// staged allowlist, stage via the installer's manifest-derived allowlist
+// (never `git add .` / `-A`), create the separately-consented baseline commit,
+// re-run doctor.
+function buildBootstrapPendingNotice(coordState) {
+  if (!coordState || coordState.state !== "unborn") return null;
+  return [
+    `[bootstrap-pending] The coord/ control-plane repository ${coordState.root} has no commits yet (unborn HEAD).`,
+    "Strict journal / derived-artifact / provenance diagnostics are deferred until the first baseline commit exists; they resume automatically after it.",
+    "Exact next steps (all of them run INSIDE coord/ — the workspace container above it is not a Git repository and must never become one):",
+    "  1. Review what is staged: git -C coord status --short  (secret files must not appear as stage candidates; sibling product repositories are outside this repository and cannot appear at all).",
+    "  2. If nothing is staged yet, stage the installer's exact manifest-derived allowlist with the separate --git-stage consent (npx create-concord <dir> --git-stage, or the equivalent SEA flag). Never run `git add .` or `git add -A`.",
+    "  3. Create the baseline commit with its own separate installer consent (--git-baseline-commit), or manually: git -C coord commit --no-verify -m \"chore: concord governance baseline\".",
+    "  4. Re-run coord/scripts/gov doctor — strict diagnostics resume after the first committed baseline.",
+  ].join("\n");
+}
 
 // GCV-3 slice 3: pure formatter for the canonical-derived drift doctor
 // error. Returns null when there is no drift (clean repo); otherwise
@@ -76,6 +127,8 @@ module.exports = function createDoctorReport(deps = {}) {
     safeResolveLockHead,
     inspectCanonicalLockMirrorState,
     auditRepoWorktrees,
+    // COORD-635: control-plane worktree audit
+    auditCoordWorktrees,
     // identity / sessions
     readAgentSessions,
     ensureCurrentAgentIdentity,
@@ -276,6 +329,15 @@ module.exports = function createDoctorReport(deps = {}) {
           } catch (error) {
             errors.push(error.message);
           }
+        } else if (row.Repo === "X") {
+          // COORD-635: control-plane landings were skipped entirely here.
+          // Records that CLAIM remote verification are re-verified; historical
+          // local-only records are grandfathered, never invalidated.
+          try {
+            assertControlPlaneLandingIntegrity(row.ID, landing);
+          } catch (error) {
+            errors.push(error.message);
+          }
         }
       }
     }
@@ -286,7 +348,61 @@ module.exports = function createDoctorReport(deps = {}) {
         .sort()
         .map((repoCode) => [repoNameForCode(repoCode), auditRepoWorktrees(repoCode, byId)])
     );
+    // COORD-635: control-plane worktrees are CONTROL-PLANE state. They used to
+    // be invisible here, or — when a configured product-repo directory was not
+    // itself a repository — reported under that product repo's name, sending
+    // the operator to the wrong repository entirely. Report them explicitly,
+    // name coord/, and name the governed remediation (which now exists).
+    if (typeof auditCoordWorktrees === "function") {
+      try {
+        const coordAudit = auditCoordWorktrees(byId);
+        const coordLabel = coordAudit.control_plane_repo_root
+          ? `control-plane repository ${coordAudit.control_plane_repo_root}`
+          : "control plane (coord/)";
+        for (const stale of coordAudit.stale_worktrees || []) {
+          if (targetRef && stale.ticket !== targetRef.row.ID) continue;
+          pushPhysicalRepairIssue(
+            `[control-plane] stale coord worktree for ${stale.ticket} in the ${coordLabel}: ${stale.path} ` +
+            `(status ${stale.status}). This is coord/ state, NOT backend/frontend state. ` +
+            `Remove it with \`coord/scripts/gov cleanup-worktree coord ${stale.ticket} --yes\`.`,
+            stale.owner || byId.get(stale.ticket)?.Owner || null,
+          );
+        }
+        for (const unknown of coordAudit.unknown_ticket_worktrees || []) {
+          errors.push(
+            `[control-plane] unknown coord worktree in the ${coordLabel}: ${unknown.path}. ` +
+            "This is coord/ state, NOT backend/frontend state. " +
+            `Remove it with \`coord/scripts/gov cleanup-worktree coord ${unknown.path} --yes\`.`
+          );
+        }
+        for (const orphan of coordAudit.orphaned_registrations || []) {
+          errors.push(
+            `[control-plane] orphaned coord worktree registration in the ${coordLabel}: ${orphan} ` +
+            "is registered in git but its directory is gone. " +
+            `Remove it with \`coord/scripts/gov cleanup-worktree coord ${orphan} --yes\`.`
+          );
+        }
+        for (const missing of coordAudit.missing_doing_worktrees || []) {
+          if (targetRef && missing !== targetRef.row.ID) continue;
+          pushPhysicalRepairIssue(
+            `[control-plane] missing coord worktree for doing ticket ${missing} in the ${coordLabel}.`,
+            byId.get(missing)?.Owner || null,
+          );
+        }
+      } catch (error) {
+        warnings.push(`[control-plane] could not audit coord worktrees: ${error.message}`);
+      }
+    }
+
     for (const [repoName, audit] of Object.entries(audits)) {
+      if (audit.is_own_repository === false) {
+        warnings.push(
+          `Configured repo directory ${audit.repo_root} (${repoName}) is not a Git repository of its own` +
+          (audit.enclosing_repository ? `; it sits inside ${audit.enclosing_repository}` : "") +
+          ". Worktree state for it is not audited, because reporting the enclosing repository's " +
+          "worktrees as this repo's would misattribute them (COORD-635)."
+        );
+      }
       for (const stale of audit.stale_ticket_worktrees) {
         if (targetRef && stale.ticket !== targetRef.row.ID) {
           continue;
@@ -308,8 +424,22 @@ module.exports = function createDoctorReport(deps = {}) {
       }
     }
 
-    if (!targetRef) {
+    // COORD-477: classify the control plane's git state ONCE per board-wide run.
+    // An unborn coord/ repository swaps the generic journal/derived-drift errors
+    // for one actionable bootstrap-pending notice; strict diagnostics resume
+    // after the first baseline commit (state flips to "established").
+    // COORD-631: the classified directory is coord/, never the container.
+    const coordGit = !targetRef
+      ? classifyCoordGitState({ gitTry, coordDir: COORD_DIR })
+      : { state: "unknown", root: null };
+    const bootstrapPending = !targetRef && coordGit.state === "unborn";
+    if (bootstrapPending) {
+      warnings.push(buildBootstrapPendingNotice(coordGit));
+    }
+    if (!targetRef && !bootstrapPending) {
       appendGovernanceProvenanceIssues(errors, warnings);
+    }
+    if (!targetRef) {
       // COORD-222: surface co-located governed sessions — two or more
       // heartbeat-fresh sessions bound to THIS runtime (coord/.runtime) on
       // different threads. This is the condition `gov start` / `gov claim` now
@@ -337,6 +467,8 @@ module.exports = function createDoctorReport(deps = {}) {
           // Session-read failures are already surfaced elsewhere; never wedge doctor on this advisory.
         }
       }
+    }
+    if (!targetRef && !bootstrapPending) {
       // COORD-220: surface out-of-band coordination-state mutations (a hand-edited
       // tasks.json / stray plan / prompt / rendered file with no journaled
       // transaction) as a dedicated bypass finding so the operator sees it named as
@@ -425,8 +557,8 @@ module.exports = function createDoctorReport(deps = {}) {
     // Phase 4 (repair-path hardening): non-fatal freshness/rollback-drift
     // warnings. Board-wide only (skipped for ticket-scoped runs) and routed to
     // the warnings channel so existing green doctor runs and `doctor --fix`
-    // behavior stay unaffected.
-    if (!targetRef) {
+    // behavior stay unaffected. Skipped while bootstrap-pending (COORD-477).
+    if (!targetRef && !bootstrapPending) {
       const freshness = detectRollbackDrift();
       for (const reason of freshness.reasons) {
         warnings.push(`[freshness] ${reason}`);
@@ -475,7 +607,12 @@ module.exports = function createDoctorReport(deps = {}) {
     // Board-wide only (ticket-scoped runs stay targeted/fast). This is
     // intentionally read-only: doctor only inspects current drift and recommends
     // `gov sync`; it must never regenerate derived artifacts itself.
-    if (!targetRef) {
+    //
+    // COORD-477: while the root is bootstrap-pending (unborn HEAD), everything
+    // is "drift from HEAD" by definition — the actionable finding is the single
+    // bootstrap-pending notice above, so this strict check is deferred until
+    // the first baseline commit exists.
+    if (!targetRef && !bootstrapPending) {
       try {
         const syncScope = canonicalSyncablePaths();
         const driftPaths = computeSyncDelta(COORD_DIR, syncScope);
@@ -541,7 +678,11 @@ module.exports = function createDoctorReport(deps = {}) {
     resolveDoctorScope,
     resolveDoctorOwnerScope,
     buildCanonicalDerivedDriftError,
+    classifyCoordGitState,
+    buildBootstrapPendingNotice,
   };
 };
 
 module.exports.buildCanonicalDerivedDriftError = buildCanonicalDerivedDriftError;
+module.exports.classifyCoordGitState = classifyCoordGitState;
+module.exports.buildBootstrapPendingNotice = buildBootstrapPendingNotice;

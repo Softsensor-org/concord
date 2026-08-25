@@ -2,9 +2,52 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 
 const createSyncProvenance = require("./sync-provenance.js");
 const lifecycleModule = require("./lifecycle.js");
+const cliModule = require("./cli.js");
+const { gitTry: realGitTry } = require("./git-ops.js");
+
+function git(cwd, args) {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "coord-test",
+      GIT_AUTHOR_EMAIL: "coord-test@example.invalid",
+      GIT_COMMITTER_NAME: "coord-test",
+      GIT_COMMITTER_EMAIL: "coord-test@example.invalid",
+    },
+  }).trim();
+}
+
+function commit(repo, message) {
+  fs.appendFileSync(path.join(repo, "history.txt"), `${message}\n`);
+  git(repo, ["add", "history.txt"]);
+  git(repo, ["commit", "-m", message]);
+  return git(repo, ["rev-parse", "HEAD"]);
+}
+
+function makePublicationWorld(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "coord-696-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const remote = path.join(root, "remote.git");
+  const local = path.join(root, "local");
+  fs.mkdirSync(remote);
+  fs.mkdirSync(local);
+  git(remote, ["init", "--bare", "--initial-branch=main"]);
+  git(local, ["init", "--initial-branch=main"]);
+  git(local, ["remote", "add", "origin", remote]);
+  const base = commit(local, "base");
+  git(local, ["push", "--set-upstream", "origin", "main:main"]);
+  return { root, remote, local, base };
+}
 
 // COORD-292: behavior tests for the sync / provenance-baseline service extracted
 // from lifecycle.js into sync-provenance.js (lifecycle decomposition slice #1,
@@ -36,7 +79,7 @@ const syncSvc = createSyncProvenance({
 
 // --- DI wiring guard: factory shape + lifecycle composition-root wiring --------
 
-test("COORD-292 wiring: createSyncProvenance returns exactly the eight public functions", () => {
+test("COORD-292/696 wiring: createSyncProvenance returns exactly the nine public functions", () => {
   const svc = createSyncProvenance({});
   const expected = [
     "runSyncCommand",
@@ -47,6 +90,7 @@ test("COORD-292 wiring: createSyncProvenance returns exactly the eight public fu
     "lifecycleSyncScopePaths",
     "advanceProvenanceBaselineAfterLifecycle",
     "autoSyncAfterLifecycle",
+    "assessCanonicalPublication",
   ];
   assert.deepEqual(Object.keys(svc).sort(), [...expected].sort());
   for (const name of expected) {
@@ -272,7 +316,7 @@ test("ENT-001: push-on-finalize is OPT-IN — default does NOT push", () => {
   assert.equal(result.push.reason, "not-requested");
 });
 
-test("ENT-001: --push-after-sync pushes ONLY when the sync actually committed", () => {
+test("ENT-001/COORD-696: --push-after-sync also converges earlier unpublished canonical commits", () => {
   let pushCalls = 0;
   const pushFn = () => {
     pushCalls += 1;
@@ -295,9 +339,8 @@ test("ENT-001: --push-after-sync pushes ONLY when the sync actually committed", 
     syncFn: () => ({ committed: false, note: "nothing to commit" }),
     pushFn,
   });
-  assert.equal(noCommit.push.pushed, false);
-  assert.equal(noCommit.push.reason, "no-commit-to-push");
-  assert.equal(pushCalls, 1, "a no-op sync must not push");
+  assert.equal(noCommit.push.pushed, true);
+  assert.equal(pushCalls, 2, "the explicit governed push must recover a previously stranded canonical commit");
 });
 
 test("ENT-001: COORD_PUSH_ON_FINALIZE env enables push; pushOnFinalizeEnabled honors flag/env precedence", () => {
@@ -346,6 +389,172 @@ test("GCV-3 slice 2: best-effort — sync failure does NOT throw out (lifecycle 
     assert.equal(result.failed, true);
     assert.match(result.error, /simulated git failure/);
     assert.equal(warned, true, "best-effort failures must emit a clear warning");
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+test("COORD-696 RED: a committed canonical tip ahead of its configured upstream is not publication-safe", (t) => {
+  const { local } = makePublicationWorld(t);
+  const localTip = commit(local, "unpublished closeout");
+  const svc = createSyncProvenance({ gitTry: realGitTry, COORD_DIR: local });
+
+  const publication = svc.assessCanonicalPublication();
+
+  assert.equal(publication.required, true);
+  assert.equal(publication.published, false);
+  assert.equal(publication.status, "ahead");
+  assert.equal(publication.local_sha, localTip);
+  assert.equal(publication.ahead_by, 1);
+});
+
+test("COORD-696: missing publication wiring fails closed instead of disabling the release guard", () => {
+  const publication = createSyncProvenance({ COORD_DIR: "/repo/coord" })
+    .assessCanonicalPublication();
+  assert.equal(publication.required, true);
+  assert.equal(publication.published, false);
+  assert.equal(publication.status, "publication-check-not-configured");
+});
+
+test("COORD-696 RED: publication follows the configured upstream ref, not the local branch name", (t) => {
+  const { local, remote } = makePublicationWorld(t);
+  git(local, ["push", "origin", "main:trunk"]);
+  git(local, ["fetch", "origin", "trunk"]);
+  git(local, ["branch", "--set-upstream-to=origin/trunk", "main"]);
+  const mainBefore = git(remote, ["rev-parse", "main"]);
+  const published = commit(local, "published to trunk only");
+  git(local, ["push", "origin", "main:trunk"]);
+
+  const svc = createSyncProvenance({ gitTry: realGitTry, COORD_DIR: local });
+  const publication = svc.assessCanonicalPublication();
+
+  assert.equal(publication.published, true);
+  assert.equal(publication.status, "published");
+  assert.equal(publication.upstream, "origin/trunk");
+  assert.equal(publication.remote_sha, published);
+  assert.equal(git(remote, ["rev-parse", "main"]), mainBefore, "origin/main is deliberately stale");
+});
+
+test("COORD-696 RED: a no-op terminal sync still retains the session when earlier canonical commits are unpublished", (t) => {
+  const { local } = makePublicationWorld(t);
+  commit(local, "earlier unpublished governance history");
+  const svc = createSyncProvenance({
+    gitTry: realGitTry,
+    COORD_DIR: local,
+    canonicalSyncablePaths: () => [],
+    DEFAULT_PATHS: { boardPath: path.join(local, "coord/board/tasks.json") },
+    advanceGovernanceProvenanceBaseline: () => true,
+  });
+
+  const result = svc.autoSyncAfterLifecycle({
+    verb: "land",
+    ticketId: "COORD-696",
+    syncFn: () => ({ committed: false, note: "nothing to commit" }),
+  });
+
+  assert.equal(result.result.committed, false);
+  assert.equal(result.publication.status, "ahead");
+  assert.equal(result.session_release_safe, false);
+});
+
+test("COORD-696 RED: --push-after-sync recovers a pre-existing ahead tip even when the current sync is a no-op", (t) => {
+  const { local, remote } = makePublicationWorld(t);
+  const stranded = commit(local, "stranded closeout from an earlier failed sync");
+  const svc = createSyncProvenance({
+    gitTry: realGitTry,
+    COORD_DIR: local,
+    canonicalSyncablePaths: () => [],
+    DEFAULT_PATHS: { boardPath: path.join(local, "coord/board/tasks.json") },
+    advanceGovernanceProvenanceBaseline: () => true,
+  });
+
+  const result = svc.autoSyncAfterLifecycle({
+    verb: "land",
+    ticketId: "COORD-696",
+    options: { pushAfterSync: true },
+    syncFn: () => ({ committed: false, note: "nothing new to commit" }),
+  });
+
+  assert.equal(result.push.pushed, true);
+  assert.equal(result.publication.status, "published");
+  assert.equal(result.session_release_safe, true);
+  assert.equal(git(remote, ["rev-parse", "main"]), stranded);
+});
+
+test("COORD-696: a diverged or untracked canonical branch is never publication-safe", (t) => {
+  const { local, remote, root } = makePublicationWorld(t);
+  const other = path.join(root, "other");
+  git(root, ["clone", remote, other]);
+  commit(other, "remote-only");
+  git(other, ["push", "origin", "main:main"]);
+  commit(local, "local-only");
+
+  const diverged = createSyncProvenance({ gitTry: realGitTry, COORD_DIR: local })
+    .assessCanonicalPublication();
+  assert.equal(diverged.status, "diverged");
+  assert.equal(diverged.published, false);
+
+  git(local, ["branch", "--unset-upstream"]);
+  const untracked = createSyncProvenance({ gitTry: realGitTry, COORD_DIR: local })
+    .assessCanonicalPublication();
+  assert.equal(untracked.status, "no-upstream");
+  assert.equal(untracked.published, false);
+});
+
+test("COORD-696 RED: a failed terminal sync is never session-release-safe even when HEAD is published", (t) => {
+  const { local } = makePublicationWorld(t);
+  const svc = createSyncProvenance({
+    gitTry: realGitTry,
+    COORD_DIR: local,
+    canonicalSyncablePaths: () => [],
+    DEFAULT_PATHS: { boardPath: path.join(local, "coord/board/tasks.json") },
+    advanceGovernanceProvenanceBaseline: () => true,
+  });
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const result = svc.autoSyncAfterLifecycle({
+      verb: "land",
+      ticketId: "COORD-696",
+      syncFn: () => {
+        throw new Error("simulated terminal sync failure");
+      },
+    });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.publication.status, "published");
+    assert.equal(result.session_release_safe, false);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+test("COORD-696 RED: the terminal CLI boundary passes publication evidence into session release", () => {
+  assert.equal(typeof cliModule.__testing.runTerminalLifecycle, "function");
+  let releaseOptions = null;
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const lifecycleResult = cliModule.__testing.runTerminalLifecycle(
+      "land",
+      "COORD-696",
+      {},
+      () => ({ status: "done" }),
+      {
+        autoSyncAfterLifecycle: () => ({
+          session_release_safe: false,
+          publication: { status: "ahead", published: false },
+        }),
+        releaseTerminalTicketSession: (_ticketId, options) => {
+          releaseOptions = options;
+          return { released: [], reason: "canonical-publication-unverified" };
+        },
+      },
+    );
+
+    assert.deepEqual(lifecycleResult, { status: "done" });
+    assert.equal(releaseOptions.terminalSync.session_release_safe, false);
+    assert.equal(releaseOptions.terminalSync.publication.status, "ahead");
   } finally {
     console.warn = originalWarn;
   }

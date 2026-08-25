@@ -266,11 +266,37 @@ coord/scripts/gov push <ticket-id>                   # Push ticket branch to rem
 coord/scripts/preflight.sh [--ticket <ticket-id>]    # Run preflight validation checks
 ```
 
-`commit-ticket` is only supported for product-repo tickets (B, F) — those are the
-ones with a governed git worktree. Repo X (coord-only) tickets do not have a
-worktree to commit into; for those, stage and commit coord changes with targeted
-`git add <files>` / `git commit` directly, and continue using
-`coord/scripts/gov` for lifecycle, plan, review, and closeout mutations.
+`commit-ticket` works for **every** governed worktree, product-repo (B, F) and
+control-plane (X) alike. A Repo-X ticket is not a "scratch directory": `gov
+start` cuts a real Git worktree of the **control-plane repository**, which under
+ADR-0008 is `coord/` (`coord/.git`) in an adopter workspace, and the enclosing
+repository in the donor. Commit control-plane work with the governed verb — do
+not `git add` / `git commit` by hand:
+
+```bash
+coord/scripts/gov commit-ticket <ticket-id> -m "TICKET-ID message"
+```
+
+The only case `commit-ticket` refuses for Repo X is a workspace with **no
+control-plane repository at all**; the refusal says so and names the consented
+bootstrap that creates one. Control-plane Git operations resolve only to
+`coord/` — the workspace container above it is never a Git repository (ADR-0008).
+
+Cleaning up a governed worktree uses the same verb for both kinds, with `coord`
+(or `X`) naming the control plane:
+
+```bash
+coord/scripts/gov cleanup-worktree <repo-name> <ticket-id> --yes [--delete-branch]
+coord/scripts/gov cleanup-worktree coord <ticket-id> --yes [--delete-branch]
+```
+
+Cleanup **refuses a dirty worktree** rather than discarding uncommitted work,
+and **deregisters** through `git worktree remove` (plus a prune) rather than
+deleting the directory — a deleted-but-registered worktree is the stale-residue
+class that used to need a manual `git worktree remove`. A successful closeout
+performs the same governed removal automatically, for control-plane tickets as
+well as product-repo tickets. `gov doctor` reports control-plane residue as
+control-plane state naming `coord/`, never as backend/frontend state.
 
 ## Runtime, Deployment, And Production-MCP Evidence
 
@@ -346,7 +372,9 @@ node --test coord/scripts/governance.test.js         # Run governance tests
 - Repo-backed starts fail closed if `origin/<base>` cannot be refreshed and `--offline` was not given. Offline mode falls back to locally available refs.
 - Repo-backed starts also print manifest-driven dependency bootstrap guidance and the canonical `scripts/gate.sh default` entrypoint for that repo.
 - `coord/scripts/gov commit` now validates that the commit subject already contains the ticket ID. It uses targeted staging by default and only broad-stages the full governed diff when `--all` is explicit.
-- `coord/scripts/governance-mcp.js` now speaks standard MCP stdio framing with `Content-Length` headers instead of newline-delimited JSON, so generic MCP clients can interoperate without a transport shim.
+- `coord/scripts/governance-mcp.js` speaks specification-compliant MCP stdio: newline-delimited UTF-8 JSON-RPC, one message per line, per the official transport spec (COORD-482). Stdout carries protocol messages only; all diagnostics go to stderr. The earlier LSP-style `Content-Length` framing was removed — real MCP stdio clients (Claude Code, the official SDK) never spoke it. Interoperability is proven by a real spawned-server smoke in `governance-mcp.test.js`: a spec-exact in-repo client always runs, and an official `@modelcontextprotocol/sdk` client smoke runs whenever the SDK is resolvable (`GOVERNANCE_MCP_SDK_DIR` may point at a directory whose `node_modules` contains it; the engine itself stays zero-dependency).
+- Governance MCP troubleshooting — transport vs. project approval are SEPARATE failure classes. Transport/initialization failures mean the handshake itself broke: the server exits immediately, `initialize` gets no newline-terminated JSON-RPC response, or stdout contains non-JSON text (fix the server or the client config in `.mcp.json`). Claude project approval is different: the stdio handshake can succeed end-to-end and the `governance` server can still be unavailable in a conversation because the project has not approved the MCP server — approve it in the Claude Code project settings (`.mcp.json` servers require per-project user approval on first use). A successful `initialize`/`tools/list` probe therefore never proves a client conversation can use the server, and a missing-server symptom in Claude does not imply a transport bug.
+- The governance MCP write surface stays read-only under identity v2 (GCV-1 O3): mutating tools (`gov_start`, `gov_commit`, `gov_submit`, `gov_land`, ...) fail closed with `v2_mcp_read_only`; run mutations through the `gov` CLI instead.
 - When the governance MCP server is the active session host, it now runs a background heartbeat for the current `doing` ticket at the 5-minute target cadence while the governed worktree exists. Closing the MCP host process stops that timer and leaves the lock to age normally from its last heartbeat.
 - Raw CLI or other non-MCP sessions still operate in mutation-triggered-only heartbeat mode unless a separate sidecar host is added.
 - `coord/scripts/gov agent-rebind --fresh` now reserves a new handle with bounded retries and fails closed with a distinct exhaustion error if competing claims keep winning the reservation race.

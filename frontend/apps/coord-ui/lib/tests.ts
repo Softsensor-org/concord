@@ -14,6 +14,10 @@ export interface RepoTestInventory {
   exists: boolean;
   totalTestFiles: number;
   byExt: Record<string, number>;
+  /** COORD-543 — 'ok' | 'unavailable' | 'out-of-scope'. */
+  status: RepoModel['status'];
+  /** COORD-543 — why the repo was not inspected (null when status is 'ok'). */
+  statusReason: string | null;
 }
 
 export interface RepoLaneStatus {
@@ -36,6 +40,8 @@ export interface TestsSummary {
   maturity: MaturityView;
   totalTestFiles: number;
   failingLaneSteps: number;
+  /** COORD-543 — repos that were NOT inspected (unavailable / out-of-scope). */
+  unresolvedRepos: number;
 }
 
 function walkCount(dir: string, acc: { total: number; byExt: Record<string, number> }) {
@@ -60,12 +66,39 @@ function walkCount(dir: string, acc: { total: number; byExt: Record<string, numb
 
 function inventoryFor(repo: RepoModel): RepoTestInventory {
   const name = repo.name;
+  // COORD-543: an unresolved repo contributes NOTHING and says so. Previously
+  // its dir was clamped to the engine root, so the engine's own suite was
+  // counted once per unresolved repo and reported as the product repos' tests.
+  if (repo.status !== 'ok' || !repo.dir) {
+    return {
+      repo: name,
+      exists: false,
+      totalTestFiles: 0,
+      byExt: {},
+      status: repo.status,
+      statusReason: repo.statusReason
+    };
+  }
   if (!fs.existsSync(repo.dir)) {
-    return { repo: name, exists: false, totalTestFiles: 0, byExt: {} };
+    return {
+      repo: name,
+      exists: false,
+      totalTestFiles: 0,
+      byExt: {},
+      status: 'unavailable',
+      statusReason: `repo directory disappeared after resolution: ${repo.path}`
+    };
   }
   const acc = { total: 0, byExt: {} as Record<string, number> };
   walkCount(repo.dir, acc);
-  return { repo: name, exists: true, totalTestFiles: acc.total, byExt: acc.byExt };
+  return {
+    repo: name,
+    exists: true,
+    totalTestFiles: acc.total,
+    byExt: acc.byExt,
+    status: 'ok',
+    statusReason: null
+  };
 }
 
 function loadMaturity(): MaturityView {
@@ -101,6 +134,7 @@ export function loadTests(): TestsSummary {
     laneStatuses,
     maturity: loadMaturity(),
     totalTestFiles: inventory.reduce((n, i) => n + i.totalTestFiles, 0),
-    failingLaneSteps
+    failingLaneSteps,
+    unresolvedRepos: inventory.filter((i) => i.status !== 'ok').length
   };
 }

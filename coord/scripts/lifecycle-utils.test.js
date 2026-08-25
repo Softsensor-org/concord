@@ -6,6 +6,7 @@ const {
   slugify,
   integerOrDefault,
   inferNextRound,
+  currentReviewRound,
   todayIso,
   escapeTable,
   escapeRegex,
@@ -36,6 +37,27 @@ test("inferNextRound returns 1 for no findings and max+1 otherwise", () => {
   assert.equal(inferNextRound(null), 1);
   assert.equal(inferNextRound([{ round: 1 }, { round: 3 }, { round: 2 }]), 4);
   assert.equal(inferNextRound([{}, {}]), 2);
+});
+
+// COORD-649: `currentReviewRound` answers "what round is the ticket IN", which
+// is NOT `inferNextRound` ("what round does return-doing advance INTO"). Using
+// the latter for add-finding auto-incremented findings from one review to
+// rounds 1..N and manufactured a required plan round no writer could produce.
+test("currentReviewRound reads the plan record, and never advances past it", () => {
+  // Plan record is authoritative when it carries a usable round.
+  assert.equal(currentReviewRound({ review_round: 2 }, [{ round: 1 }]), 2);
+  // ...including over findings misclassified ABOVE it (the wedge shape).
+  assert.equal(currentReviewRound({ review_round: 1 }, [{ round: 1 }, { round: 2 }, { round: 3 }]), 1);
+  // No plan record: fall back to the round the findings evidence, NOT max+1.
+  assert.equal(currentReviewRound(null, [{ round: 1 }, { round: 1 }]), 1);
+  assert.equal(currentReviewRound(null, [{ round: 2 }]), 2);
+  // Nothing recorded at all: a ticket is in round 1.
+  assert.equal(currentReviewRound(null, []), 1);
+  assert.equal(currentReviewRound(undefined, undefined), 1);
+  // Unusable values degrade to 1 rather than to NaN or to a fabricated round.
+  assert.equal(currentReviewRound({ review_round: 0 }, []), 1);
+  assert.equal(currentReviewRound({ review_round: "two" }, [{ round: 1 }]), 1);
+  assert.equal(currentReviewRound({}, [{}, {}]), 1);
 });
 
 test("todayIso returns a YYYY-MM-DD date string", () => {

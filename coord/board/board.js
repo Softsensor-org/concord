@@ -794,7 +794,47 @@ function validateLocks(tickets, errors, options = {}) {
       if (lock.repo !== expectedRepo) {
         errors.push(`Lock file ${path.relative(COORD_DIR, lockPath)} repo "${lock.repo}" does not match ticket repo "${expectedRepo}" for ${lock.ticket}.`);
       }
-      const expectedWorktree = expectedWorktreePath(ticketRow.Repo, lock.owner, lock.ticket);
+      // COORD-663: LOGICAL OWNERSHIP AND PHYSICAL NAMESPACE ARE DIFFERENT THINGS.
+      // `claim --transfer-to` moves logical ownership and DELIBERATELY preserves
+      // the worktree directory and branch — renaming a branch that may already
+      // be merged is not a governance repair. But both checks below derived
+      // their expectation from `lock.owner`, so after a transfer the lock was
+      // permanently non-canonical, and the suppression that hid it applied only
+      // during the transfer mutation itself. Every LATER mutation wedged:
+      // update-finding, update-plan and submit all failed on a ticket whose
+      // transfer had succeeded. That included the mutations needed to file the
+      // evidence for this very defect.
+      //
+      // The lock now carries `workspace_owner` for the physical namespace,
+      // defaulting to `owner` so every untransferred lock is unchanged. A
+      // divergence is legitimate ONLY when the lock also carries transfer
+      // provenance attesting it; an ordinary mismatch — a hand-edited or
+      // mis-created lock — still fails closed, and now fails with its own
+      // message rather than being read as a stale path.
+      const namespaceOwner = lockWorkspaceOwner(lock);
+      const transferProvenance = lockTransferProvenance(lock);
+      const namespaceDiverges = namespaceOwner !== lock.owner;
+      if (!ignoreActiveLockErrors && namespaceDiverges && !transferProvenance) {
+        errors.push(
+          `Lock file ${path.relative(COORD_DIR, lockPath)} uses workspace namespace "${namespaceOwner}" but is owned by "${lock.owner}" ` +
+            `with no recorded transfer provenance for ${lock.ticket}. Normalize it with \`coord/scripts/gov normalize-lock ${lock.ticket}\`.`
+        );
+      }
+      if (!ignoreActiveLockErrors && namespaceDiverges && transferProvenance) {
+        if (transferProvenance.workspace_owner !== namespaceOwner) {
+          errors.push(
+            `Lock file ${path.relative(COORD_DIR, lockPath)} transfer provenance attests workspace namespace ` +
+              `"${transferProvenance.workspace_owner}" but the lock uses "${namespaceOwner}" for ${lock.ticket}.`
+          );
+        }
+        if (transferProvenance.to !== lock.owner) {
+          errors.push(
+            `Lock file ${path.relative(COORD_DIR, lockPath)} transfer provenance ends at owner "${transferProvenance.to}" ` +
+              `but the lock is owned by "${lock.owner}" for ${lock.ticket}.`
+          );
+        }
+      }
+      const expectedWorktree = expectedWorktreePath(ticketRow.Repo, namespaceOwner, lock.ticket);
       const skipCanonicalLocationChecks =
         skipCanonicalLockLocationForTicket !== null &&
         skipCanonicalLockLocationForTicket === lock.ticket;
@@ -806,7 +846,7 @@ function validateLocks(tickets, errors, options = {}) {
       ) {
         errors.push(`Lock file ${path.relative(COORD_DIR, lockPath)} must use canonical worktree path ${expectedWorktree}.`);
       }
-      const expectedBranchPrefix = `agent/${String(lock.owner).toLowerCase()}-${String(lock.ticket).toLowerCase()}-`;
+      const expectedBranchPrefix = `agent/${String(namespaceOwner).toLowerCase()}-${String(lock.ticket).toLowerCase()}-`;
       if (
         !ignoreActiveLockErrors &&
         !skipCanonicalLocationChecks &&
@@ -860,6 +900,35 @@ function getLockFiles() {
     }
   }
   return [...filesByName.values()];
+}
+
+// COORD-663. The handle whose physical namespace (worktree directory, branch
+// prefix) this lock occupies. Absent means "the owner's own namespace", so
+// every lock written before this repair keeps its existing meaning.
+function lockWorkspaceOwner(lock) {
+  const raw = lock && typeof lock.workspace_owner === "string" ? lock.workspace_owner.trim() : "";
+  return raw || (lock ? lock.owner : null);
+}
+
+// Ordered transfer history. Returns the LAST well-formed entry, or null if the
+// history is absent or malformed — null means "no provenance", which is what
+// makes an ordinary namespace mismatch fail closed. Every entry is retained on
+// the lock so a chain of transfers stays attributable.
+function lockTransferProvenance(lock) {
+  const history = lock && Array.isArray(lock.transfer_provenance) ? lock.transfer_provenance : null;
+  if (!history || history.length === 0) return null;
+  const normalized = [];
+  for (const entry of history) {
+    if (!entry || typeof entry !== "object") return null;
+    const from = typeof entry.from === "string" ? entry.from.trim() : "";
+    const to = typeof entry.to === "string" ? entry.to.trim() : "";
+    const at = typeof entry.at === "string" ? entry.at.trim() : "";
+    const workspace_owner = typeof entry.workspace_owner === "string" ? entry.workspace_owner.trim() : "";
+    if (!from || !to || !at || !workspace_owner) return null;
+    if (!Number.isFinite(Date.parse(at))) return null;
+    normalized.push({ from, to, at, workspace_owner });
+  }
+  return normalized[normalized.length - 1];
 }
 
 function expectedWorktreePath(repoCode, owner, ticketId) {
@@ -1614,6 +1683,8 @@ module.exports = {
   validateBoardState,
   __testing: {
     boardStatusRank,
+    lockWorkspaceOwner,
+    lockTransferProvenance,
     collectBoardRenderState,
     compareEventTimestamps,
     isTerminalBoardStatus,
@@ -1648,11 +1719,21 @@ module.exports = {
     },
     renderPlanMarkdown,
     renderPlanRecord,
+    // COORD-611: the WRITE targets of `board.js sync`. Exported so a consumer
+    // can ask the renderer which files it regenerates instead of restating the
+    // list (release/scan-donor-refs.test.js derives its regenerated-view
+    // exclusions from this; a new rendered view is picked up automatically).
+    resolveRenderOutputPaths,
     writeCompatibilityCopy,
     shouldIgnoreActiveLockValidationError,
     validateFollowupExceptions,
     validateWaiverIndex,
     validateBoard,
+    // COORD-635: the pure JSON-Schema layer, exposed so a writer can be tested
+    // against the CANONICAL schema without dragging in validateBoard's live
+    // cross-checks (journal rollback drift, plan-record presence, locks), which
+    // are unrelated to whether a persisted record's SHAPE is legal.
+    validateSchema,
     expectedLockRepoForCode,
   },
 };

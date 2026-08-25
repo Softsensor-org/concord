@@ -16,6 +16,9 @@ For the full rule-precedence order see `AGENTS.md` and `coord/AGENT_PATHS.md`.
 Cold start:
 - Keep this shim thin. Use it to find the canonical governance sources, not as a
   replacement for them.
+- Start every session with the provider-neutral bootstrap contract — it binds
+  identity, checks health, and recommends the next governed action:
+  `coord/scripts/agent bootstrap`.
 - Chat memory is non-authoritative. Resume from `coord/scripts/gov explain
   <ticket>`, plan/prework records, relevant ADR/requirements references, and the
   governed artifacts named in `coord/GOVERNANCE.md` Section 3.2.

@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const domainAdapters = require("./domain-discovery-adapters.js");
 const evidenceAuthority = require("./evidence-authority.js");
+const staticConfigDeclaration = require("./static-config-declaration.js");
 
 const ARTIFACT_KIND = "concord.business_discovery.run";
 const DEFAULT_OUTPUT = "coord/.runtime/discovery/run.json";
@@ -135,15 +136,82 @@ function walk(root, options = {}) {
   return files;
 }
 
+// COORD-657 — the untrusted-adopter boundary.
+//
+// Discovery scans repositories Concord has never seen, so an adopter's
+// `coord/project.config.js` is INPUT, not state (ADR-0010's class, applied to
+// ADR-0007's "never execute adopter code" rule). It is READ STATICALLY and
+// never required, evaluated, or compiled. Only the fields discovery actually
+// consumes or reports are projected out of the declaration; every one is
+// validated before it is believed, so a hostile or malformed config can neither
+// run nor smuggle unrelated values into a discovery artifact.
+
+// The single derived field list for the declared surface. Anything not named
+// here never leaves this function, so unrelated keys an adopter parks in
+// project.config.js (tokens, notes, absolute paths) cannot reach run.json.
+const DECLARED_REPO_FIELDS = Object.freeze(["path", "integrationBranch"]);
+
+function declaredString(value) {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function projectDeclaredSurface(declared) {
+  const surface = { repos: {}, tracks: [], coord_ticket_prefix: null };
+  if (!isPlainObject(declared)) return surface;
+
+  if (isPlainObject(declared.repos)) {
+    for (const [code, value] of Object.entries(declared.repos)) {
+      // Repo CODES are adopter-declared. Discovery is not the config validator
+      // (`coord/paths.js` is), but it will not carry a key that could be read
+      // as a path or a control sequence into an artifact.
+      if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(code) || !isPlainObject(value)) continue;
+      const repo = {};
+      for (const field of DECLARED_REPO_FIELDS) repo[field] = declaredString(value[field]);
+      surface.repos[code] = repo;
+    }
+  }
+  if (isPlainObject(declared.tracks)) {
+    surface.tracks = Object.keys(declared.tracks)
+      .filter((name) => declaredString(name) && isPlainObject(declared.tracks[name]))
+      .sort();
+  }
+  surface.coord_ticket_prefix = declaredString(declared.coordTicketPrefix);
+  return surface;
+}
+
 function readProjectConfig(root) {
   const configPath = path.join(root, "coord/project.config.js");
-  if (!fs.existsSync(configPath)) return { config: null, path: null };
-  try {
-    delete require.cache[require.resolve(configPath)];
-    return { config: require(configPath), path: configPath };
-  } catch {
-    return { config: null, path: configPath };
+  const result = staticConfigDeclaration.readDeclaredConfig(configPath, {
+    displayPath: "coord/project.config.js",
+    // The scanned root is the containment boundary: a config reached through a
+    // symlinked parent that escapes it is refused, not read.
+    containmentRoot: root,
+  });
+  if (result.status === "absent") {
+    return { declaration: { status: "absent", path: null, code: null, message: null, remediation: null }, surface: null, path: null };
   }
+  if (result.status === "refused") {
+    return {
+      declaration: {
+        status: "refused",
+        path: rel(root, result.path),
+        code: result.code,
+        message: result.message,
+        remediation: result.remediation,
+      },
+      surface: null,
+      path: result.path,
+    };
+  }
+  return {
+    declaration: { status: "declared", path: rel(root, result.path), code: null, message: null, remediation: null },
+    surface: projectDeclaredSurface(result.declared),
+    path: result.path,
+  };
 }
 
 function createBuilder(root) {
@@ -435,7 +503,7 @@ function buildColdStartBaseline({ files, repoNames, languageCounts, packageManag
 
 function analyze(root, options = {}) {
   const resolvedRoot = path.resolve(root);
-  const { config, path: configPath } = readProjectConfig(resolvedRoot);
+  const { declaration, surface, path: configPath } = readProjectConfig(resolvedRoot);
   const files = walk(resolvedRoot, { maxFiles: options.maxFiles });
   const builder = createBuilder(resolvedRoot);
   const repoNames = [];
@@ -445,7 +513,7 @@ function analyze(root, options = {}) {
       "configuration_surface",
       "Concord project config declares repo layout and governance tracks.",
       configPath,
-      { subject: "coord/project.config.js", predicate: "declares", object: "repo layout", confidence: config ? "observed" : "unknown" }
+      { subject: "coord/project.config.js", predicate: "declares", object: "repo layout", confidence: surface ? "observed" : "unknown" }
     );
     builder.addPromotion(configRecord, "question", "Repo layout should be reviewed before discovery findings govern tickets.");
     builder.addDecision({
@@ -461,7 +529,46 @@ function analyze(root, options = {}) {
     });
   }
 
-  for (const [code, repo] of Object.entries(config?.repos || {})) {
+  // COORD-657 — a configuration discovery cannot read statically fails CLOSED
+  // and LOUDLY: a classified record, a decision-required question, and a
+  // machine-readable `configuration_declaration` on the artifact. The previous
+  // behavior (bare `catch {}` returning `{ config: null }`) left no trace at
+  // all, which is exactly what made silent execution survivable.
+  if (declaration.status === "refused") {
+    const refusalRecord = builder.addRecord(
+      "configuration_surface",
+      `${declaration.message} ${declaration.remediation}`,
+      configPath,
+      {
+        subject: "coord/project.config.js",
+        predicate: "declaration_refused",
+        object: declaration.code,
+        confidence: "unknown",
+        authority: "runtime_observation",
+        review_reason: "Concord never executes an adopter configuration; an unreadable declaration must be resolved by an operator, not guessed.",
+      }
+    );
+    const refusalQuestion = builder.addQuestion(
+      `Concord refused to read coord/project.config.js without executing it (${declaration.code}). ${declaration.remediation}`,
+      "repo-owner",
+      [refusalRecord],
+      { priority: "high", decision_required: true }
+    );
+    builder.addDecision({
+      questionId: refusalQuestion,
+      subject: "discovery_scope.configuration_declaration",
+      owner: "repo-owner",
+      rationale: "Discovery reads project.config.js statically and will not execute it. Until the declaration is readable, the repo map, integration branches, and tracks are UNKNOWN rather than assumed.",
+      options: [
+        "rewrite project.config.js as a static declaration",
+        "run discovery from a root whose configuration is declarative",
+        "supply the repo map to the operator out of band",
+      ],
+      evidence: builder.records.find((record) => record.id === refusalRecord)?.evidence || [],
+    });
+  }
+
+  for (const [code, repo] of Object.entries(surface?.repos || {})) {
     const repoPath = path.resolve(resolvedRoot, repo.path || "");
     repoNames.push(code);
     builder.addRecord(
@@ -469,6 +576,32 @@ function analyze(root, options = {}) {
       `Configured repo ${code} points to ${repo.path || "(missing path)"} and ${fs.existsSync(repoPath) ? "exists" : "is not present"} in this checkout.`,
       configPath || resolvedRoot,
       { subject: code, predicate: "repo_path", object: repo.path || null, confidence: fs.existsSync(repoPath) ? "observed" : "unknown", review_reason: "Configured repo paths are setup facts, not business intent." }
+    );
+    if (repo.integrationBranch) {
+      builder.addRecord(
+        "configuration_surface",
+        `Configured repo ${code} declares integration branch ${repo.integrationBranch}.`,
+        configPath || resolvedRoot,
+        { subject: code, predicate: "integration_branch", object: repo.integrationBranch, confidence: "observed", review_required: false, review_reason: "Integration branches are declared setup facts read statically from the configuration." }
+      );
+    }
+  }
+
+  for (const track of surface?.tracks || []) {
+    builder.addRecord(
+      "configuration_surface",
+      `Configured governance track ${track} is declared for this project.`,
+      configPath || resolvedRoot,
+      { subject: track, predicate: "governance_track", object: track, confidence: "observed", review_required: false, review_reason: "Tracks are declared setup facts read statically from the configuration." }
+    );
+  }
+
+  if (surface?.coord_ticket_prefix) {
+    builder.addRecord(
+      "configuration_surface",
+      `Configured coord ticket prefix is ${surface.coord_ticket_prefix}.`,
+      configPath || resolvedRoot,
+      { subject: surface.coord_ticket_prefix, predicate: "coord_ticket_prefix", object: surface.coord_ticket_prefix, confidence: "observed", review_required: false }
     );
   }
 
@@ -615,6 +748,20 @@ function analyze(root, options = {}) {
       scope: "existing-repo",
       repos: repoNames.length > 0 ? repoNames : ["root"],
     },
+    // COORD-657: the machine-readable outcome of the untrusted-config boundary.
+    // `status` is "declared" | "refused" | "absent"; a refusal carries a
+    // classified code, a message naming the file, and operator remediation.
+    // `surface` is the ONLY thing derived from an adopter configuration, and it
+    // is a fixed projection — no other adopter-declared value reaches here.
+    configuration_declaration: {
+      status: declaration.status,
+      path: declaration.path,
+      code: declaration.code,
+      message: declaration.message,
+      remediation: declaration.remediation,
+      executed: false,
+      surface,
+    },
     generated_at_utc: options.generatedAtUtc || "1970-01-01T00:00:00.000Z",
     generator: {
       name: "business-discovery",
@@ -670,6 +817,14 @@ function renderMarkdown(report) {
   for (const [language, count] of Object.entries(report.summary.languages)) lines.push(`- ${language}: ${count}`);
   if (Object.keys(report.summary.languages).length === 0) lines.push("None detected.");
   lines.push("");
+  const declaration = report.configuration_declaration;
+  if (declaration && declaration.status === "refused") {
+    lines.push("## Configuration Declaration");
+    lines.push(`- Status: refused (${declaration.code})`);
+    lines.push(`- ${declaration.message}`);
+    lines.push(`- Next step: ${declaration.remediation}`);
+    lines.push("");
+  }
   lines.push("## Records");
   for (const record of report.records.slice(0, 50)) lines.push(`- ${record.kind}: ${record.statement}`);
   if (report.records.length > 50) lines.push(`- ... ${report.records.length - 50} more`);
@@ -679,6 +834,7 @@ function renderMarkdown(report) {
 function run(argv = [], deps = {}) {
   const parsed = parseArgs(argv);
   const log = deps.log || ((line) => console.log(line));
+  const logError = deps.logError || ((line) => console.error(line));
   if (parsed.error) {
     log(`business-discovery: ${parsed.error}`);
     return { code: 1 };
@@ -697,6 +853,19 @@ function run(argv = [], deps = {}) {
     fs.writeFileSync(outputPath, `${body}\n`);
   } else {
     log(body);
+  }
+  // COORD-657: fail closed and loudly. The artifact is still emitted (it is the
+  // operator's evidence), but a configuration Concord refused to read without
+  // executing it must never present as a clean run.
+  //
+  // The classified line goes to STDERR, never to stdout: under `--json` stdout
+  // must remain exactly one parseable document, and the remediation already
+  // travels inside `configuration_declaration`. In the human-readable lane the
+  // refusal is also rendered into the body by renderMarkdown.
+  const refusal = report.configuration_declaration;
+  if (refusal && refusal.status === "refused") {
+    logError(`business-discovery: ${refusal.code}: ${refusal.message} ${refusal.remediation}`);
+    return { code: 1, report };
   }
   return { code: 0, report };
 }

@@ -39,7 +39,7 @@ Provider shims should link or embed this extract instead of inlining the full co
 
 - `coord/scripts/gov claim --owner <handle>` binds the current session explicitly
 - if multiple Claude conversations — or multiple concurrent sub-agents under one orchestrating conversation — must touch the same board, export a distinct `COORD_SESSION_ID` before running `coord/scripts/gov` (overrides the harness provider thread id; `CLAUDE_SESSION_ID` is insufficient on Claude Code, see anchor priority 0). Each concurrent agent must also claim a distinct registered handle.
-- `coord/scripts/gov agentid` (alias: `coord/scripts/gov whoami`) shows the current claimed session, active owned tickets, and mismatch warnings when governance already sees drift
+- `coord/scripts/gov agentid` shows the current claimed session, active owned tickets, and mismatch warnings when governance already sees drift
 - `coord/scripts/gov agent-rebind --fresh` is the safe fresh-handle path when the current thread is blocked by a foreign same-handle session and must not touch that foreign ticket state; governance now reserves the new handle with bounded retries and fails closed if every candidate is claimed first
 - `coord/scripts/gov takeover <ticket-id> --human-admin-override "<reason>"` is the explicit foreign-ticket takeover path when human-admin has authorized rebinding a doing/review ticket to the current claimed session
 - `coord/scripts/gov lock-abandon <ticket-id> --human-admin-override "<reason>"` is the explicit stale-lock cleanup path when human-admin has authorized returning a foreign doing ticket to `todo`

@@ -1256,3 +1256,28 @@ test("COORD-451 --ref/--sha are recorded in the pin", () => {
     cleanup(tmp);
   }
 });
+
+// ---------------------------------------------------------------------------
+// COORD-624: upgrades operate ONLY on the workspace governance surface. Concord
+// is a SIBLING of the product repositories it governs, and those repositories
+// are read-only for every install / upgrade / recovery path. This is a
+// STRUCTURAL confinement: a manifest path outside coord/ or .claude/ is
+// rejected before it is ever resolved to an absolute location, so no runtime
+// barrier is needed to keep an upgrade out of a product repo.
+// ---------------------------------------------------------------------------
+
+test("COORD-624: an engine manifest path outside the workspace governance surface is refused", () => {
+  const upgrade = createCoordUpgrade({});
+  const validate = upgrade.validateManagedRelPath;
+  // Allowed: the workspace governance surface.
+  assert.equal(validate("coord/scripts/governance.js"), "coord/scripts/governance.js");
+  assert.equal(validate(".claude/settings.json"), ".claude/settings.json");
+  // RED: anything that could reach a sibling product repository.
+  for (const rel of ["backend/src/app.js", "frontend/package.json", "repo-one/AGENTS.md", "package.json", "AGENTS.md"]) {
+    assert.throws(
+      () => validate(rel),
+      /outside the workspace governance surface[\s\S]*Product repositories are\n?\s*read-only/,
+      `${rel} must be refused`,
+    );
+  }
+});

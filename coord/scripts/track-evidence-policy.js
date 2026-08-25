@@ -128,7 +128,9 @@ function evaluateBootstrapRisk(input = {}) {
       code: "bootstrap_risk_advisory",
       severity: "advisory",
       message: `${workClass || "bootstrap"} is advisory unless a track opts into blocking bootstrap evidence.`,
-      next_steps: [`Use coord/scripts/gov gate-plan ${input.ticketId || "<ticket>"} --write to record the advisory disposition.`],
+      // COORD-572: the command has to END the step. A command buried mid-sentence
+      // is what an operator mis-pastes, and it is not parseable as written.
+      next_steps: [`Record the advisory disposition with coord/scripts/gov gate-plan ${input.ticketId || "<ticket>"} --write`],
     }];
   }
 
@@ -163,7 +165,13 @@ function evaluateBootstrapRisk(input = {}) {
       severity: "blocker",
       message: `${workClass} requires ${code.replace(/_/g, " ")} before review/closeout.`,
       next_steps: [
-        `Update bootstrap_risk in the canonical plan record: ${step}.`,
+        // COORD-572: this step used to read "Update bootstrap_risk in the
+        // canonical plan record" and name no command — the same shape of advice
+        // that steered three agents into hand-editing
+        // coord/.runtime/plans/<ticket>.json. There WAS no writer: bootstrap_risk
+        // is schema-declared and read by this gate, but no flag produced its
+        // option key. `--bootstrap-risk` now exists, so the advice can name it.
+        `coord/scripts/gov update-plan ${input.ticketId || "<ticket>"} --bootstrap-risk '<json>'   # ${step}`,
         `Regenerate the gate-plan receipt with coord/scripts/gov gate-plan ${input.ticketId || "<ticket>"} --write.`,
       ],
     });

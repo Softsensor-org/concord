@@ -7,13 +7,28 @@ const adrValidator = require("./adr-validator.js");
 const lifecycle = require("./lifecycle.js");
 const commandRegistry = require("./command-registry.js");
 const runtimeEvidence = require("./runtime-evidence.js");
-const { STATUS, legalStatusSet, legalFindingStatusSet } = require("./governance-constants.js");
+const {
+  STATUS,
+  buildInvalidStatusMessage,
+  legalStatusSet,
+  legalFindingStatusSet,
+} = require("./governance-constants.js");
+
+// COORD-612: the help TEXT surface (buildHelpText / buildVerbHelpText /
+// printVerbHelp) is dependency-free pure string building, so `gov <verb> --help`
+// takes it straight from the module instead of threading three more names
+// through the lifecycle composition root — which is under a shrink-only LOC
+// budget that must not be spent on presentation wiring. printHelp keeps coming
+// from `commands` so the existing help path is untouched.
+const { buildHelpText, buildVerbHelpText, printVerbHelp } = require("./lifecycle-help.js")({});
 
 const { GovernanceError, commands } = lifecycle;
 const { withTemporaryExecutionContext } = lifecycle.__testing;
 const {
   addFeatureProofCommand,
   addFinding,
+  correctFindingRound,
+  normalizeLock,
   addRepoGateCommand,
   addReviewCycleCommand,
   agentsCommand,
@@ -160,13 +175,26 @@ function flagsAfterOptionalId(args) {
 }
 
 // COORD-104 (annotated residual): dispatchCommand is the single CLI command
-function runTerminalLifecycle(verb, ticketId, flags, fn) {
+function runTerminalLifecycle(verb, ticketId, flags, fn, dependencies = {}) {
+  const syncAfterLifecycle = dependencies.autoSyncAfterLifecycle || autoSyncAfterLifecycle;
+  const releaseSession = dependencies.releaseTerminalTicketSession || releaseTerminalTicketSession;
   const result = fn();
+  let terminalSync = {
+    session_release_safe: false,
+    publication: { status: "sync-did-not-complete", published: false },
+  };
   try {
-    autoSyncAfterLifecycle({ verb, ticketId, options: flags });
+    terminalSync = syncAfterLifecycle({ verb, ticketId, options: flags });
   } finally {
     try {
-      releaseTerminalTicketSession(ticketId);
+      const release = releaseSession(ticketId, { terminalSync });
+      if (release && release.reason === "canonical-publication-unverified") {
+        const publication = release.publication || {};
+        console.warn(
+          `[gov ${verb}] retained the active agent session: canonical publication is ${publication.status || "unverified"}. ` +
+          "Resolve the upstream state and retry the governed terminal verb with --push-after-sync."
+        );
+      }
     } catch {
       // Best-effort runtime-ledger cleanup. Terminal closeout authority remains
       // the lifecycle mutation and journal; a session-ledger cleanup issue must
@@ -188,6 +216,17 @@ function runTerminalLifecycle(verb, ticketId, flags, fn) {
 // would require a parallel, higher-risk change to that core drift detector for
 // no behavioral gain. Annotated and accepted per the ticket's router carve-out.
 function dispatchCommand(command, args = []) {
+  // COORD-612: `gov <verb> --help` prints the verb's published usage instead of
+  // being parsed as a positional/flag. Before this, `gov update-plan --help`
+  // answered `Unknown ticket "--help"`, so the only place a flag could be
+  // discovered was the ~200-line `gov help --all` dump — and `--context-pack-ack`
+  // was in neither. An undiscoverable-but-required flag manufactures forbidden
+  // hand-edits of governed plan state, so discoverability is a governance
+  // property, not a cosmetic one. Intercepted here, before the router, because
+  // `--help` is never a legal value for any governed verb.
+  if (command && command !== "help" && (args.includes("--help") || args.includes("-h"))) {
+    return printVerbHelp(command);
+  }
   switch (command) {
     case "counts":
     case "board-state":
@@ -372,6 +411,10 @@ function dispatchCommand(command, args = []) {
       return setPrRefs(args[0], parseFlags(args.slice(1)));
     case "add-finding":
       return addFinding(args[0], parseFlags(args.slice(1)));
+    case "correct-finding-round":
+      return correctFindingRound(args[0], parseFlags(args.slice(1)));
+    case "normalize-lock":
+      return normalizeLock(args[0], parseFlags(args.slice(1)));
     case "update-finding":
       return updateFinding(args[0], parseFlags(args.slice(1)));
     case "log-question":
@@ -588,12 +631,29 @@ function dispatchCommand(command, args = []) {
       return runtimeEvidence.falsify(args[0], parseFlags(args.slice(1)));
     case "validate-receipt":
       return runtimeEvidence.validateReceiptCommand(parseFlags(args));
+    case "surface":
+      // COORD-572: the GENERATED machine-facing surface — every dispatched verb,
+      // the alias groups that make one capability findable under the name a
+      // caller guesses, every accepted flag with the option key the live parser
+      // produces, the enum literals the parser itself advertises, and the
+      // snake_case/camelCase spellings of the JSON plan fields. Read-only.
+      return require("./cli-surface.js").printSurface(parseFlags(args));
     case "help":
       return printHelp({ all: args.includes("--all") });
     case undefined:
       return printHelp({ all: false });
     default:
-      fail(`Unknown command "${command}". Run "node coord/scripts/governance.js help".`);
+      // COORD-572: a capability must be findable by the name a caller is LIKELY
+      // TO GUESS. `add-prompt` was filed as a missing verb (COORD-511) while it
+      // had already shipped as `register-prompt --create`; the refusal named no
+      // near-match, so absence-from-the-name read as absence-from-the-product.
+      // Suggestions are ranked by shared word-parts first, so a differently
+      // prefixed synonym still resolves.
+      fail(
+        `Unknown command "${command}".` +
+        formatSuggestions(require("./cli-surface.js").suggestVerbs(command)) +
+        ` Run "node coord/scripts/governance.js help", or "coord/scripts/gov surface" for the generated verb/flag/enum inventory.`
+      );
   }
 }
 
@@ -669,8 +729,8 @@ const VALUE_FLAGS = Object.freeze({
   "--cwd": "cwd", "--id": "id", "--ticket": "ticket", "--pri": "pri",
   "--limit": "limit", "--why": "why", "--branch": "branch", "--title": "title",
   "--body": "body", "--method": "method", "--worktree": "worktree",
-  "--source": "source", "--topic": "topic", "--depends-on": "dependsOn",
-  "--parent": "dependsOn", "--relation": "relation", "--type": "type",
+  "--source": "source", "--topic": "topic",
+  "--relation": "relation", "--type": "type",
   "--prefix": "prefix", "--into": "into", "--description": "description",
   "--summary": "summary", "--message": "message", "-m": "message",
   "--severity": "severity", "--qref": "qref", "--round": "round",
@@ -688,6 +748,12 @@ const VALUE_FLAGS = Object.freeze({
   "--closeout-base-ref": "closeoutBaseRef", "--provenance-note": "provenanceNote",
   "--review-profile": "reviewProfile", "--context-pack-ack": "contextPackAck",
   "--gate-plan": "gatePlan",
+  // COORD-572: bootstrap_risk and decision_required are schema-declared,
+  // gate-READ plan fields whose only writer (applyPlanUpdateOptionsToRecord)
+  // was unreachable — no flag token produced their option key, so the gates
+  // could only advise "update the canonical plan record" by hand. Registered
+  // here so the mechanism the advice names actually exists.
+  "--bootstrap-risk": "bootstrapRisk", "--decision-required": "decisionRequired",
   "--source-commit": "sourceCommit",
   "--fulfilled-by-ticket": "fulfilledByTicket",
   "--fulfilled-by-commit": "fulfilledByCommit", "--prompt": "prompt",
@@ -744,6 +810,12 @@ const APPEND_FLAGS = Object.freeze({
 const BOOL_FLAGS = Object.freeze({
   "--assign": "assign", "--no-pr": "noPr", "--not-required": "notRequired",
   "--already-landed": "alreadyLanded", "--delete-branch": "deleteBranch",
+  // COORD-667: opt in to the in-process control-plane workspace merge during a
+  // Repo-X closeout. Default stays fail-closed per the COORD-512 ruling (never
+  // auto-advance an adopter's live integration branch); this is the operator
+  // asking for it, and it replaces the hand-run `git merge` that
+  // pre-bash-guard.js refuses under head-on-protected-branch (COORD-664).
+  "--merge-workspace": "mergeWorkspace",
   "--draft": "draft", "--closeout-blocker": "closeoutBlocker", "--fill": "fill",
   "--push": "push", "--autofill-startup": "autofillStartup", "--seed": "seed",
   "--all": "all", "--admin": "admin", "--handoff": "handoff",
@@ -758,10 +830,12 @@ const BOOL_FLAGS = Object.freeze({
   // ENT-005: explicit stdout sink for the OTLP exporter (also the default when
   // no sink flag is given).
   "--stdout": "stdout",
-  // ENT-001: opt-in push of the post-finalize canonical-sync commit (durable
-  // journal/plans/snapshots) to the coord remote. NOT default; never force.
+  // ENT-001/COORD-696: opt-in push of durable journal/plans/snapshots to the
+  // coord remote, including canonical commits stranded by an earlier terminal
+  // attempt. NOT default; never force.
   // Env equivalent: COORD_PUSH_ON_FINALIZE=1.
   "--push-after-sync": "pushAfterSync",
+  "--push-before-closeout": "pushBeforeCloseout",
   // ENT-010: `gov conform --attest` emits a signed conformance attestation over
   // the engine-integrity inputs (in addition to the journal chain self-verify).
   "--attest": "attest",
@@ -794,7 +868,7 @@ const SPECIAL_FLAGS = Object.freeze({
   "--status": (parsed, arg, next) => {
     requireValue(arg, next);
     if (!isLegalStatus(next) && !LEGAL_FINDING_STATUSES.has(next)) {
-      fail(`Invalid status "${next}".`);
+      fail(buildInvalidStatusMessage(next, LEGAL_FINDING_STATUSES));
     }
     parsed.status = next;
     return true;
@@ -809,13 +883,13 @@ const SPECIAL_FLAGS = Object.freeze({
   "--note": (parsed, arg, next) => { requireValue(arg, next); parsed.note = next; return true; },
   "--result": (parsed, arg, next) => {
     requireValue(arg, next);
-    if (next !== "pass" && next !== "fail") fail(`--result must be "pass" or "fail".`);
+    if (next !== "pass" && next !== "fail") fail(`--result must be one of: pass | fail.`);
     parsed.gateResult = next;
     return true;
   },
   "--base-result": (parsed, arg, next) => {
     requireValue(arg, next);
-    if (next !== "pass" && next !== "fail") fail(`--base-result must be "pass" or "fail".`);
+    if (next !== "pass" && next !== "fail") fail(`--base-result must be one of: pass | fail.`);
     parsed.gateBaseResult = next;
     return true;
   },
@@ -829,7 +903,21 @@ const SPECIAL_FLAGS = Object.freeze({
     parsed.dropReviewCycle = parseInt(next, 10);
     return true;
   },
+  // COORD-673: --depends-on/--parent are BOTH a plain value flag (dependsOn keeps
+  // its last-wins shape for the single-parent consumers: open-followup,
+  // file-ticket, split-ticket) AND repeatable (dependsOnAll accumulates every
+  // occurrence). set-followup-relation reads dependsOnAll so passing the flag
+  // twice records both edges instead of silently keeping only the last.
+  "--depends-on": dependsOnFlag,
+  "--parent": dependsOnFlag,
 });
+
+function dependsOnFlag(parsed, arg, next) {
+  requireValue(arg, next);
+  parsed.dependsOn = next;
+  appendValue(parsed, "dependsOnAll", next);
+  return true;
+}
 
 function parseFlags(args) {
   const parsed = {};
@@ -856,10 +944,26 @@ function parseFlags(args) {
         `\`--invariant "..."\`, \`--feature-proof "..."\`, \`--repo-gate "..."\`, and \`--review-cycle "..."\` before commit/submit.`
       );
     } else {
-      fail(`Unknown flag "${arg}".`);
+      fail(`Unknown flag "${arg}".${formatSuggestions(suggestFlagsSafely(arg))}`);
     }
   }
   return parsed;
+}
+
+// COORD-572: " Did you mean: a, b?" — appended, never substituted, so every
+// existing refusal keeps its exact leading sentence.
+function formatSuggestions(candidates) {
+  return candidates && candidates.length > 0 ? ` Did you mean: ${candidates.join(", ")}?` : "";
+}
+
+// The suggester reads cli.js's own tables; a failure to build them must never
+// turn an ordinary "unknown flag" refusal into an internal error.
+function suggestFlagsSafely(flag) {
+  try {
+    return require("./cli-surface.js").suggestFlags(flag);
+  } catch {
+    return [];
+  }
 }
 
 function requireValue(flag, value) {
@@ -884,6 +988,11 @@ module.exports = {
     dispatchCommand,
     withTemporaryExecutionContext,
     parseFlags,
+    runTerminalLifecycle,
+    // COORD-612: help text builders, so the flag-coverage guard asserts against
+    // the same single source of truth the CLI prints.
+    buildHelpText,
+    buildVerbHelpText,
     // COORD-066: expose the closeout/land exec surface on the test facade so the
     // transitions<->closeout deferred-wiring guard test can drive a ticket
     // through finalize/finish end-to-end. These cross the near-circular DI seam

@@ -52,11 +52,7 @@ You are an implementation agent for this project. Execute the full governed impl
    - For code-repo tickets: worktree under `<repo>/.worktrees/<agent>/$ARGUMENTS/`
    - For X (coord) tickets: work directly in `coord/`
 
-5. **Rebase onto latest dev** — `gov start` may branch from a stale local ref:
-   ```bash
-   cd <worktree-path>
-   git fetch origin dev && git rebase origin/dev
-   ```
+5. **Trust `gov start` base selection** — the worktree is branched from the repo's configured integration branch (`integrationBranch` in `coord/project.config.js`) and freshened from origin when available. Do not rebase onto a hardcoded branch; if the base looks stale, go back through governance (`gov resume` / unstart + start) so base selection stays governed.
 
 6. Verify the lock file exists at `coord/.runtime/locks/$ARGUMENTS.lock` and contains valid JSON with owner, ticket, repo, branch, worktree, and timestamps.
 

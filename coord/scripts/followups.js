@@ -9,6 +9,39 @@ const FOLLOWUP_RELATIONS = new Set([
   "independent",
 ]);
 
+// COORD-673: normalize any accepted --depends-on shape into an ORDERED, deduped
+// id list. Accepts a bare id, the comma-separated form ("A,B" — previously
+// unparsed and rejected as a single nonexistent id), an array (the repeated
+// --depends-on flag form — previously last-wins), or nested combinations. Splits
+// on the same delimiter governance-validation.js#splitDependsOn uses to feed
+// readiness, so what this writer records is exactly what readiness reads back.
+//
+// Deliberately module-level and dependency-free (not a factory member and not
+// wired through the lifecycle.js composition root, per the COORD-396/397
+// un-growable-root policy): lifecycle-ticket-admin.js requires it directly.
+function parseDependsOnList(value) {
+  const flat = [];
+  const visit = (item) => {
+    if (item === null || item === undefined) return;
+    if (Array.isArray(item)) {
+      item.forEach(visit);
+      return;
+    }
+    for (const part of String(item).split(",").map((part) => part.trim()).filter(Boolean)) {
+      flat.push(part);
+    }
+  };
+  visit(value);
+  const seen = new Set();
+  const ordered = [];
+  for (const id of flat) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ordered.push(id);
+  }
+  return ordered;
+}
+
 function createFollowups(deps = {}) {
   const {
     fail,
@@ -74,27 +107,92 @@ function followupRelationToExceptionType(relation) {
   return null;
 }
 
-function applyFollowupRelation(board, ticketId, parentTicketId, relation) {
+// COORD-673: returns the ticket's new "Depends On" value and updates
+// board.followup_exceptions.
+//
+// BOARD CONTRACT (established for this ticket, not invented by it): "Depends On"
+// is a COMMA-SEPARATED LIST — governance-validation.js#splitDependsOn feeds
+// evaluateReadiness, which iterates every entry and reports each unmet one in
+// readiness.blockedBy. Multiple dependency edges per ticket are therefore
+// contract-legal, and only this writer was single-valued: it overwrote the field
+// with the newest parent, silently deleting governed edges that readiness (the
+// board's own don't-pick-this-up safety property) computes over.
+// followup_exceptions[<ticket>] is by contrast a SINGLE {parent, type} record,
+// so the relations that need one bind exactly one parent — and where honoring the
+// request would DISCARD recorded state, this writer now FAILS CLOSED instead.
+//
+// options:
+//   existingDependsOn — the row's current "Depends On" value (edges accumulate onto it)
+//   dependsOnList     — parsed --depends-on values (string | string[] | comma form)
+//   replace           — explicit opt-in to REPLACE the recorded edge set / exception
+function applyFollowupRelation(board, ticketId, parentTicketId, relation, options = {}) {
   if (!board.followup_exceptions || typeof board.followup_exceptions !== "object" || Array.isArray(board.followup_exceptions)) {
     board.followup_exceptions = {};
   }
+  const replace = Boolean(options.replace);
+  const requested = parseDependsOnList(
+    options.dependsOnList === undefined ? parentTicketId : options.dependsOnList
+  );
+  const existing = parseDependsOnList(options.existingDependsOn);
+  const currentException = board.followup_exceptions[ticketId] || null;
+  const describeException = () => (
+    `${currentException.parent} (recorded as ${currentException.type})`
+  );
+
   if (relation === "independent") {
-    delete board.followup_exceptions[ticketId];
-    return "";
+    // No --depends-on: the operator asked to clear the ticket's dependency
+    // metadata wholesale. With --depends-on: remove ONLY the named edges, so
+    // detaching one blocker never discards the others.
+    if (requested.length === 0) {
+      delete board.followup_exceptions[ticketId];
+      return existing.join(", ");
+    }
+    const removed = new Set(requested);
+    if (currentException && removed.has(currentException.parent)) {
+      delete board.followup_exceptions[ticketId];
+    }
+    return existing.filter((id) => !removed.has(id)).join(", ");
   }
-  if (!parentTicketId) {
+
+  if (requested.length === 0) {
     fail(`Follow-up relation "${relation}" requires --depends-on <ticket-id>.`);
   }
+
   const exceptionType = followupRelationToExceptionType(relation);
   if (exceptionType) {
-    board.followup_exceptions[ticketId] = {
-      parent: parentTicketId,
-      type: exceptionType,
-    };
+    if (requested.length > 1) {
+      fail(
+        `Follow-up relation "${relation}" records exactly one parent: the board stores a single ` +
+        `{parent, type} follow-up exception per ticket, so ${requested.length} parents ` +
+        `(${requested.join(", ")}) cannot all be recorded as "${relation}". ` +
+        `Record one as "${relation}" and add the rest with --relation blocking.`
+      );
+    }
+    const parent = requested[0];
+    if (currentException && currentException.parent !== parent && !replace) {
+      fail(
+        `Refusing to discard the follow-up exception already recorded for ${ticketId}: ` +
+        `${describeException()}. Pass --replace to replace it deliberately, or clear it first with ` +
+        `\`set-followup-relation ${ticketId} --depends-on ${currentException.parent} --relation independent\`.`
+      );
+    }
+    board.followup_exceptions[ticketId] = { parent, type: exceptionType };
   } else {
+    // relation "blocking" carries no exception record. Dropping an exception that
+    // belongs to a DIFFERENT parent would silently promote that parent's
+    // related/closeout-only edge to a hard blocker, so refuse unless replacing.
+    if (currentException && !requested.includes(currentException.parent) && !replace) {
+      fail(
+        `Refusing to discard the follow-up exception already recorded for ${ticketId}: ` +
+        `${describeException()}. Pass --replace to replace it deliberately, or clear it first with ` +
+        `\`set-followup-relation ${ticketId} --depends-on ${currentException.parent} --relation independent\`.`
+      );
+    }
     delete board.followup_exceptions[ticketId];
   }
-  return parentTicketId;
+
+  const next = replace ? requested : parseDependsOnList([existing, requested]);
+  return next.join(", ");
 }
 
 function nextTicketId(board, prefix) {
@@ -186,6 +284,7 @@ function findOutstandingCloseoutBlockerFollowups(board, parentTicketId) {
     normalizeFollowupRelation,
     followupRelationToExceptionType,
     applyFollowupRelation,
+    parseDependsOnList,
     nextTicketId,
     printNextId,
     resolveFollowupPromptPath,
@@ -195,3 +294,6 @@ function findOutstandingCloseoutBlockerFollowups(board, parentTicketId) {
 }
 
 module.exports = createFollowups;
+// COORD-673: pure helper exposed alongside the factory so consumers can use it
+// without a factory instance (and without new composition-root wiring).
+module.exports.parseDependsOnList = parseDependsOnList;

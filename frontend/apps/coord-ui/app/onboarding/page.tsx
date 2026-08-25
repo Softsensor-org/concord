@@ -48,9 +48,19 @@ export default function OnboardingPage() {
     },
     {
       label: 'Map product repos',
-      done: repos.length > 0,
-      detail: repos.length > 0 ? repos.map((r) => `${r.name} (${r.code})`).join(' · ') : 'no product repos mapped',
-      command: repos.length > 0 ? undefined : 'edit coord/project.config.js → repos'
+      // COORD-543: a repo that does not RESOLVE is not mapped. Counting an
+      // unresolved repo as done is how a layout mismatch became silent.
+      done: repos.length > 0 && repos.every((r) => r.status === 'ok'),
+      detail:
+        repos.length > 0
+          ? repos
+              .map((r) => `${r.name} (${r.code})${r.status === 'ok' ? '' : ` — ${r.status}`}`)
+              .join(' · ')
+          : 'no product repos mapped',
+      command:
+        repos.length > 0 && repos.every((r) => r.status === 'ok')
+          ? undefined
+          : 'edit coord/project.config.js → repos'
     },
     {
       label: 'Generate setup decisions',

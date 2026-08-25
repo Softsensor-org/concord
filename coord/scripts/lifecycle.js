@@ -7,9 +7,13 @@ const util = require("util");
 const { gitTry } = require("./git-ops.js");
 const { allBoardRepoCodes, DEFAULT_INTEGRATION_BRANCH } = require("../paths.js");
 
+// COORD-649: FINDING_STATUS / SCRIPTS_DIR / readLockAgeMs /
+// directoryLockMetadataPath were imported here but referenced nowhere in this
+// composition root (their consumers require them directly). Dropping the dead
+// wiring pays for the review-round wiring added below under the shrink-only
+// prodloc budget, which admits no bump.
 const {
   STATUS,
-  FINDING_STATUS,
   CREATABLE_STATUSES,
   legalStatusSet,
   legalFindingStatusSet,
@@ -17,16 +21,13 @@ const {
 const { stableIdempotencyKey } = require("./idempotency.js");
 const identityV2 = require("./identity-v2.js");
 const {
-  SCRIPTS_DIR,
   COORD_DIR,
   ROOT_DIR,
   DEFAULT_PATHS,
   GovernanceError,
   state,
-  readLockAgeMs,
   tryReclaimStaleDirectoryLock,
   describeDirectoryLockHolder,
-  directoryLockMetadataPath,
   writeDirectoryLockMetadata,
   readDirectoryLockMetadata,
   detectCheckoutRuntimeRole,
@@ -78,6 +79,7 @@ const createLandingResolution = require("./landing-resolution.js");
 const createBoardRebuild = require("./board-rebuild.js");
 const createConformanceAttestation = require("./conformance-attestation.js");
 const createEnginePin = require("./engine-pin.js");
+const { planFiles } = require("./publishability-check.js");
 const createConformanceVerbs = require("./conformance-verbs.js");
 const createChainTransitionSigner = require("./chain-transition-signer.js");
 const createLifecycleHelp = require("./lifecycle-help.js");
@@ -100,6 +102,9 @@ const createLifecycleGateCodeCommands = require("./lifecycle-gate-code-commands.
 const createLifecycleLandingGovernance = require("./lifecycle-landing-governance.js");
 const createLifecycleMaintenanceCommands = require("./lifecycle-maintenance-commands.js");
 const createLifecycleBoardValidate = require("./lifecycle-board-validate.js");
+const createLifecycleSessionReaping = require("./lifecycle-session-reaping.js");
+const createLifecycleReviewState = require("./lifecycle-review-state.js");
+const createTestingInfraPaths = require("./testing-infra-paths.js");
 const gatePlan = require("./gate-plan.js");
 const { signTransition } = require("./chain-migration-signing.js");
 const {
@@ -115,6 +120,7 @@ const {
   slugify,
   integerOrDefault,
   inferNextRound,
+  currentReviewRound,
   todayIso,
   escapeTable,
   escapeRegex,
@@ -152,16 +158,8 @@ const SESSION_FINGERPRINT_ENV_VARS = [
 ];
 const TESTING_INFRA_LANDING_EVIDENCE_PREFIX = "testing-infra audit:";
 const TESTING_INFRA_DESCRIPTION_PATTERN = /\b(test(?:ing)? infrastructure|test[- ]lanes?|default\/full\/extended(?: gates?)?|architecture guards?|timing artifacts?|coverage thresholds?|vitest|msw|pre-push|hook flow|hook installer|gate automation|gate truthfulness|workspace alias resolver|automation contract)\b/i;
-const TESTING_INFRA_FILE_PATTERNS = [
-  /^tools\/(?:gates|testing|hooks)\//,
-  /^tests\/(?:arch|setup|components|contracts)\//,
-  /^packages\/testkit\//,
-  /^vitest\.config\.[cm]?[jt]sx?$/,
-  /^package\.json$/,
-  /^README\.md$/,
-  /^\.github\/workflows\//,
-  /^\.husky\//,
-];
+// COORD-669: TESTING_INFRA_FILE_PATTERNS moved to testing-infra-paths.js, next
+// to isTestingInfrastructureFilePath, the only consumer of the vocabulary.
 const PNPM_BUILTIN_COMMANDS = new Set([
   "add",
   "audit",
@@ -381,7 +379,7 @@ const {
   inferTicketIdFromPath,
   cleanupTicketWorktree,
   cleanupCoordTicketWorktrees,
-  cleanupClosedTicketWorkspace,
+  cleanupClosedTicketWorkspace, ensureGovernedWorkspaceForTicket,
 } = createWorktreeOps({
   fail: (...args) => fail(...args),
   configuredRepoArgDescription: (...args) => configuredRepoArgDescription(...args),
@@ -473,9 +471,9 @@ const {
 
 const { prView, prCreate, prMerge } = createPrOps({
   fail: (...args) => fail(...args),
-  assertCommittedReviewState: (...args) => assertCommittedReviewState(...args),
-  ensureDoingTicketLockIntegrity: (...args) => ensureDoingTicketLockIntegrity(...args),
-  ensureTicketMutationOwnership: (...args) => ensureTicketMutationOwnership(...args),
+  assertCommittedReviewState: (...args) => assertCommittedReviewState(...args), assertReviewPlanReady: (...args) => assertReviewPlanReady(...args),
+  evaluateReadiness: (...args) => evaluateReadiness(...args), formatDependencyCycleList: (...args) => formatDependencyCycleList(...args),
+  formatTransitiveBlockerDetails: (...args) => formatTransitiveBlockerDetails(...args), ensureDoingTicketLockIntegrity: (...args) => ensureDoingTicketLockIntegrity(...args), ensureTicketMutationOwnership: (...args) => ensureTicketMutationOwnership(...args),
   getRepoRoot: (...args) => getRepoRoot(...args),
   getTicketRef: (...args) => getTicketRef(...args),
   ghPrListByBranch: (...args) => ghPrListByBranch(...args),
@@ -489,7 +487,7 @@ const { prView, prCreate, prMerge } = createPrOps({
   readBoard: (...args) => readBoard(...args),
   recordGovernanceExternalSideEffect: (...args) => recordGovernanceExternalSideEffect(...args),
   resolvePrUrlForTicket: (...args) => resolvePrUrlForTicket(...args),
-  resolveTicketGitContext: (...args) => resolveTicketGitContext(...args),
+  resolveTicketGitContext: (...args) => resolveTicketGitContext(...args), rowsById: (...args) => rowsById(...args),
   runBoardSync: (...args) => runBoardSync(...args),
   runGh: (...args) => runGh(...args),
   withGovernanceMutation: (...args) => withGovernanceMutation(...args),
@@ -512,103 +510,30 @@ const { runBoardValidate } = createLifecycleBoardValidate({
   validateBoardState,
 });
 
-function reapIdleAutoClaimedProviderStubs(options = {}) {
-  const provider = options.provider || null;
-  const board = options.board || readBoard();
-  const agents = Array.isArray(options.agents) ? options.agents : readAgentsRegistry();
-  const sessions = Array.isArray(options.sessions) ? options.sessions : readAgentSessions();
-  const protectedThread = options.protectedThread || null;
-  const includeManualStaleAfterMs = Number.isFinite(options.includeManualStaleAfterMs)
-    ? options.includeManualStaleAfterMs
-    : null;
-  const idle = listIdleActiveAgentSessions(board, { agents, sessions });
-  const released = [];
-  const now = new Date().toISOString();
-  const nowMs = Date.now();
-  for (const { agent, session } of idle) {
-    if (provider && agent.provider !== provider) {
-      continue;
-    }
-    if (!session.auto_claimed) {
-      if (includeManualStaleAfterMs === null) {
-        continue;
-      }
-      const lastSeenMs = Date.parse(session.last_seen_at || session.claimed_at || 0);
-      if (!Number.isFinite(lastSeenMs) || nowMs - lastSeenMs < includeManualStaleAfterMs) {
-        continue;
-      }
-    }
-    if (protectedThread && session.thread_id === protectedThread) {
-      continue;
-    }
-    session.status = "released";
-    session.released_at = now;
-    session.last_seen_at = now;
-    released.push({ session_id: session.session_id, handle: session.handle, agent_id: agent.id });
-  }
-  if (released.length > 0 && options.persist !== false) {
-    writeJsonFile(state.AGENT_SESSIONS_PATH, sessions);
-  }
-  return { released, sessions };
-}
-
-function releaseTerminalTicketSession(ticketId, options = {}) {
-  const board = options.board || readBoard();
-  const ref = getTicketRef(board, ticketId);
-  if (!ref || ![STATUS.DONE, STATUS.SUPERSEDED].includes(ref.row.Status)) {
-    return { released: [], reason: "ticket-not-terminal" };
-  }
-  const owner = normalizeOwnerValue(ref.row.Owner);
-  if (!owner) {
-    return { released: [], reason: "no-owner" };
-  }
-  if (findDoingTicketForOwner(board, owner)) {
-    return { released: [], reason: "owner-has-doing-ticket" };
-  }
-  const effectiveThread = Object.prototype.hasOwnProperty.call(options, "effectiveThread")
-    ? options.effectiveThread
-    : resolveEffectiveThreadId();
-  if (!effectiveThread) {
-    return { released: [], reason: "no-current-thread" };
-  }
-
-  return withAgentStateLock(() => {
-    const sessions = readAgentSessions();
-    const now = new Date().toISOString();
-    const released = [];
-    for (const session of sessions) {
-      if (
-        session.status === "active" &&
-        session.board_path === state.BOARD_PATH &&
-        session.handle === owner &&
-        session.thread_id === effectiveThread
-      ) {
-        session.status = "released";
-        session.released_at = now;
-        session.last_seen_at = now;
-        released.push({
-          session_id: session.session_id,
-          handle: session.handle,
-          agent_id: session.agent_id || null,
-          ticket: ticketId,
-        });
-      }
-    }
-    if (released.length > 0 && options.persist !== false) {
-      writeJsonFile(state.AGENT_SESSIONS_PATH, sessions);
-    }
-    return { released, sessions, reason: released.length > 0 ? "released-terminal-ticket-session" : "no-matching-session" };
-  });
-}
-
-function compareSessionsMostRecentFirst(left, right) {
-  const leftTs = Date.parse(left.last_seen_at || left.claimed_at || 0);
-  const rightTs = Date.parse(right.last_seen_at || right.claimed_at || 0);
-  if (Number.isFinite(leftTs) && Number.isFinite(rightTs) && rightTs !== leftTs) {
-    return rightTs - leftTs;
-  }
-  return String(right.claimed_at || "").localeCompare(String(left.claimed_at || ""));
-}
+// COORD-594: agent-session reaping/release + recency ordering live in
+// lifecycle-session-reaping.js (extraction under the no-grandfather prodloc
+// policy). Collaborators built by the governance-session factory BELOW are
+// injected as deferred wrappers, so ordering here is irrelevant; the names are
+// re-destructured into lifecycle scope so every existing call site resolves
+// unchanged.
+const {
+  compareSessionsMostRecentFirst,
+  reapIdleAutoClaimedProviderStubs,
+  releaseTerminalTicketSession,
+} = createLifecycleSessionReaping({
+  STATUS,
+  findDoingTicketForOwner: (...args) => findDoingTicketForOwner(...args),
+  getTicketRef: (...args) => getTicketRef(...args),
+  listIdleActiveAgentSessions: (...args) => listIdleActiveAgentSessions(...args),
+  normalizeOwnerValue: (...args) => normalizeOwnerValue(...args),
+  readAgentSessions: (...args) => readAgentSessions(...args),
+  readAgentsRegistry: (...args) => readAgentsRegistry(...args),
+  readBoard: (...args) => readBoard(...args),
+  resolveEffectiveThreadId: (...args) => resolveEffectiveThreadId(...args),
+  state,
+  withAgentStateLock: (...args) => withAgentStateLock(...args),
+  writeJsonFile: (...args) => writeJsonFile(...args),
+});
 
 const {
   PROVIDER_REGISTRY,
@@ -959,7 +884,7 @@ const {
   resolveSourceCommitSha,
   resolveTicketTier: (...args) => resolveTicketTier(...args),
   state,
-  splitPlanPathValues,
+  splitPlanPathValues: (...args) => splitPlanPathValues(...args),
   normalizeTestingInfraAuditPath: (...args) => normalizeTestingInfraAuditPath(...args),
   requiresLandingGovernance: (...args) => requiresLandingGovernance(...args),
   hasResolvedGovernanceRepairQuestion: (...args) => hasResolvedGovernanceRepairQuestion(...args),
@@ -1239,7 +1164,6 @@ const {
   COORD_DIR,
   identityV2,
   PROVIDER_REGISTRY,
-  GovernanceError,
   STATUS,
   withGovernanceMutation: (...args) => withGovernanceMutation(...args),
   withAgentStateLock: (...args) => withAgentStateLock(...args),
@@ -1250,7 +1174,12 @@ const {
   getTicketRef: (...args) => getTicketRef(...args),
   inferTicketStatus: (...args) => inferTicketStatus(...args),
   runBoardSync: (...args) => runBoardSync(...args),
-  findLockForTicket: (...args) => findLockForTicket(...args),
+  // COORD-680: ensureGovernedWorkspaceForTicket is deferred like every sibling
+  // helper. A bare shorthand binds the value at object-construction time, so a
+  // wiring/hoisting change turns it into `undefined` and the failure surfaces
+  // only at the call site of whichever verb reaches it first. Kept on one line
+  // to hold the composition-root LOC budget.
+  findLockForTicket: (...args) => findLockForTicket(...args), ensureGovernedWorkspaceForTicket: (...args) => ensureGovernedWorkspaceForTicket(...args),
   getLockFiles: (...args) => getLockFiles(...args),
   rebindTicketLock: (...args) => rebindTicketLock(...args),
   detectActiveSameOwnerOtherThread: (...args) => detectActiveSameOwnerOtherThread(...args),
@@ -1344,22 +1273,24 @@ const {
   writeCanonicalJsonFile: (...args) => writeCanonicalJsonFile(...args),
 });
 
-function tokenizeShellWords(value) {
-  return (String(value || "").match(/"(?:\\"|[^"])*"|'(?:\\'|[^'])*'|[^\s]+/g) || [])
-    .map((token) => token.replace(/^['"]|['"]$/g, ""));
-}
-
-function splitPlanPathValues(values) {
-  return toArray(values)
-    .flatMap((entry) => String(entry || "").split(","))
-    .map((entry) => String(entry || "").trim())
-    .filter(Boolean);
-}
-
-function isTestingInfrastructureFilePath(value) {
-  const normalized = String(value || "").trim().replace(/\\/g, "/");
-  return TESTING_INFRA_FILE_PATTERNS.some((pattern) => pattern.test(normalized));
-}
+// COORD-669: the testing-infrastructure path/token primitives
+// (tokenizeShellWords, splitPlanPathValues, isTestingInfrastructureFilePath,
+// extractFileReferencesFromCommands) moved to testing-infra-paths.js to bring
+// this measured composition root back under its prodloc high-water. Both
+// collaborators are injected as deferred wrappers so this block may sit BEFORE
+// createTestingInfraAudit, which itself depends on three of these names. The
+// four names are re-destructured back into lifecycle scope, so every call site,
+// the createTestingInfraAudit injections and the `__testing` facade below
+// resolve exactly as before the move.
+const {
+  extractFileReferencesFromCommands,
+  isTestingInfrastructureFilePath,
+  splitPlanPathValues,
+  tokenizeShellWords,
+} = createTestingInfraPaths({
+  normalizeTestingInfraAuditPath: (...a) => normalizeTestingInfraAuditPath(...a),
+  toArray: (...a) => toArray(...a),
+});
 
 // COORD: gov gate bash fallback. Many real repos gate via `bash scripts/gate.sh
 // <lane>` and expose NO `gate:<lane>` npm script, which made `gov gate` unusable
@@ -1369,27 +1300,6 @@ function isTestingInfrastructureFilePath(value) {
 // scripts/gate.sh is present in the worktree/repo. resolveGateScript itself is
 // left intact (its tests depend on the hard fail); we wrap it and catch the
 // GovernanceError it throws when no script matches.
-function extractFileReferencesFromCommands(ticketId, row, commands) {
-  const files = new Set();
-  for (const command of commands || []) {
-    const tokens = tokenizeShellWords(command);
-    for (const token of tokens) {
-      const cleaned = String(token || "")
-        .replace(/^[([{"'`]+/, "")
-        .replace(/[)\]}",;:'`]+$/, "")
-        .trim();
-      if (!cleaned || /^https?:\/\//.test(cleaned) || !/\.[A-Za-z0-9]+$/.test(cleaned)) {
-        continue;
-      }
-      const normalized = normalizeTestingInfraAuditPath(row.Repo, ticketId, cleaned);
-      if (normalized && isTestingInfrastructureFilePath(normalized)) {
-        files.add(normalized);
-      }
-    }
-  }
-  return [...files];
-}
-
 // cleanupTicketWorktree / cleanupCoordTicketWorktrees / cleanupClosedTicketWorkspace
 // moved to worktree-ops.js (Wave 4 slice 5, COORD-089). They are pure worktree
 // mechanics (remove/prune a ticket's worktree); the closeout/superseded decision
@@ -1506,6 +1416,8 @@ const {
 
 const {
   addFinding,
+  correctFindingRound,
+  normalizeLock,
   reopenTicket,
   resolveWorktreeBaseCompareRef,
   setFollowupRelation,
@@ -1532,7 +1444,8 @@ const {
   fs,
   getTicketRef: (...a) => getTicketRef(...a),
   gitTry: (...a) => gitTry(...a),
-  inferNextRound: (...a) => inferNextRound(...a),
+  currentReviewRound: (...a) => currentReviewRound(...a),
+  readPlanRecord: (...a) => readPlanRecord(...a),
   inferTicketStatus: (...a) => inferTicketStatus(...a),
   integerOrDefault: (...a) => integerOrDefault(...a),
   isDoingStatus: (...a) => isDoingStatus(...a),
@@ -1836,7 +1749,9 @@ const {
   assertStartPlanReady: (...args) => assertStartPlanReady(...args),
   buildStartPlanBootstrapCommand: (...args) => buildStartPlanBootstrapCommand(...args),
   detectSupersedeLandingBypass: (...args) => detectSupersedeLandingBypass(...args),
-  isRepoBackedCode: (...args) => isRepoBackedCode(...args),
+  // COORD-680: deferred forwarder (see the matching note on the
+  // createAgentCommands wiring above).
+  isRepoBackedCode: (...args) => isRepoBackedCode(...args), ensureGovernedWorkspaceForTicket: (...args) => ensureGovernedWorkspaceForTicket(...args),
   repoNameForCode: (...args) => repoNameForCode(...args),
   repoDisplayNameForCode: (...args) => repoDisplayNameForCode(...args),
   resolveTicketBaseRef: (...args) => resolveTicketBaseRef(...args),
@@ -2014,6 +1929,8 @@ const {
   safeResolveLockHead: (...args) => safeResolveLockHead(...args),
   inspectCanonicalLockMirrorState: (...args) => inspectCanonicalLockMirrorState(...args),
   auditRepoWorktrees: (...args) => auditRepoWorktrees(...args),
+  // COORD-635: control-plane worktree audit, so doctor names coord/ state.
+  auditCoordWorktrees: (...args) => auditCoordWorktrees(...args),
   readAgentSessions: (...args) => readAgentSessions(...args),
   ensureCurrentAgentIdentity: (...args) => ensureCurrentAgentIdentity(...args),
   isNoActiveClaimedSessionError: (...args) => isNoActiveClaimedSessionError(...args),
@@ -2179,109 +2096,43 @@ const {
 // actual integration branch is configured differently in paths.js.
 // Registry-generalized: derive the human-facing repo label from the registry
 // (M1 repoNameForCode) instead of hardcoding board codes to repo names.
-function assertCommittedReviewState(ticketId, row, lock, options = {}) {
-  if (!lock || !isRepoBackedCode(row.Repo)) {
-    return;
-  }
-  assertCurrentTicketLockIntegrity(ticketId, row, lock);
-  if (!lock.worktree || !fs.existsSync(lock.worktree)) {
-    fail(`Ticket ${ticketId} has no readable governed worktree to verify commit state.`);
-  }
-
-  const statusResult = gitTry(lock.worktree, ["status", "--porcelain"]);
-  if (statusResult.status !== 0) {
-    fail(`Could not verify git status for ${ticketId} in ${lock.worktree}.`);
-  }
-  if (String(statusResult.stdout || "").trim()) {
-    fail(`Ticket ${ticketId} has uncommitted changes in ${lock.worktree}. Commit the work before review/PR creation.`);
-  }
-
-  const repoRoot = getRepoRoot(row.Repo);
-  const sourceCommitSha = resolveSourceCommitSha(ticketId, row, options);
-  // COORD-022: compare against this repo's configured integration branch
-  // (default "dev"), not a hardcoded "dev", so main-integration adopters get
-  // a correct ahead-count delta.
-  const compareBaseRef = resolveLandingBaseRef(repoRoot, resolveRepoIntegrationBranch(row.Repo), sourceCommitSha, {
-    explicitBase: options.baseExplicit === true,
-  }).baseRef;
-
-  const aheadResult = gitTry(lock.worktree, ["rev-list", "--count", `${compareBaseRef}..HEAD`]);
-  if (aheadResult.status !== 0) {
-    fail(`Could not verify commit delta for ${ticketId} against ${compareBaseRef} in ${lock.worktree}.`);
-  }
-  const aheadCount = Number.parseInt(String(aheadResult.stdout || "").trim(), 10);
-  if (!Number.isFinite(aheadCount) || aheadCount < 1) {
-    if (options.allowMergedPrReconcile === true) {
-      return;
-    }
-    if (options.allowAlreadyLandedNoPrReconcile === true) {
-      return;
-    }
-    if (planTargetsCoordOnlyArtifacts(ticketId)) {
-      return;
-    }
-    if (
-      sourceCommitSha &&
-      isCommitAncestorOfRef(repoRoot, sourceCommitSha, compareBaseRef) &&
-      commitSubjectAffiliatesWithTicket(repoRoot, sourceCommitSha, ticketId)
-    ) {
-      fail(
-        `Ticket ${ticketId} has no committed changes ahead of ${compareBaseRef} because its governed source commit ${sourceCommitSha} ` +
-        `already appears landed on ${repoNameForCode(row.Repo)}/${compareBaseRef}. ` +
-        `Use \`coord/scripts/gov finalize ${ticketId} --no-pr --already-landed --landed "<canonical-branch closeout proof>"\` instead of supersede.`
-      );
-    }
-    fail(
-      `Ticket ${ticketId} has no committed changes ahead of ${compareBaseRef}. Commit the work before review/PR creation. ` +
-      `If the ticket was already landed on ${compareBaseRef} before review, use ` +
-      `\`coord/scripts/gov finalize ${ticketId} --no-pr --already-landed --landed "<canonical-branch closeout proof>"\`.`
-    );
-  }
-}
-
-function defaultStartTraceabilityValue(row) {
-  return ticketRequiresTraceability(row) ? "closing-gap" : "exempt";
-}
-
-function appendReviewFollowupPlan(ticketId, findingId, summary, repoCode, owner, round = 1) {
-  const existingRecord = readPlanRecord(ticketId, { allowMissing: true, skipRepairWrite: true });
-  const record = existingRecord
-    ? JSON.parse(JSON.stringify(existingRecord))
-    : buildScaffoldPlanRecord(ticketId, repoCode, owner, {
-        reviewRound: round,
-        priorFindings: [],
-        changeSummary: [],
-      });
-  const normalizedGovernance = normalizeGovernancePlanShape(record.governance, repoCode);
-  const priorFindingEntry = `${findingId} — ${summary}`;
-  record.review_round = round;
-  record.prior_findings = appendUniquePlanRecordValue(record.prior_findings || [], priorFindingEntry);
-  record.change_summary = appendUniquePlanRecordValue(
-    stripPlanScaffoldValues("change_summary", record.change_summary || [], {
-      ticketId,
-      incomingValue: `Address review return finding ${findingId}.`,
-      scaffoldValues: readPlanRecordScaffoldPlaceholders(record, "change_summary"),
-    }),
-    `Address review return finding ${findingId}.`
-  );
-  normalizedGovernance.ticket_local_repairs = [
-    ...(Array.isArray(normalizedGovernance.ticket_local_repairs) ? normalizedGovernance.ticket_local_repairs : []),
-    {
-      kind: "return_doing",
-      required_question_logged: false,
-      note: `Repair round ${round} started for ${findingId}.`,
-    },
-  ];
-  record.governance = normalizedGovernance;
-  record.self_review_cycles = buildScaffoldPlanRecord(ticketId, repoCode, owner, {
-    reviewRound: round,
-    priorFindings: record.prior_findings,
-    changeSummary: record.change_summary,
-  }).self_review_cycles;
-  const expectedRaw = existingRecord?.[BOARD_RAW_SYMBOL] ?? "";
-  writeCanonicalJsonFile(planRecordPath(ticketId), record, { expectedRaw });
-  writePlanCompatibilityBlockFromRecord(ticketId, record);
-}
+// COORD-594: the pre-review commit-state assertion, the review-return plan
+// append and the shared traceability default live in lifecycle-review-state.js
+// (extraction under the no-grandfather prodloc policy). Every collaborator is a
+// deferred wrapper resolved at call time (fs / gitTry / STATUS-free), so factory
+// ordering stays irrelevant; the names are re-destructured into lifecycle scope
+// so pr-ops / ticket-transitions / plan-command and the __testing facade resolve
+// exactly as before.
+const {
+  appendReviewFollowupPlan,
+  assertCommittedReviewState,
+  defaultStartTraceabilityValue,
+} = createLifecycleReviewState({
+  BOARD_RAW_SYMBOL,
+  appendUniquePlanRecordValue: (...args) => appendUniquePlanRecordValue(...args),
+  assertCurrentTicketLockIntegrity: (...args) => assertCurrentTicketLockIntegrity(...args),
+  buildScaffoldPlanRecord: (...args) => buildScaffoldPlanRecord(...args),
+  commitSubjectAffiliatesWithTicket: (...args) => commitSubjectAffiliatesWithTicket(...args),
+  fail: (...args) => fail(...args),
+  fs,
+  getRepoRoot: (...args) => getRepoRoot(...args),
+  gitTry,
+  isCommitAncestorOfRef: (...args) => isCommitAncestorOfRef(...args),
+  isRepoBackedCode: (...args) => isRepoBackedCode(...args),
+  normalizeGovernancePlanShape: (...args) => normalizeGovernancePlanShape(...args),
+  planRecordPath: (...args) => planRecordPath(...args),
+  planTargetsCoordOnlyArtifacts: (...args) => planTargetsCoordOnlyArtifacts(...args),
+  readPlanRecord: (...args) => readPlanRecord(...args),
+  readPlanRecordScaffoldPlaceholders: (...args) => readPlanRecordScaffoldPlaceholders(...args),
+  repoNameForCode: (...args) => repoNameForCode(...args),
+  resolveLandingBaseRef: (...args) => resolveLandingBaseRef(...args),
+  resolveRepoIntegrationBranch: (...args) => resolveRepoIntegrationBranch(...args),
+  resolveSourceCommitSha: (...args) => resolveSourceCommitSha(...args),
+  stripPlanScaffoldValues: (...args) => stripPlanScaffoldValues(...args),
+  ticketRequiresTraceability: (...args) => ticketRequiresTraceability(...args),
+  writeCanonicalJsonFile: (...args) => writeCanonicalJsonFile(...args),
+  writePlanCompatibilityBlockFromRecord: (...args) => writePlanCompatibilityBlockFromRecord(...args),
+});
 
 function getLockFiles() {
   const filesByName = new Map();
@@ -2527,9 +2378,24 @@ const {
   ensureRepoXCloseoutReady,
   findTicketProductWorktreeResidue,
 } = createLifecycleRepoXCloseout({
-  COORD_DIR,
-  REPO_ROOTS,
-  getRepoRoot: (...args) => getRepoRoot(...args),
+  // COORD-512: gitTry (top-level import, no late-binding thunk) lets the
+  // factory verify the control-plane ticket branch actually landed.
+  // COORD-635: the root it verifies against is coordRepoRoot, not ROOT_DIR —
+  // ADR-0008 makes the workspace container a non-repository.
+  COORD_DIR, REPO_ROOTS, gitTry,
+  // COORD-591: engine integrity surfaces + the governed plan change surface,
+  // so engine-facing Repo-X closeouts fail closed while template-sync or
+  // verify-engine report drift.
+  enginePin: createEnginePin({ coordDir: COORD_DIR }),
+  readTicketFileSurface: (ticketId) => planFiles(ticketId, ROOT_DIR),
+  // COORD-667: the in-process workspace merge is irreversible by the governed
+  // rollback (which restores files, not commits), so it is journaled through
+  // the same external-side-effect channel a merged PR uses. Shares a physical
+  // line with getRepoRoot deliberately: this root sits AT its fail-closed
+  // prodloc high-water (2431), and the no-grandfather policy ratchets that cap
+  // down via extraction rather than up for new wiring. This is a DI key, not
+  // control flow, so it adds no logical surface to the composition root.
+  recordExternalSideEffect: (...args) => recordGovernanceExternalSideEffect(...args), getRepoRoot: (...args) => getRepoRoot(...args),
   inferTicketIdFromPath: (...args) => inferTicketIdFromPath(...args),
   listGitWorktrees: (...args) => listGitWorktrees(...args),
   repoDisplayNameForCode: (...args) => repoDisplayNameForCode(...args),
@@ -2586,6 +2452,8 @@ const commands = {
   fleetGoldenPath,
   addFeatureProofCommand,
   addFinding,
+  correctFindingRound,
+  normalizeLock,
   addRepoGateCommand,
   addReviewCycleCommand,
   agentsCommand,
@@ -2687,6 +2555,12 @@ const commands = {
 module.exports = {
   GovernanceError,
   commands,
+  // COORD-478: public seam for the product bootstrap (`coord init`). When init
+  // itself CREATES the starter board — the one moment that coordination state is
+  // known-fresh — it anchors the journal genesis for it so the first governed
+  // mutation on a fresh artifact is not refused by the COORD-273 lost-journal
+  // seal. Idempotent: no-ops once the journal has a snapshot baseline.
+  ensureGovernanceJournalBaseline,
   __testing: {
     resumeTicket,
     explainTicket,

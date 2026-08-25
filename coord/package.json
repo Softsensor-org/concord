@@ -1,6 +1,6 @@
 {
   "name": "concord",
-  "version": "0.1.8",
+  "version": "0.1.10",
   "description": "Softsensor Concord — governed multi-agent coordination engine (the coord/ scaffold, driven by the gov CLI). Zero runtime dependencies.",
   "license": "Apache-2.0",
   "private": false,
@@ -31,8 +31,16 @@
     "type": "git",
     "url": "https://github.com/Softsensor-org/concord"
   },
+  "// scripts.test": "COORD-480: `test` is the ONE authoritative entrypoint (coord/scripts/test-runner.js) — root-normalizing, recursive, serial, session-identity-stripping, isolation-guarded. It works identically from the repo root, from coord/, and from a packed artifact. The test:* entries are focused local-iteration subsets that run through the SAME contract.",
   "scripts": {
-    "test": "node --test scripts/*.test.js board/*.test.js",
+    "test": "node scripts/test-runner.js",
+    "test:list": "node scripts/test-runner.js --list",
+    "test:core": "node scripts/test-runner.js --module core",
+    "test:board": "node scripts/test-runner.js --module board",
+    "test:hooks": "node scripts/test-runner.js --module hooks",
+    "test:gates": "node scripts/test-runner.js --module gates",
+    "test:enterprise": "node scripts/test-runner.js --module enterprise",
+    "test:packaging": "node scripts/test-runner.js --module packaging,release",
     "mutation": "stryker run && node scripts/mutation-policy.js classify --root . --report reports/mutation/mutation.json"
   },
   "devDependencies": {

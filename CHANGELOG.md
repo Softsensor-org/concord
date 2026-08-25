@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.10 — 2026-08-25
+
+- Publishes `create-concord` and the Linux SEA assets from one verified release
+  identity, then re-downloads and exercises both public channels.
+- Fails release credential preflight when either required public channel cannot
+  be published; missing credentials can no longer produce a green partial run.
+- Verifies advertised npm install claims against the live registry at publish
+  time.
+
 ## v0.1.8 — 2026-07-07
 
 ### Added
@@ -28,9 +37,10 @@
   wires `npm run gov` / `npm run concord`. `--from-existing` overlays onto an
   existing repo: it detects the repo shape and writes a tailored
   `coord/project.config.js` + starter tickets via the vendored `coord onboard`.
-- **Standalone Linux binary (no Node required)** — a single self-contained
-  executable (Node SEA) that carries the engine bundle inside it; `concord init .`
-  scaffolds a workspace with **zero Node on `PATH`** (for devcontainers, WSL2,
+- **Standalone Linux binary (no Node required to install)** — a single
+  self-contained executable (Node SEA) that carries the engine bundle inside it;
+  `concord init .` scaffolds a workspace with **zero Node on `PATH`** (ongoing
+  operation of that workspace — `npm run gov` and friends — still needs Node) (for devcontainers, WSL2,
   remote/SSH boxes, CI runners, minimal images). Built for x64 + arm64 on tag and
   attached to the GitHub Release. No code-signing/notarization needed for Linux.
 - **GCV-4 upgrade contract (`gov upgrade`)** — records the upstream pin

@@ -42,3 +42,10 @@ coord/memory/decisions.ndjson
 dist/
 release/sea/bundle.tar
 release/sea/sea-prep.blob
+
+# COORD-481: create-concord/template/ is the vendored engine bundle. It is
+# GENERATED at release time by release/stage-npm-package.js from the one
+# hygiene-verified cut and packed into the tarball — never committed to the donor
+# (committing it would let a stale bundle ship without passing the hygiene gate).
+create-concord/template/
+create-concord/*.tgz

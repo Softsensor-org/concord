@@ -6,6 +6,14 @@
  * Exposes governed ticket lifecycle as typed MCP tools so any MCP-capable
  * agent gets structured inputs/outputs without forking a subprocess per call.
  *
+ * Transport (COORD-482): specification-compliant MCP stdio — newline-delimited
+ * UTF-8 JSON-RPC messages, per
+ * https://modelcontextprotocol.io/specification/2025-11-25/basic/transports.
+ * Each stdout record is exactly one JSON-RPC message terminated by "\n";
+ * stdout carries protocol messages ONLY, diagnostics go to stderr. The
+ * previous LSP-style Content-Length framing was removed — it was never what
+ * real MCP stdio clients speak.
+ *
  * Usage:
  *   node coord/scripts/governance-mcp.js          # stdio transport
  *
@@ -18,6 +26,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { StringDecoder } = require("string_decoder");
 const { allBoardRepoCodes } = require("../paths.js");
 const governance = require("./governance.js");
 const { STATUS, GATE_LANES } = require("./governance-constants.js");
@@ -26,7 +35,24 @@ const FOLLOWUP_OPEN_RELATIONS = ["blocking", "related", "closeout-blocker"];
 const FOLLOWUP_RELATIONS = [...FOLLOWUP_OPEN_RELATIONS, "independent"];
 
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
-const HEADER_TERMINATOR = "\r\n\r\n";
+
+// MCP protocol revisions this server can negotiate. `initialize` echoes the
+// client's requested revision when it is one of these; otherwise it answers
+// with the latest supported revision (per the spec's version-negotiation
+// rule). The server's method surface (initialize / tools/list / tools/call /
+// ping) is identical across these revisions.
+const SUPPORTED_PROTOCOL_VERSIONS = Object.freeze([
+  "2025-11-25",
+  "2025-06-18",
+  "2025-03-26",
+  "2024-11-05",
+]);
+const LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
+
+// Newline-delimited framing safety valve: if a peer streams this many bytes
+// without a newline, treat it as a protocol violation instead of buffering
+// without bound.
+const MAX_PENDING_LINE_BYTES = 32 * 1024 * 1024;
 
 const COORD_DIR = path.resolve(__dirname, "..");
 const ROOT_DIR = path.dirname(COORD_DIR);
@@ -116,10 +142,12 @@ function runHeartbeatCycle(options = {}) {
 
   loopState.inFlight = true;
   try {
-    const identityResult = runGovFn(["whoami"]);
+    // COORD-478: the implemented identity verb is `agentid` (`whoami` never
+    // shipped; the old call made every heartbeat cycle short-circuit here).
+    const identityResult = runGovFn(["agentid"]);
     if (!identityResult.ok) {
       logger(`could not inspect current session: ${identityResult.error}`);
-      return { ok: false, skipped: "whoami_failed", error: identityResult.error };
+      return { ok: false, skipped: "agentid_failed", error: identityResult.error };
     }
     const identityPayload = identityResult.data || {};
     const ticketId = resolveHeartbeatTicket(identityPayload);
@@ -947,7 +975,7 @@ const TOOLS = {
 };
 
 // ---------------------------------------------------------------------------
-// MCP protocol implementation (JSON-RPC over Content-Length framed stdio)
+// MCP protocol implementation (JSON-RPC over newline-delimited stdio)
 // ---------------------------------------------------------------------------
 
 function validateToolArgs(schema, args) {
@@ -988,7 +1016,7 @@ function validateToolArgs(schema, args) {
 
 const SERVER_INFO = {
   name: "governance",
-  version: "0.4.0",
+  version: "0.5.0", // 0.5.0: spec-compliant newline-delimited stdio transport (COORD-482)
   description: "Governed ticket lifecycle for multi-agent coordination",
 };
 
@@ -1089,16 +1117,26 @@ function buildSuccessResponse(result) {
   };
 }
 
+function negotiateProtocolVersion(requestedVersion) {
+  if (typeof requestedVersion === "string" && SUPPORTED_PROTOCOL_VERSIONS.includes(requestedVersion)) {
+    return requestedVersion;
+  }
+  return LATEST_PROTOCOL_VERSION;
+}
+
 function handleRequest(request) {
   const { method, params } = request;
 
   switch (method) {
     case "initialize":
       return {
-        protocolVersion: "2024-11-05",
+        protocolVersion: negotiateProtocolVersion(params?.protocolVersion),
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
       };
+
+    case "ping":
+      return {};
 
     case "tools/list":
       return {
@@ -1167,47 +1205,30 @@ function handleRequest(request) {
       return buildSuccessResponse(result);
     }
 
-    case "notifications/initialized":
-      return null; // acknowledged, no response
-
     default:
+      if (typeof method === "string" && method.startsWith("notifications/")) {
+        // notifications/initialized and any other client notification:
+        // acknowledged, never answered (JSON-RPC notifications get no
+        // response; unknown notifications are ignored per the MCP spec).
+        return null;
+      }
       throw { code: -32601, message: `Method not found: ${method}` };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Stdio transport
+// Stdio transport — newline-delimited UTF-8 JSON-RPC (MCP stdio spec)
 // ---------------------------------------------------------------------------
 
-function parseContentLength(headersText) {
-  let contentLength = null;
-  for (const line of headersText.split("\r\n")) {
-    if (!line.trim()) {
-      continue;
-    }
-    const separatorIndex = line.indexOf(":");
-    if (separatorIndex === -1) {
-      throw { code: -32700, message: `Malformed MCP header: ${line}` };
-    }
-    const name = line.slice(0, separatorIndex).trim().toLowerCase();
-    const value = line.slice(separatorIndex + 1).trim();
-    if (name !== "content-length") {
-      continue;
-    }
-    if (!/^\d+$/.test(value)) {
-      throw { code: -32700, message: `Invalid Content-Length header: ${value}` };
-    }
-    contentLength = Number(value);
-  }
-  if (contentLength === null) {
-    throw { code: -32700, message: "Missing Content-Length header" };
-  }
-  return contentLength;
-}
-
-function createContentLengthMessageParser({ onMessage, onError } = {}) {
-  let buffer = Buffer.alloc(0);
-  let expectedLength = null;
+// Incremental parser for newline-delimited JSON-RPC. Handles messages split
+// across chunks (including splits inside multi-byte UTF-8 sequences, via
+// StringDecoder), multiple messages coalesced into one chunk, and optional
+// "\r\n" line endings. A malformed line produces one onError callback and the
+// parser resumes cleanly at the next newline — later valid messages are not
+// corrupted.
+function createNewlineMessageParser({ onMessage, onError, maxPendingBytes = MAX_PENDING_LINE_BYTES } = {}) {
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
 
   function emitError(error) {
     if (typeof onError === "function") {
@@ -1215,60 +1236,58 @@ function createContentLengthMessageParser({ onMessage, onError } = {}) {
     }
   }
 
+  function processLine(line) {
+    const text = line.endsWith("\r") ? line.slice(0, -1) : line;
+    if (!text.trim()) {
+      return; // ignore blank lines between messages
+    }
+    let message;
+    try {
+      message = JSON.parse(text);
+    } catch (error) {
+      emitError({
+        code: -32700,
+        message: `Parse error: ${error?.message || "invalid JSON line"}`,
+      });
+      return;
+    }
+    if (typeof onMessage === "function") {
+      onMessage(message);
+    }
+  }
+
   return {
     push(chunk) {
-      const nextChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      if (!nextChunk.length) {
+      const text = Buffer.isBuffer(chunk) ? decoder.write(chunk) : String(chunk);
+      if (!text) {
         return;
       }
-      buffer = buffer.length ? Buffer.concat([buffer, nextChunk]) : nextChunk;
+      pending += text;
 
-      while (buffer.length) {
-        if (expectedLength === null) {
-          const headerEndIndex = buffer.indexOf(HEADER_TERMINATOR);
-          if (headerEndIndex === -1) {
-            return;
-          }
-          const headerText = buffer.slice(0, headerEndIndex).toString("ascii");
-          try {
-            expectedLength = parseContentLength(headerText);
-          } catch (error) {
-            buffer = Buffer.alloc(0);
-            expectedLength = null;
-            emitError(error);
-            return;
-          }
-          buffer = buffer.slice(headerEndIndex + HEADER_TERMINATOR.length);
-        }
+      let newlineIndex = pending.indexOf("\n");
+      while (newlineIndex !== -1) {
+        const line = pending.slice(0, newlineIndex);
+        pending = pending.slice(newlineIndex + 1);
+        processLine(line);
+        newlineIndex = pending.indexOf("\n");
+      }
 
-        if (buffer.length < expectedLength) {
-          return;
-        }
-
-        const payloadBuffer = buffer.slice(0, expectedLength);
-        buffer = buffer.slice(expectedLength);
-        expectedLength = null;
-
-        try {
-          const message = JSON.parse(payloadBuffer.toString("utf8"));
-          if (typeof onMessage === "function") {
-            onMessage(message);
-          }
-        } catch (error) {
-          emitError({
-            code: -32700,
-            message: error?.message || "Invalid JSON payload",
-          });
-        }
+      if (pending.length > maxPendingBytes) {
+        pending = "";
+        emitError({
+          code: -32700,
+          message: `Parse error: message exceeds ${maxPendingBytes} bytes without a newline terminator`,
+        });
       }
     },
   };
 }
 
+// One JSON-RPC message per line. JSON.stringify escapes every embedded
+// newline, so the serialized form can never contain a raw "\n" — each stdout
+// record is exactly one valid message terminated by a single newline.
 function encodeStdioMessage(message) {
-  const payload = Buffer.from(JSON.stringify(message), "utf8");
-  const header = Buffer.from(`Content-Length: ${payload.length}${HEADER_TERMINATOR}`, "ascii");
-  return Buffer.concat([header, payload]);
+  return Buffer.from(`${JSON.stringify(message)}\n`, "utf8");
 }
 
 function writeFramedMessage(output, message) {
@@ -1301,22 +1320,32 @@ function startStdioTransport(options = {}) {
 
   ensureHeartbeatLoopFn();
 
-  const parser = createContentLengthMessageParser({
+  const parser = createNewlineMessageParser({
     onMessage(request) {
+      // JSON-RPC: a message without an "id" member is a notification and MUST
+      // NOT receive a response — not even an error response.
+      const isNotification =
+        !request || typeof request !== "object" || Array.isArray(request) || request.id === undefined;
       try {
         const result = handleRequestFn(request);
-        if (result === null) {
+        if (result === null || isNotification) {
           return;
         }
         writeFramedMessage(output, {
           jsonrpc: "2.0",
-          id: request?.id ?? null,
+          id: request.id,
           result,
         });
       } catch (error) {
+        if (isNotification) {
+          process.stderr.write(
+            `[governance-mcp] dropped error for notification ${request?.method || "(unknown)"}: ${error?.message || error}\n`
+          );
+          return;
+        }
         writeFramedMessage(output, {
           jsonrpc: "2.0",
-          id: request?.id ?? null,
+          id: request.id,
           error: {
             code: error.code || -32603,
             message: error.message || "Internal error",
@@ -1353,8 +1382,12 @@ module.exports = {
   __testing: {
     buildRunGovEnv,
     defaultRunGov,
-    createContentLengthMessageParser,
+    createNewlineMessageParser,
     encodeStdioMessage,
+    negotiateProtocolVersion,
+    SUPPORTED_PROTOCOL_VERSIONS,
+    LATEST_PROTOCOL_VERSION,
+    MAX_PENDING_LINE_BYTES,
     resolveHeartbeatTicket,
     readHeartbeatLock,
     shouldHeartbeatLock,

@@ -69,12 +69,52 @@ test("COORD-296 wiring: review-state helpers stay in lifecycle.js (COORD-088 own
 
 // --- resolveTicketGitContext ------------------------------------------------------
 
-test("resolveTicketGitContext short-circuits for non-repo-backed (X) tickets", () => {
-  const evidence = buildEvidence();
+// COORD-635 / ADR-0008: a control-plane ticket HAS a git context whenever a
+// control-plane repository exists — `gov start` cuts a real worktree of it. The
+// all-null short-circuit is now reserved for the topology where that is
+// actually true: no control-plane repository at all.
+test("resolveTicketGitContext short-circuits for X only when there is NO control-plane repository", () => {
+  const evidence = buildEvidence({
+    controlPlaneLayout: () => ({ coordRepoRoot: null, coordDir: "/w/coord", coordPathPrefix: null, topology: "none" }),
+  });
   assert.deepEqual(evidence.resolveTicketGitContext({ Repo: "X" }, "COORD-1"), {
     repoRoot: null,
     branch: null,
     worktree: null,
+    lock: null,
+  });
+});
+
+test("COORD-635: resolveTicketGitContext resolves X against coordRepoRoot, lock-first", () => {
+  const evidence = buildEvidence({
+    controlPlaneLayout: () => ({ coordRepoRoot: "/w/coord", coordDir: "/w/coord", coordPathPrefix: "", topology: "coord_repository" }),
+    findLockForTicket: () => ({ branch: "agent/coord-1", worktree: "/w/coord/.worktrees/a/COORD-1" }),
+    listGitWorktrees: () => {
+      throw new Error("worktrees must not be consulted when a lock exists");
+    },
+  });
+  assert.deepEqual(evidence.resolveTicketGitContext({ Repo: "X" }, "COORD-1"), {
+    repoRoot: "/w/coord",
+    branch: "agent/coord-1",
+    worktree: "/w/coord/.worktrees/a/COORD-1",
+    lock: { branch: "agent/coord-1", worktree: "/w/coord/.worktrees/a/COORD-1" },
+  });
+});
+
+test("COORD-635: resolveTicketGitContext falls back to the coord worktree list for X", () => {
+  const evidence = buildEvidence({
+    controlPlaneLayout: () => ({ coordRepoRoot: "/w/coord", coordDir: "/w/coord", coordPathPrefix: "", topology: "coord_repository" }),
+    findLockForTicket: () => null,
+    listGitWorktrees: (root) => {
+      assert.equal(root, "/w/coord", "the control-plane worktree list must be taken from coordRepoRoot");
+      return [{ path: "/w/coord/.worktrees/a/COORD-1", branch: "agent/coord-1" }];
+    },
+    inferTicketIdFromPath: (p) => (String(p).match(/COORD-\d+/) || [null])[0],
+  });
+  assert.deepEqual(evidence.resolveTicketGitContext({ Repo: "X" }, "COORD-1"), {
+    repoRoot: "/w/coord",
+    branch: "agent/coord-1",
+    worktree: "/w/coord/.worktrees/a/COORD-1",
     lock: null,
   });
 });

@@ -482,6 +482,7 @@ test("validateBoard allows a transfer-scoped canonical lock-location bypass for 
   const expectedLockRepo = __testing.expectedLockRepoForCode("B");
   const createdRepoRootLinks = [];
   const createdRepoRootParentDirs = [];
+  const createdNamespaceWorktrees = [];
   const fakeLockPath = path.join(runtimeLocksDir, `${ticketId}.lock`);
   const worktreePath = tempRepo;
   const branch = "agent/claudea0000-msrv-003-transfer-test";
@@ -617,7 +618,119 @@ test("validateBoard allows a transfer-scoped canonical lock-location bypass for 
     });
     assert.equal(validated.ticketCount, 1);
     assert.equal(validated.doingCount, 1);
+
+    // ---------------------------------------------------------------------
+    // COORD-663. The suppression above is scoped to ONE mutation, so a lock
+    // transferred through it stayed permanently non-canonical and every LATER
+    // mutation failed. A transfer preserves the worktree and branch by design,
+    // so the physical namespace must be carried as its own field rather than
+    // derived from the (new) logical owner.
+    // ---------------------------------------------------------------------
+    const namespaceOwner = "claudea0000";
+    const namespaceWorktree = path.join(repoRoots.B, ".worktrees", namespaceOwner, ticketId);
+    // A real checkout: the validator resolves the worktree's git HEAD, so the
+    // namespace path has to exist for these proofs to exercise the namespace
+    // rules rather than the existence rules. repoRoots.B is only symlinked to a
+    // temp repo when it does not already exist, so on a workspace that HAS a
+    // real backend repo this lands inside it — create it clean and remove it in
+    // the finally block. A leftover from a previous run makes the seed commit
+    // find nothing to commit, which fails the whole test during setup.
+    fs.rmSync(namespaceWorktree, { recursive: true, force: true });
+    fs.mkdirSync(namespaceWorktree, { recursive: true });
+    createdNamespaceWorktrees.push(namespaceWorktree);
+    runGit(namespaceWorktree, ["init", "-b", "dev"]);
+    runGit(namespaceWorktree, ["config", "user.email", "board-tests@example.com"]);
+    runGit(namespaceWorktree, ["config", "user.name", "Board Tests"]);
+    fs.writeFileSync(path.join(namespaceWorktree, "seed.txt"), "seed\n", "utf8");
+    runGit(namespaceWorktree, ["add", "."]);
+    runGit(namespaceWorktree, ["commit", "-m", "seed"]);
+    const namespaceHead = runGit(namespaceWorktree, ["rev-parse", "HEAD"]);
+    const baseLock = { ...JSON.parse(lockJson), owner, worktree: namespaceWorktree, branch, head: namespaceHead };
+    const setLock = (value) => {
+      fs.readFileSync = (targetPath, encoding) => {
+        if (targetPath === fakeLockPath) {
+          return `${JSON.stringify(value, null, 2)}\n`;
+        }
+        return originalReadFileSync(targetPath, encoding);
+      };
+    };
+    const validateNow = () => __testing.validateBoard(board, schema, planSchema, {
+      ignoreActiveTicketLockErrors: true,
+      currentTicketId: ticketId,
+    });
+
+    // The wedge itself: owner claudea12 occupying claudea0000's namespace with
+    // nothing recording why. Before the repair this was the state EVERY
+    // transfer left behind; it must still fail, because an unexplained
+    // mismatch is not a transfer.
+    setLock(baseLock);
+    assert.throws(validateNow, /canonical worktree path|canonical branch prefix/);
+
+    // Proofs 1 and 2: with the namespace declared and the transfer attested,
+    // the lock is valid with NO suppression — so update-finding, update-plan
+    // and submit, which all run board sync, work after a transfer.
+    const transferred = {
+      ...baseLock,
+      workspace_owner: namespaceOwner,
+      transfer_provenance: [
+        {
+          from: namespaceOwner,
+          to: owner,
+          at: new Date().toISOString(),
+          workspace_owner: namespaceOwner,
+          reason: "human-admin authorized continuation after a session restart",
+          previous_session_id: "a0000-prior",
+        },
+      ],
+    };
+    setLock(transferred);
+    const afterTransfer = validateNow();
+    assert.equal(afterTransfer.ticketCount, 1);
+    assert.equal(afterTransfer.doingCount, 1);
+
+    // The physical namespace is untouched — the property the repair exists to
+    // preserve, and the reason renaming a merged branch is not the remedy.
+    assert.equal(transferred.worktree, namespaceWorktree);
+    assert.equal(transferred.branch, branch);
+
+    // Proof 4: the history stays attributable.
+    assert.equal(transferred.transfer_provenance.length, 1);
+    assert.equal(transferred.transfer_provenance[0].from, namespaceOwner);
+    assert.equal(transferred.transfer_provenance[0].to, owner);
+    assert.match(transferred.transfer_provenance[0].reason, /human-admin/);
+
+    // Proof 3, part one: declaring the namespace WITHOUT provenance is refused.
+    setLock({ ...baseLock, workspace_owner: namespaceOwner });
+    assert.throws(validateNow, /no recorded transfer provenance/);
+
+    // Proof 3, part two: provenance that does not attest THIS namespace is
+    // refused, so a fabricated entry cannot launder an arbitrary path.
+    setLock({
+      ...transferred,
+      transfer_provenance: [
+        { from: "claudea9999", to: owner, at: new Date().toISOString(), workspace_owner: "claudea9999" },
+      ],
+    });
+    assert.throws(validateNow, /transfer provenance attests workspace namespace/);
+
+    // Proof 3, part three: a chain that does not END at the lock's owner is
+    // refused, so provenance cannot be replayed onto a different owner.
+    setLock({
+      ...transferred,
+      transfer_provenance: [
+        { from: namespaceOwner, to: "claudea777", at: new Date().toISOString(), workspace_owner: namespaceOwner },
+      ],
+    });
+    assert.throws(validateNow, /transfer provenance ends at owner/);
+
+    // Malformed provenance is treated as ABSENT rather than as permission.
+    setLock({ ...baseLock, workspace_owner: namespaceOwner, transfer_provenance: [{ from: namespaceOwner }] });
+    assert.throws(validateNow, /no recorded transfer provenance/);
+
   } finally {
+    for (const namespaceDir of createdNamespaceWorktrees) {
+      fs.rmSync(namespaceDir, { recursive: true, force: true });
+    }
     fs.existsSync = originalExistsSync;
     fs.readdirSync = originalReaddirSync;
     fs.readFileSync = originalReadFileSync;

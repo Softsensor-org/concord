@@ -146,3 +146,102 @@ test("install() fails-closed on a live coord/.runtime write (enforce), passes in
     else process.env.COORD_TEST_ISOLATION_RUNTIME = prior;
   }
 });
+
+// COORD-480: copyFileSync is a (src, dest) op — the DEST is what gets written.
+// It used to be classified path-first, so the guard checked the SOURCE and
+// blocked legitimate READS out of a guarded surface (staging a bundle from the
+// live tree; cpSync delegates to copyFileSync per file). Enforcement in the
+// direction that matters is unchanged: copying INTO a guarded path still throws.
+test("copyFileSync is guarded on its destination, not its source", () => {
+  guard.install();
+  const sbx = fs.mkdtempSync(path.join(os.tmpdir(), "isolation-copy-"));
+  try {
+    // Reading OUT of a guarded live surface into a sandbox is allowed.
+    const src = path.join(COORD_DIR, "GOVERNANCE.md");
+    assert.doesNotThrow(() => fs.copyFileSync(src, path.join(sbx, "copy.md")));
+    // Writing INTO a guarded live surface is still blocked.
+    assert.throws(
+      () => fs.copyFileSync(path.join(sbx, "copy.md"), path.join(COORD_DIR, "rendered", "GUARD-PROOF-COPY.tmp")),
+      (e) => e.code === "ETESTISOLATION"
+    );
+    assert.throws(
+      () => fs.copyFileSync(path.join(sbx, "copy.md"), path.join(COORD_DIR, ".runtime", "GUARD-PROOF-COPY.tmp")),
+      (e) => e.code === "ETESTISOLATION"
+    );
+  } finally {
+    fs.rmSync(sbx, { recursive: true, force: true });
+  }
+});
+
+// --- COORD-606: governed-state class (board / PLAN / QUESTIONS / active) ------
+
+test("the governed-state classifier flags the live board, plan, questions and active notes", () => {
+  const cases = [
+    path.join(COORD_DIR, "board", "tasks.json"),
+    path.join(COORD_DIR, "board", "board.js"),
+    path.join(COORD_DIR, "PLAN.md"),
+    path.join(COORD_DIR, "QUESTIONS.md"),
+    path.join(COORD_DIR, "active", "COORD-1.md"),
+  ];
+  for (const abs of cases) {
+    assert.ok(guard.isUnderGovernedGuarded(abs), `${abs} should be in the governed class`);
+    assert.ok(guard.isGovernedViolation(abs), `${abs} should be a governed violation`);
+  }
+  // Sandboxed equivalents and unrelated live paths are not violations.
+  const sbx = fs.mkdtempSync(path.join(os.tmpdir(), "isolation-governed-"));
+  try {
+    assert.ok(!guard.isGovernedViolation(path.join(sbx, "board", "tasks.json")));
+  } finally {
+    fs.rmSync(sbx, { recursive: true, force: true });
+  }
+  assert.ok(!guard.isGovernedViolation(path.join(COORD_DIR, "scripts", "lifecycle.js")));
+  assert.ok(!guard.isGovernedViolation(path.join(COORD_DIR, "product", "TESTING_AND_GATES.md")));
+});
+
+test("the governed-state class fails closed on a live write and stays sandbox-safe", () => {
+  guard.install();
+  assert.equal(guard.governedMode(), "enforce");
+  assert.throws(
+    () => fs.writeFileSync(path.join(COORD_DIR, "board", "tasks.json"), "[]"),
+    (e) => e.code === "ETESTISOLATION"
+  );
+  assert.throws(
+    () => fs.appendFileSync(path.join(COORD_DIR, "QUESTIONS.md"), "x"),
+    (e) => e.code === "ETESTISOLATION"
+  );
+  assert.throws(
+    () => fs.writeFileSync(path.join(COORD_DIR, "PLAN.md"), "x"),
+    (e) => e.code === "ETESTISOLATION"
+  );
+  assert.throws(
+    () => fs.mkdirSync(path.join(COORD_DIR, "active", "coord606-should-not-exist")),
+    (e) => e.code === "ETESTISOLATION"
+  );
+  assert.ok(!fs.existsSync(path.join(COORD_DIR, "active", "coord606-should-not-exist")));
+  const sbx = fs.mkdtempSync(path.join(os.tmpdir(), "isolation-governed-write-"));
+  try {
+    fs.mkdirSync(path.join(sbx, "board"));
+    assert.doesNotThrow(() => fs.writeFileSync(path.join(sbx, "board", "tasks.json"), "[]"));
+  } finally {
+    fs.rmSync(sbx, { recursive: true, force: true });
+  }
+});
+
+test("the governed-state class honors detect / off staging like the runtime class", () => {
+  const prior = process.env.COORD_TEST_ISOLATION_GOVERNED;
+  try {
+    delete process.env.COORD_TEST_ISOLATION_GOVERNED;
+    assert.equal(guard.governedMode(), "enforce", "fail-closed by default");
+    process.env.COORD_TEST_ISOLATION_GOVERNED = "off";
+    assert.equal(guard.governedMode(), "off");
+    process.env.COORD_TEST_ISOLATION_GOVERNED = "detect";
+    assert.equal(guard.governedMode(), "detect");
+    process.env.COORD_TEST_ISOLATION_GOVERNED = "DETECT";
+    assert.equal(guard.governedMode(), "detect", "mode parsing is case-insensitive");
+    process.env.COORD_TEST_ISOLATION_GOVERNED = "nonsense";
+    assert.equal(guard.governedMode(), "enforce", "an unknown mode must fail closed");
+  } finally {
+    if (prior === undefined) delete process.env.COORD_TEST_ISOLATION_GOVERNED;
+    else process.env.COORD_TEST_ISOLATION_GOVERNED = prior;
+  }
+});

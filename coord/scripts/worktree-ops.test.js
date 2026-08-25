@@ -8,6 +8,12 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const createWorktreeOps = require("./worktree-ops.js");
+const { gitTry: realGitTry } = require("./git-ops.js");
+const {
+  createTempGitRepoWithOrigin,
+  runGit,
+  writeRepoFile,
+} = require("./governance-test-utils.js");
 
 // Stub the injected cross-module deps; the pure helpers below don't shell out.
 function build(overrides = {}) {
@@ -62,6 +68,41 @@ test("repoBootstrapLabel maps X and unknown to coord, codes to repo name", () =>
   assert.equal(w.repoBootstrapLabel("X"), "coord");
   assert.equal(w.repoBootstrapLabel("Z"), "coord");
   assert.equal(w.repoBootstrapLabel("B"), "backend");
+});
+
+test("COORD-697: PR branch publication reconciles a lost acknowledgement and skips retry", () => {
+  const repo = createTempGitRepoWithOrigin("coord697-branch-push-", { "README.md": "seed\n" });
+  const branch = "agent/codexa680-b-697";
+  runGit(repo.repoRoot, ["checkout", "-b", branch]);
+  writeRepoFile(repo.repoRoot, "feature.txt", "delta\n");
+  runGit(repo.repoRoot, ["add", "feature.txt"]);
+  runGit(repo.repoRoot, ["commit", "-m", "feature"]);
+  const commitSha = runGit(repo.repoRoot, ["rev-parse", "HEAD"]);
+
+  const loseAckAfterRealPush = (repoRoot, args) => {
+    const result = realGitTry(repoRoot, args);
+    return args[0] === "push"
+      ? { status: 128, stdout: "", stderr: "connection closed after remote update" }
+      : result;
+  };
+  const receipts = [];
+  const first = build().pushBranchToOrigin(repo.repoRoot, branch, {
+    gitFn: loseAckAfterRealPush,
+    onReceipt: (receipt) => receipts.push(receipt),
+  });
+  assert.equal(first.status, "pushed");
+  assert.equal(first.pushed, true);
+  assert.equal(first.acknowledged, false);
+  assert.equal(first.ack_lost, true);
+  assert.equal(runGit(repo.remoteRoot, ["rev-parse", branch]), commitSha);
+  assert.equal(runGit(repo.repoRoot, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]), `origin/${branch}`);
+  assert.equal(receipts.length, 1);
+
+  const second = build().pushBranchToOrigin(repo.repoRoot, branch);
+  assert.equal(second.status, "already_present");
+  assert.equal(second.pushed, false);
+  assert.equal(second.attempted, undefined);
+  assert.equal(runGit(repo.remoteRoot, ["rev-parse", branch]), commitSha);
 });
 
 test("COORD-358: repo-X ticket workspace is a real git worktree and cleanup removes branch", () => {

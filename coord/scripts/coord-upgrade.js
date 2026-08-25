@@ -51,6 +51,10 @@ const defaultCreateEnginePin = require("./engine-pin.js");
 const createUpgradeReleaseSource = require("./upgrade-release-source.js");
 
 const MANIFEST_REL = "coord/TEMPLATE_SYNC_MANIFEST.json";
+// COORD-624: the only path prefixes an upgrade may manage. Everything Concord
+// owns lives in the workspace governance surface; product repositories are
+// siblings and are never written by install, upgrade or recovery.
+const MANAGED_PREFIXES = ["coord", ".claude"];
 // GCV-4 upstream pin (COORD-451): records WHERE this engine came from
 // (version/channel/ref/sha) so `gov upgrade` knows what "latest" means and which
 // distribution channel the repo is on. This is DISTINCT from engine-pin.json,
@@ -391,6 +395,20 @@ module.exports = function createCoordUpgrade(deps = {}) {
     }
     if (nodePath.posix.normalize(rel) !== rel) {
       throw new Error(`ambiguous engine manifest path: ${rel}`);
+    }
+    // COORD-624: an upgrade may only touch the WORKSPACE GOVERNANCE SURFACE.
+    // Concord lives as a SIBLING of the product repositories it governs, and
+    // those repositories are read-only for every install/upgrade/recovery path.
+    // This is a STRUCTURAL confinement rather than a runtime barrier: a manifest
+    // that named `backend/...` could not reach a product repo even if something
+    // upstream mis-declared it, because every managed path is rejected here
+    // before it is ever resolved to an absolute location.
+    if (!MANAGED_PREFIXES.some((prefix) => rel === prefix || rel.startsWith(`${prefix}/`))) {
+      throw new Error(
+        `engine manifest path outside the workspace governance surface: ${rel}\n` +
+        `  Upgrades may only manage ${MANAGED_PREFIXES.map((prefix) => `${prefix}/`).join(" and ")}. Product repositories are\n` +
+        "  read-only for every Concord install, upgrade and recovery path (COORD-624)."
+      );
     }
     return rel;
   }

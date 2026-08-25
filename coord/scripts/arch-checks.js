@@ -149,15 +149,34 @@ const DEFAULT_CONFIG = Object.freeze({
     // their current measured size. These are growth caps, not grandfather
     // exemptions: any increase fails, and shrink-only decomposition can lower
     // the cap through deriveProductionModuleLocBudgets().
+    //
+    // COORD-594: lifecycle.js (2603 -> 2464) and plan-records.js (1887 -> 1579)
+    // had drifted past their caps. Per the no-grandfather policy the fix was
+    // extraction, NOT a budget bump: lifecycle-session-reaping.js and
+    // lifecycle-review-state.js came out of the composition root, and
+    // plan-record-field-validators.js came out of plan-records.js. The caps
+    // below are the ratcheted-DOWN measured sizes after that extraction.
+    //
+    // COORD-669: lifecycle.js drifted to 2466 against its 2464 cap when
+    // COORD-663 (bf8f5db4) wired the `normalizeLock` verb into the root. Per the
+    // same no-grandfather policy the cap was NOT raised: the testing-infra
+    // path/token primitives came out into testing-infra-paths.js and the cap
+    // ratcheted DOWN 2464 -> 2432, the measured size after that extraction.
     prodloc: Object.freeze({
       maxLoc: 1200,
       severity: "fail",
       include: Object.freeze(["coord/scripts/"]),
       highWater: Object.freeze({
-        "coord/scripts/lifecycle.js": 2599,
+        // COORD-680: 2432 -> 2431. Removing the now-unused GovernanceError entry
+        // from the createAgentCommands injection shrank the file by one line, and
+        // the decomposition-proof gate requires highWater === the measured count
+        // EXACTLY (no headroom is expressible), so an unchanged 2432 invalidates
+        // the proof. This is a DOWNWARD ratchet, which the strict no-grandfather
+        // policy permits; never raise it to accommodate growth.
+        "coord/scripts/lifecycle.js": 2431,
         "coord/scripts/governance-validation.js": 1310,
         "coord/scripts/journal.js": 1710,
-        "coord/scripts/plan-records.js": 1871,
+        "coord/scripts/plan-records.js": 1579,
         "coord/scripts/governance-context.js": 1785,
         "coord/scripts/token-economics.js": 1515,
       }),

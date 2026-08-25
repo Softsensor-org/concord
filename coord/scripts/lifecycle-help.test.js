@@ -46,7 +46,12 @@ function captureLog(fn) {
 test("factory returns the expected presentation surface", () => {
   const api = makeApi();
   assert.deepEqual(Object.keys(api).sort(), [
+    // COORD-612: the help TEXT builders joined the surface so per-verb help
+    // (`gov <verb> --help`) and the flag-coverage guard can project the same
+    // single source of truth the printers emit.
+    "buildHelpText",
     "buildInitiateSummary",
+    "buildVerbHelpText",
     "closeoutSummaryCommand",
     "coverageRollupCommand",
     "insightsCommand",
@@ -54,6 +59,7 @@ test("factory returns the expected presentation surface", () => {
     "preworkCommand",
     "printHelp",
     "printInitiate",
+    "printVerbHelp",
     "recallCommand",
     "signJournalCommand",
   ]);

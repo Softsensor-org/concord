@@ -346,38 +346,17 @@ Gate artifacts (JSON reports) are saved and referenced in plan records. The pre-
 
 ## MCP Integrations
 
-Connect Claude to external tools via Model Context Protocol:
-
-```json
-{
-  "mcpServers": {
-    "sentry": {
-      "command": "npx",
-      "args": ["-y", "@sentry/mcp-server@latest"],
-      "env": {
-        "SENTRY_AUTH_TOKEN": "...",
-        "SENTRY_ORG": "my-org",
-        "SENTRY_PROJECT": "my-project"
-      }
-    },
-    "datadog": {
-      "command": "npx",
-      "args": ["-y", "@anthropic/datadog-mcp-server@latest"],
-      "env": {
-        "DD_API_KEY": "...",
-        "DD_APP_KEY": "..."
-      }
-    }
-  }
-}
-```
+The project default starts only the local governance server. External MCP
+connectors must be enabled deliberately; do not place credentials or floating
+package references in `.mcp.json`. See `coord/docs/MCP_CONFIGURATION.md` for the
+pinned, credential-gated Sentry example and the vendor-supported Datadog setup.
 
 Useful integrations:
 
 | Server | What Claude Can Do With It |
 |--------|---------------------------|
-| **Sentry** | Search errors, view stack traces, check release health |
-| **Datadog** | Query metrics, read logs, check APM traces |
+| **Sentry** | Optional: search errors, view stack traces, check release health |
+| **Datadog** | Optional: query metrics, read logs, check APM traces |
 | **GitHub** | Richer PR/issue automation beyond the `gh` CLI |
 | **Linear/Jira** | Sync tickets to external trackers |
 | **Slack** | Post updates, read channel history |

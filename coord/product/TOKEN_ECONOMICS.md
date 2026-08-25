@@ -67,10 +67,12 @@ Coord is already provider/tier-agnostic (Codex/Gemini/Claude). Keeps rigor where
 it matters; cuts the long tail 3–10×. Doctor enforces the *tier-appropriate*
 minimum, not a flat one.
 
-### 5. Plan-waves — eliminate conflict churn (COORD-030)
+### 5. Plan-waves — reduce conflict churn (COORD-030)
 `gov plan-waves`: compute file-overlap from each ticket's `files` field +
-`dependsOn`, emit a conflict-free parallel schedule (wave N = tickets with no
-shared files and satisfied deps). Makes "land the cluster lead, then fan out"
+`dependsOn`, emit a parallel schedule with no *declared* file overlap inside a
+wave (wave N = tickets with no shared declared files and satisfied deps). The
+schedule is only as good as the `files` declarations; undeclared writes can still
+overlap. Makes "land the cluster lead, then fan out"
 mechanical instead of hand-clustered. Also flags repo-`X` tickets as
 non-parallelizable (no worktree isolation — see the burn-in runbook).
 

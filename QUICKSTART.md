@@ -4,6 +4,16 @@
 > It is an overlay for existing repos, CI, tickets, PRD/URS documents, and agent
 > workflows — not a replacement for your SDLC.
 
+> **What this does and does not do.** Concord coordinates the actions taken
+> through `gov` — ticket ownership, lifecycle locks, per-ticket Git worktrees,
+> gates, review cycles, and a hash-chained record of those lifecycle operations.
+> It reduces collisions for governed actions; it does not stop an agent or a
+> person with local access from working outside governance, and its journal does
+> not cover provider tool calls, shell commands, or file reads. Worktrees give
+> repository separation, not process, filesystem, network, provider, or secret
+> isolation. Full statement: [README — What Concord Does and Does Not Do](README.md#what-concord-does-and-does-not-do)
+> and `coord/product/PUBLIC_CLAIMS_POLICY.md`.
+
 For a fuller existing-repo adoption path, see
 `coord/product/EXISTING_REPO_ADOPTION_QUICKSTART.md`.
 
@@ -44,9 +54,9 @@ When you're ready to use it on your own project, continue below.
 npx create-concord my-project
 cd my-project
 
-# OR overlay onto an EXISTING repo — detects the repo shape, proposes a
-# governance tier + track preset, and writes a tailored coord/project.config.js
-# plus 3 starter tickets (skip step 2 below — onboarding already did it):
+# OR overlay onto an EXISTING workspace — the reviewed install plan applies a
+# tailored config + setup decisions + sanitized onboarding receipt. It previews
+# 3 starter tickets but does not file them without a separate explicit approval:
 cd my-existing-repo
 npx create-concord . --from-existing
 
@@ -56,7 +66,10 @@ npx create-concord my-analytics --workflow-pack daily-analytics
 ```
 
 No Node on the box (devcontainer, WSL, CI, minimal image)? Use the standalone
-Linux binary from the GitHub Release — same result, no runtime required:
+Linux binary from the GitHub Release. It **installs** with zero Node on `PATH`;
+the scaffolded workspace's ongoing governance commands (`npm run gov` and
+friends) still require Node >= 22.8, so plan for Node on any box that will
+actually run governance:
 
 ```bash
 concord init .            # or: concord init my-project
@@ -65,13 +78,18 @@ concord init my-site --workflow-pack site-seo
 
 `create-concord` vendors `coord/` in-tree (GCV-4), pins the engine version in
 `coord/.coord-engine.json`, writes the commit-vs-gitignore split + the
-`coord/WORKSPACE.md` runtime guide, and wires `npm run gov` /
-`npm run concord` / `npm run coord-ui`. Optional workflow packs copy
-`00-ops/...` and `data/...` operating templates into the scaffolded app, so the
-work runs from that app rather than from `coord-template`. Upgrade later by
-reviewing the write-free plan and applying its exact digest:
+`coord/WORKSPACE.md` runtime guide, and wires the four operator scripts —
+`npm run concord` (product ops), `npm run gov` (governance lifecycle),
+`npm run agent` (provider-neutral operator facade), and `npm run coord-ui`
+(read-only cockpit) — with their ownership boundaries documented in
+`coord/WORKSPACE.md`. Optional workflow packs copy `00-ops/...` and `data/...`
+operating templates into the scaffolded app, so the work runs from that app
+rather than from `coord-template`. Engine upgrades are product operations —
+route them through `concord`, not raw lifecycle `gov`. Check and upgrade later
+by reviewing the write-free plan and applying its exact digest:
 
 ```bash
+npm run concord -- upgrade --check
 npm run concord -- upgrade
 npm run concord -- upgrade --apply-plan <digest-from-plan>
 ```
@@ -79,7 +97,37 @@ npm run concord -- upgrade --apply-plan <digest-from-plan>
 From the scaffolded app root, `npm run coord-ui` launches that app's own bundled
 read-only cockpit against that app's `coord/`.
 
-<details><summary>Manual copy (no npm/binary) — fallback</summary>
+**Git bootstrap is consent-based (COORD-477), and it targets `coord/` only
+(COORD-631 / ADR-0008).** Your workspace container is never a Git repository —
+absence is the control, not consent, so no flag initializes it — and your
+product repositories are independent siblings the installer never initializes.
+Git-backed governance lives in an optional independent repository at
+`<workspace>/coord`. The installer performs no Git mutation by default; each
+step below is a separate explicit flag, previewed in the dry-run plan's
+`git_actions` section (which lists every file proposed for staging):
+
+```bash
+npx create-concord my-project --dry-run \
+  --git-init --git-ignore-block --git-stage --git-baseline-commit
+# review the plan (git_actions + staging allowlist), then apply its digest:
+npx create-concord my-project --apply-plan <digest> \
+  --git-init --git-ignore-block --git-stage --git-baseline-commit
+```
+
+`--git-init` alone leaves `coord/` an unborn repo (no commit); staging is
+always the exact plan allowlist, coord-relative (never `git add .`). Sibling
+product repositories and workspace container assets live outside `coord/`, so
+they are not merely ignored — they are unreachable from the repository doing
+the staging. If you stop before the baseline commit, `coord/scripts/gov doctor`
+reports `bootstrap-pending` for `coord/` with the exact next steps, and strict
+diagnostics resume after your first committed baseline.
+
+<details><summary>Manual recovery copy (not an installer)</summary>
+
+This last-resort procedure has no reviewed plan, consent digest, collision
+inventory, backup/rollback ledger, receipt, mode verification, or artifact
+integrity proof. It may omit root-level assets or future files; use npm or the
+SEA binary for normal installation.
 
 ```bash
 # From your project root (parent of your product repos)
@@ -138,41 +186,20 @@ review -> runtime/deploy evidence when needed -> closeout.
 > example) on the board — you can skip straight to step 5 for your first run and
 > come back here when you author your own tickets.
 
-Authoring a **new backlog row** by hand is the supported way to create a
-ticket. This is the one allowed hand-edit of `coord/board/tasks.json`: add a
-row with `Status: todo` / `Owner: unassigned`, then sync. After that, the
-ticket's lifecycle fields (status, owner, locks) are owned by `gov` — never
-hand-edit those (see `coord/AGENTS.md` and `coord/DIRECTORY.md`).
-
-Add a ticket to the relevant `sections[].rows[]`:
-
-```json
-{
-  "sections": [
-    {
-      "title": "Setup",
-      "rows": [
-        {
-          "ID": "SETUP-001",
-          "Repo": "X",
-          "Type": "infra",
-          "Pri": "P0",
-          "Status": "todo",
-          "Owner": "unassigned",
-          "Description": "Initial project setup and governance validation.",
-          "Depends On": ""
-        }
-      ]
-    }
-  ]
-}
-```
-
-Then sync:
+File tickets through governance — atomic, journaled, and validated. Do not
+hand-edit `coord/board/tasks.json`; `gov` owns board state (see
+`coord/AGENTS.md` and `coord/DIRECTORY.md`):
 
 ```bash
-node coord/board/board.js sync
+npm run gov -- file-ticket --repo X --type chore --pri P2 \
+  --description "Initial project setup and governance validation." --with-prompt
 ```
+
+`file-ticket` reserves the next free ticket ID under a lock, writes the row
+with `Status: todo` / `Owner: unassigned`, syncs the rendered board, and prints
+the new ID. `--with-prompt` also creates and registers the start-ready ticket
+prompt at `coord/prompts/tickets/<ID>.md` in the same journaled mutation —
+without it the ticket needs prompt coverage or a waiver before it can start.
 
 Before submitting the first real ticket, run the closeout guide. It reports the
 exact missing evidence and ready-to-paste `gov` commands instead of forcing a
@@ -185,20 +212,46 @@ coord/scripts/gov publishability-check SETUP-001
 
 ## 5. Start your first governed session
 
+The cold start is provider-neutral — one bootstrap command binds your agent
+identity, runs the health check, and recommends the next governed action. It
+works the same for Claude, Codex, Gemini, and plain-shell operators:
+
 ```bash
-# In Claude Code:
+npm run agent -- bootstrap
+```
+
+In Claude Code, the `/initiate` skill wraps this same contract and adds a board
+summary:
+
+```text
 /initiate
 ```
 
 This will:
-- Claim an agent identity
+- Claim an agent identity (only when the session is unbound)
 - Run health checks
-- Show the board summary
 - Recommend the next ticket
 
 ## 6. Work on a ticket
 
+Provider-neutral path (any agent, or no AI at all):
+
 ```bash
+npm run agent -- do SETUP-001      # claim + lock + isolated worktree + explain payload
+# ...implement and verify...
+npm run gov -- submit SETUP-001    # move to review (gates must pass)
+```
+
+Started the wrong ticket? Recover through governance — never hand-edit the
+board:
+
+```bash
+npm run gov -- unstart SETUP-001   # guarded same-owner revert: doing -> todo
+```
+
+In Claude Code, the native skills wrap the same lifecycle:
+
+```text
 /planner SETUP-001     # Plan the approach
 /code-writer SETUP-001  # Implement it
 ```

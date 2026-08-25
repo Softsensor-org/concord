@@ -26,9 +26,14 @@ stand up first), `QUICKSTART.md` (the 5-minute tour).
 ## 1. Stand up the board
 
 ```bash
-# from the donor template
-bash /path/to/coord-template/init.sh        # bootstrap a new project from the template
+# from the parent workspace containing your independent product repositories
+npx create-concord . --from-existing --dry-run
+npx create-concord . --from-existing --apply-plan <digest-from-plan>
 ```
+
+The standalone SEA binary provides the same transactional plan/apply contract.
+The donor checkout's `init.sh` is retired and performs no writes; manual copying
+is recovery only and is not equivalent to either installer.
 
 Then declare the team's product repos in `coord/project.config.js` (the `repos`
 map: code, path, integration branch). One coord board governs one product family;

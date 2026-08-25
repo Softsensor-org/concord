@@ -3,7 +3,16 @@
   "$id": "coord/board/tasks.schema.json",
   "title": "Coordination Board",
   "type": "object",
-  "required": ["version", "metadata", "sections", "prompt_index", "pr_index", "landing_index", "review_findings", "followup_exceptions"],
+  "required": [
+    "version",
+    "metadata",
+    "sections",
+    "prompt_index",
+    "pr_index",
+    "landing_index",
+    "review_findings",
+    "followup_exceptions"
+  ],
   "additionalProperties": false,
   "properties": {
     "version": {
@@ -12,14 +21,26 @@
     },
     "metadata": {
       "type": "object",
-      "required": ["title", "last_updated", "canonical_references"],
+      "required": [
+        "title",
+        "last_updated",
+        "canonical_references"
+      ],
       "additionalProperties": false,
       "properties": {
-        "title": { "type": "string", "minLength": 1 },
-        "last_updated": { "type": "string", "minLength": 1 },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "last_updated": {
+          "type": "string",
+          "minLength": 1
+        },
         "canonical_references": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "landing_index_required_from_ticket": {
           "anyOf": [
@@ -30,7 +51,12 @@
             {
               "type": "object",
               "propertyNames": {
-                "enum": ["X", "B", "F", "default"]
+                "enum": [
+                  "X",
+                  "B",
+                  "F",
+                  "default"
+                ]
               },
               "additionalProperties": {
                 "type": "string",
@@ -48,7 +74,12 @@
             {
               "type": "object",
               "propertyNames": {
-                "enum": ["X", "B", "F", "default"]
+                "enum": [
+                  "X",
+                  "B",
+                  "F",
+                  "default"
+                ]
               },
               "additionalProperties": {
                 "type": "string",
@@ -66,7 +97,12 @@
             {
               "type": "object",
               "propertyNames": {
-                "enum": ["X", "B", "F", "default"]
+                "enum": [
+                  "X",
+                  "B",
+                  "F",
+                  "default"
+                ]
               },
               "additionalProperties": {
                 "type": "string",
@@ -84,7 +120,12 @@
             {
               "type": "object",
               "propertyNames": {
-                "enum": ["X", "B", "F", "default"]
+                "enum": [
+                  "X",
+                  "B",
+                  "F",
+                  "default"
+                ]
               },
               "additionalProperties": {
                 "type": "string",
@@ -97,12 +138,21 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["doing", "review", "done", "deferred", "superseded", "todo"]
+            "enum": [
+              "doing",
+              "review",
+              "done",
+              "deferred",
+              "superseded",
+              "todo"
+            ]
           }
         },
         "preamble": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -110,16 +160,27 @@
       "type": "array",
       "minItems": 1,
       "items": {
-                  "type": "object",
-                  "required": ["kind", "level", "heading", "separator_before"],
+        "type": "object",
+        "required": [
+          "kind",
+          "level",
+          "heading",
+          "separator_before"
+        ],
         "properties": {
           "kind": {
             "type": "string",
-            "enum": ["markdown", "table"]
+            "enum": [
+              "markdown",
+              "table"
+            ]
           },
           "level": {
             "type": "integer",
-            "enum": [2, 3]
+            "enum": [
+              2,
+              3
+            ]
           },
           "heading": {
             "type": "string",
@@ -130,11 +191,15 @@
           },
           "body": {
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
           "columns": {
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
           "rows": {
             "type": "array",
@@ -144,14 +209,30 @@
                 "Status": {
                   "type": "string",
                   "anyOf": [
-                    { "const": "proposed" },
-                    { "const": "todo" },
-                    { "const": "doing" },
-                    { "const": "review" },
-                    { "const": "done" },
-                    { "const": "deferred" },
-                    { "const": "superseded" },
-                    { "pattern": "^doing \\(blocked: .+\\)$" }
+                    {
+                      "const": "proposed"
+                    },
+                    {
+                      "const": "todo"
+                    },
+                    {
+                      "const": "doing"
+                    },
+                    {
+                      "const": "review"
+                    },
+                    {
+                      "const": "done"
+                    },
+                    {
+                      "const": "deferred"
+                    },
+                    {
+                      "const": "superseded"
+                    },
+                    {
+                      "pattern": "^doing \\(blocked: .+\\)$"
+                    }
                   ]
                 },
                 "Superseded By": {
@@ -199,7 +280,10 @@
       },
       "additionalProperties": {
         "type": "object",
-        "required": ["recorded_at", "evidence"],
+        "required": [
+          "recorded_at",
+          "evidence"
+        ],
         "additionalProperties": false,
         "properties": {
           "recorded_at": {
@@ -212,7 +296,11 @@
           },
           "method": {
             "type": "string",
-            "enum": ["pr", "no_pr", "manual"]
+            "enum": [
+              "pr",
+              "no_pr",
+              "manual"
+            ]
           },
           "commit_sha": {
             "type": "string",
@@ -232,7 +320,153 @@
           },
           "provenance_status": {
             "type": "string",
-            "enum": ["explicit", "legacy", "fulfilled_by", "unknown"]
+            "enum": [
+              "explicit",
+              "legacy",
+              "fulfilled_by",
+              "unknown"
+            ]
+          },
+          "control_plane_verification": {
+            "type": "string",
+            "enum": [
+              "remote_ancestry",
+              "local_only"
+            ]
+          },
+          "control_plane_verification_reason": {
+            "type": "string",
+            "enum": [
+              "no_control_plane_repository",
+              "no_control_plane_remote",
+              "no_control_plane_remote_branch",
+              "no_resolvable_commit_sha"
+            ]
+          },
+          "pre_closeout_push": {
+            "type": "object",
+            "description": "COORD-691: receipt for a governed pre-closeout push performed while recording this landing. Present only when a push actually ran; its absence means none was needed or none was authorized.",
+            "required": [
+              "status",
+              "forced"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "no_remote",
+                  "no_remote_branch",
+                  "already_present",
+                  "commit_not_on_head",
+                  "diverged",
+                  "pushed",
+                  "failed"
+                ]
+              },
+              "pushed": {
+                "type": "boolean"
+              },
+              "forced": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ],
+                "description": "A governed push never forces; the field is recorded explicitly because that is the audit question a reader has."
+              },
+              "ref": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "remote": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "remote_ref": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "commit_sha": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "local_sha": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "remote_sha_before": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "remote_sha_after": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "created_remote_branch": {
+                "type": "boolean"
+              },
+              "observed_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "detail": {
+                "type": "string"
+              },
+              "attempted": {
+                "type": "boolean",
+                "description": "COORD-691: a push was actually invoked. Recorded separately from `pushed` because an attempt is an audit fact even when it delivered nothing."
+              },
+              "acknowledged": {
+                "type": "boolean",
+                "description": "COORD-691: whether git reported success LOCALLY. False with pushed=true means the acknowledgement was lost after the ref update reached the server."
+              },
+              "remote_moved": {
+                "type": "boolean",
+                "description": "COORD-691: the remote branch changed. Distinct from `pushed`: the remote can move without delivering the commit under test."
+              },
+              "ack_lost": {
+                "type": "boolean",
+                "description": "COORD-691: git reported failure but post-verification found the commit on the remote."
+              },
+              "earlier_attempt": {
+                "type": "object",
+                "description": "COORD-691: when this closeout performed no push and is citing one recorded in the journal, the recorded outcome of that earlier attempt, preserved verbatim. Its presence means the receipt is a citation, not a fresh push.",
+                "additionalProperties": false,
+                "properties": {
+                  "status": {
+                    "type": "string"
+                  },
+                  "delivered": {
+                    "type": "boolean"
+                  },
+                  "acknowledged": {
+                    "type": "boolean"
+                  },
+                  "ack_lost": {
+                    "type": "boolean"
+                  },
+                  "remote_moved": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           },
           "evidence": {
             "type": "array",
@@ -254,7 +488,14 @@
         "type": "array",
         "items": {
           "type": "object",
-          "required": ["id", "severity", "summary", "status", "round", "qref"],
+          "required": [
+            "id",
+            "severity",
+            "summary",
+            "status",
+            "round",
+            "qref"
+          ],
           "additionalProperties": false,
           "properties": {
             "id": {
@@ -263,7 +504,11 @@
             },
             "severity": {
               "type": "string",
-              "enum": ["HIGH", "MED", "LOW"]
+              "enum": [
+                "HIGH",
+                "MED",
+                "LOW"
+              ]
             },
             "summary": {
               "type": "string",
@@ -271,7 +516,12 @@
             },
             "status": {
               "type": "string",
-              "enum": ["open", "resolved", "deferred", "consolidated"]
+              "enum": [
+                "open",
+                "resolved",
+                "deferred",
+                "consolidated"
+              ]
             },
             "deferred_to": {
               "type": "string",
@@ -299,12 +549,19 @@
       },
       "additionalProperties": {
         "type": "object",
-        "required": ["code", "reason", "recorded_at", "recorded_by"],
+        "required": [
+          "code",
+          "reason",
+          "recorded_at",
+          "recorded_by"
+        ],
         "additionalProperties": false,
         "properties": {
           "code": {
             "type": "string",
-            "enum": ["prompt_coverage"]
+            "enum": [
+              "prompt_coverage"
+            ]
           },
           "reason": {
             "type": "string",
@@ -328,7 +585,10 @@
       },
       "additionalProperties": {
         "type": "object",
-        "required": ["parent", "type"],
+        "required": [
+          "parent",
+          "type"
+        ],
         "additionalProperties": false,
         "properties": {
           "parent": {
@@ -337,7 +597,10 @@
           },
           "type": {
             "type": "string",
-            "enum": ["closeout-blocker", "related-followup"]
+            "enum": [
+              "closeout-blocker",
+              "related-followup"
+            ]
           }
         }
       }

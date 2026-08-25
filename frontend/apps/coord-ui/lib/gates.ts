@@ -46,6 +46,17 @@ export interface GatesSummary {
 
 function readGate(repo: RepoModel, lane: string): GateResult {
   const repoName = repo.name;
+  // COORD-543 — never read gate artifacts from a substituted tree; an
+  // unresolved repo simply has no gate artifact.
+  if (repo.status !== 'ok' || !repo.dir) {
+    return {
+      repo: repoName,
+      lane,
+      found: false,
+      steps: [],
+      authorityReason: repo.statusReason ?? undefined
+    };
+  }
   const file = path.join(repo.dir, 'artifacts', 'gates', `${lane}.latest.json`);
   if (!fs.existsSync(file)) {
     return { repo: repoName, lane, found: false, steps: [] };

@@ -129,6 +129,38 @@ module.exports = function createEnginePin(deps = {}) {
     return { path: outPath, pin: pinRecord };
   }
 
+  // MANIFEST VERIFY (COORD-591): manifest-vs-files internal consistency — the
+  // same surface check-template-sync.sh performs, exposed programmatically so
+  // the Repo-X closeout gate can consult it without shelling out. READ-ONLY.
+  // Compares each exact-match item's declared checksum against the live file.
+  function verifyManifest() {
+    const { manifest } = readManifest();
+    const repoRoot = path.join(coordDir, "..");
+    const failures = [];
+    for (const item of manifest.items || []) {
+      if (!item || typeof item.path !== "string") continue;
+      if (item.match_policy !== "exact") continue;
+      const absPath = path.join(repoRoot, item.path);
+      if (!fs.existsSync(absPath)) {
+        failures.push({ path: item.path, kind: "missing", detail: "tracked file is missing on disk" });
+        continue;
+      }
+      const buf = fs.readFileSync(absPath);
+      const liveSha = sha256Hex(buf);
+      const expected = item.checksum || {};
+      if (expected.hex !== liveSha || (expected.bytes != null && expected.bytes !== buf.length)) {
+        failures.push({
+          path: item.path,
+          kind: "checksum-drift",
+          detail:
+            `expected sha256=${expected.hex} bytes=${expected.bytes}, ` +
+            `got sha256=${liveSha} bytes=${buf.length}`,
+        });
+      }
+    }
+    return { ok: failures.length === 0, failures };
+  }
+
   // VERIFY: re-derive the live surface and compare it against the pin. READ-ONLY.
   // Reports in-sync, or DRIFTED with the offending paths and whether the manifest
   // fingerprint changed.
@@ -234,6 +266,7 @@ module.exports = function createEnginePin(deps = {}) {
   return {
     pin,
     verify,
+    verifyManifest,
     // Exposed for tests + reuse.
     deriveSurface,
     deriveManifestFingerprint,

@@ -51,6 +51,39 @@ The exact engine-managed path list is declared in the upstream release
 manifest. Consumers must not hand-edit those files. Project-owned paths are
 never overwritten by upgrade.
 
+### Engine-Managed Path Discovery (COORD-607)
+
+That path list is **derived, not curated**. `coord/TEMPLATE_SYNC_MANIFEST.json`
+used to be a hand-maintained list seeded once from a static 2026-04-12
+maintainer inventory snapshot. There was no discovery rule, so an engine
+file created afterwards stayed invisible to both integrity surfaces —
+`check-template-sync.sh` (manifest vs files) and `gov verify-engine` (surface vs
+pin) — until someone added it by hand. Both reported green while untracked
+engine code could drift or be tampered with, and because the manifest
+fingerprint feeds conformance attestation (ENT-010) and the engine pin
+(ENT-011), the gap weakened every downstream integrity claim.
+
+The rule now lives in `coord/scripts/template-sync-discovery.js`:
+
+- **Roots**: every file under `coord/scripts/**` and `coord/board/**` — the
+  engine-managed roots of the Target Layout above — is engine-managed.
+- **No extension allowlist.** An allowlist is how the extensionless
+  `coord/scripts/agent` entrypoint stayed invisible.
+- **Exclusions** are explicit and each carries a recorded reason, published in
+  the manifest under `discovery.exclusions`. Currently only project-owned board
+  state (`coord/board/tasks.json`, `coord/board/plans/**`), which the Upgrade
+  Contract preserves rather than replaces.
+- **Curated extras** (governance docs, `.claude/settings.json`) live outside the
+  roots, so no rule claims them; they stay hand-listed and are marked
+  `discovery: "curated-extra"`.
+
+Regenerate with `node coord/scripts/template-sync-discovery.js --write`, then
+re-pin with `gov verify-engine --pin`. `check-template-sync.sh --audit-coverage`
+and `coord/scripts/template-sync-discovery.test.js` both FAIL when an
+engine-managed file is untracked, so the gap cannot silently reopen. An
+unexplained exclusion is the same hole in a new shape: add one only when the
+file is genuinely not engine-managed, and record why.
+
 ## Project Config Contract
 
 `coord/project.config.js` is the project-owned seam. It exports plain data:

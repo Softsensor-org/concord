@@ -16,7 +16,7 @@
 // It catches transient writes too (write-then-restore helpers), which a
 // post-suite `git status` check cannot see.
 //
-// Two guarded classes:
+// Three guarded classes:
 //   1. SEAL surfaces (COORD-290, always fail-closed): the TRACKED, seal-sensitive
 //      coordination surfaces — coord/prompts/**, coord/rendered/**.
 //   2. LIVE-RUNTIME class (COORD-299, fail-closed by default; stageable): the
@@ -26,10 +26,28 @@
 //      runtime (RUNTIME_DIR + the two state-lock dirs + memory) via __testing.paths.
 //      Controlled by COORD_TEST_ISOLATION_RUNTIME: "enforce" (default) | "detect"
 //      (record offenders to COORD_TEST_ISOLATION_REPORT, do not throw) | "off".
+//   3. GOVERNED-STATE class (COORD-606, fail-closed by default; stageable): the
+//      remaining TRACKED governed coordination state that classes 1 and 2 left
+//      unguarded — coord/board/** (tasks.json, the schemas and board.js),
+//      coord/PLAN.md, coord/QUESTIONS.md and coord/active/**. COORD-480 advertised
+//      "the runner fails if a test writes outside its allowed temporary roots"
+//      while a test could still rewrite the live board or PLAN; this class closes
+//      that gap. Tests must point BOARD_PATH / PLAN_PATH / QUESTIONS_PATH at an
+//      os.tmpdir() sandbox through __testing.paths. Controlled by
+//      COORD_TEST_ISOLATION_GOVERNED with the same enforce|detect|off vocabulary.
 //
 // The guard instruments the TEST process only (it is preloaded by the test
 // runner, never by production `gov`), so real governed journal/lock/memory
 // writes are unaffected. See coord/product/TESTING_AND_GATES.md.
+//
+// STRUCTURAL LIMIT (COORD-606, stated rather than implied): this module is an
+// in-process `fs` hook, so it can only see writes made by the node process it is
+// preloaded into. A mutation performed by a SPAWNED process — `git`, a shell
+// script, a `gov` child — is invisible to it. That half of the guarantee is
+// enforced by the runner instead: coord/scripts/test-runner.js fingerprints the
+// governed tracked surfaces before and after every module and fails the run when
+// the tree changed. The two halves together are what makes the COORD-480 claim
+// true; neither alone is sufficient.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -52,6 +70,18 @@ const RUNTIME_GUARDED_PREFIXES = [
   path.join(COORD_DIR, "memory"),
 ];
 
+// --- Class 3: governed tracked state (COORD-606). ---------------------------
+// The tracked coordination state classes 1 and 2 do not cover: the board and its
+// schemas, the plan and questions logs, and per-ticket active notes. A test that
+// rewrites any of these corrupts the live governance record exactly as badly as a
+// seal-surface write.
+const GOVERNED_GUARDED_PREFIXES = [
+  path.join(COORD_DIR, "board"),
+  path.join(COORD_DIR, "PLAN.md"),
+  path.join(COORD_DIR, "QUESTIONS.md"),
+  path.join(COORD_DIR, "active"),
+];
+
 // Documented ALLOWLIST (seal class): legitimate live-path writes.
 // `withCanonicalTicketPrompt` (governance-test-utils.js) provisions the REAL
 // canonical ticket prompt on disk to exercise canonical path resolution
@@ -60,9 +90,15 @@ const RUNTIME_GUARDED_PREFIXES = [
 // STRIPPED public checkout where the prompt is missing, and removes only what it
 // created. In the donor checkout these prompts already exist, so the helper is a
 // no-op. Keep this list tiny and conservative — prefer sandboxing over allowlisting.
+// COORD-480: COORD-028.md joins the list for the SAME helper and the SAME
+// reason (token-economics.test.js provisions it through withCanonicalTicketPrompt).
+// It was invisible before only because the stripped-cut suite used to run
+// WITHOUT the guard; the authoritative runner now preloads the guard everywhere,
+// including the public cut, which is where this path is actually written.
 const ALLOWLIST = new Set([
   path.join(COORD_DIR, "prompts", "tickets", "COORD-023.md"),
   path.join(COORD_DIR, "prompts", "tickets", "COORD-024.md"),
+  path.join(COORD_DIR, "prompts", "tickets", "COORD-028.md"),
 ]);
 
 // Documented path ALLOWLIST (runtime class, COORD-299): genuine end-to-end
@@ -107,6 +143,12 @@ const RUNTIME_ALLOWLIST = new Set([
 //     never wrote the live runtime — the allowlist entry was precautionary.
 const RUNTIME_ALLOWLIST_FILES = new Set([]);
 
+// Documented path ALLOWLIST (governed-state class, COORD-606): live governed-state
+// paths a test may legitimately write. Keep this EMPTY unless a genuine
+// integration test cannot be sandboxed — the whole point of the class is that the
+// live board / plan / questions / active notes are never test-writable.
+const GOVERNED_ALLOWLIST = new Set([]);
+
 let runtimeAllowlistedProcessCache = null;
 // Is the CURRENT process an allowlisted runtime-class test/worker? Memoized;
 // matched by basename of any argv entry (the test runner worker or a spawned child).
@@ -145,6 +187,10 @@ function isUnderRuntimeGuarded(abs) {
   return underAnyPrefix(abs, RUNTIME_GUARDED_PREFIXES);
 }
 
+function isUnderGovernedGuarded(abs) {
+  return underAnyPrefix(abs, GOVERNED_GUARDED_PREFIXES);
+}
+
 // Pure classifier (unit-tested): is this absolute path a SEAL-class violation?
 function isViolation(abs) {
   if (!abs) return false;
@@ -161,6 +207,14 @@ function isRuntimeViolation(abs) {
   return true;
 }
 
+// Pure classifier (unit-tested): is this absolute path a GOVERNED-state violation?
+function isGovernedViolation(abs) {
+  if (!abs) return false;
+  if (!isUnderGovernedGuarded(abs)) return false;
+  if (GOVERNED_ALLOWLIST.has(abs)) return false;
+  return true;
+}
+
 function flagsAreWrite(flags) {
   if (flags === undefined || flags === null) return true; // openSync default 'r' handled by caller
   const f = String(flags);
@@ -171,6 +225,13 @@ function flagsAreWrite(flags) {
 //   enforce (default) | detect | off
 function runtimeMode() {
   const v = (process.env.COORD_TEST_ISOLATION_RUNTIME || "enforce").toLowerCase();
+  if (v === "detect" || v === "off") return v;
+  return "enforce";
+}
+
+// COORD-606: governed-state enforcement mode, same vocabulary as the runtime class.
+function governedMode() {
+  const v = (process.env.COORD_TEST_ISOLATION_GOVERNED || "enforce").toLowerCase();
   if (v === "detect" || v === "off") return v;
   return "enforce";
 }
@@ -203,6 +264,19 @@ function runtimeViolationError(op, abs) {
       `AGENT_STATE_LOCK_DIR + MEMORY_DIR) at an os.tmpdir() dir, or add a documented ` +
       `RUNTIME_ALLOWLIST entry for a genuine integration test. ` +
       `See coord/product/TESTING_AND_GATES.md (COORD-299).`
+  );
+  err.code = "ETESTISOLATION";
+  throw err;
+}
+
+function governedViolationError(op, abs) {
+  const rel = relFromRoot(abs);
+  const err = new Error(
+    `[test-isolation-guard] BLOCKED ${op} under the live governed state: ${rel}\n` +
+      `Tests must not write coord/board/**, coord/PLAN.md, coord/QUESTIONS.md or ` +
+      `coord/active/**. Sandbox the write through the __testing.paths override ` +
+      `(BOARD_PATH / PLAN_PATH / QUESTIONS_PATH) at an os.tmpdir() dir. ` +
+      `See coord/product/TESTING_AND_GATES.md (COORD-606).`
   );
   err.code = "ETESTISOLATION";
   throw err;
@@ -243,13 +317,27 @@ function checkRuntime(op, abs) {
   runtimeViolationError(op, abs);
 }
 
-// Central check for a single resolved write target (both classes).
+// Governed-state check (COORD-606, staged the same way as the runtime class).
+function checkGoverned(op, abs) {
+  if (!isGovernedViolation(abs)) return;
+  const mode = governedMode();
+  if (mode === "off") return;
+  if (mode === "detect") {
+    recordDetection(op, abs);
+    return;
+  }
+  governedViolationError(op, abs);
+}
+
+// Central check for a single resolved write target (all three classes).
 function checkTarget(op, abs) {
   if (!abs) return;
   // Class 1: seal surfaces — always fail-closed (COORD-290 behavior unchanged).
   if (isViolation(abs)) sealViolationError(op, abs);
   // Class 2: live runtime — staged enforcement (COORD-299).
   checkRuntime(op, abs);
+  // Class 3: governed tracked state — staged enforcement (COORD-606).
+  checkGoverned(op, abs);
 }
 
 function install() {
@@ -260,7 +348,6 @@ function install() {
   const pathFirst = [
     "writeFileSync",
     "appendFileSync",
-    "copyFileSync",
     "rmSync",
     "unlinkSync",
     "rmdirSync",
@@ -285,13 +372,21 @@ function install() {
   if (typeof origMkdirSync === "function") {
     fs.mkdirSync = function guarded(p, ...rest) {
       const abs = resolveTarget(p);
-      if (abs) checkRuntime("mkdirSync", abs);
+      if (abs) {
+        checkRuntime("mkdirSync", abs);
+        checkGoverned("mkdirSync", abs);
+      }
       return origMkdirSync.apply(this, [p, ...rest]);
     };
   }
 
-  // rename / cp take (src, dest); the DEST is what gets written.
-  for (const name of ["renameSync", "cpSync", "rename", "cp"]) {
+  // rename / copy take (src, dest); the DEST is what gets written.
+  // COORD-480: `copyFileSync` was previously classified as path-first, so the
+  // guard checked its SOURCE and blocked legitimate READS out of a guarded
+  // surface (e.g. staging a bundle from the live tree — cpSync delegates to
+  // copyFileSync per file). Enforcement is unchanged in the direction that
+  // matters: copying INTO a guarded path is still blocked here via the dest.
+  for (const name of ["renameSync", "cpSync", "copyFileSync", "rename", "cp"]) {
     const orig = fs[name];
     if (typeof orig !== "function") continue;
     fs[name] = function guarded(src, dest, ...rest) {
@@ -323,16 +418,21 @@ module.exports = {
   COORD_DIR,
   GUARDED_PREFIXES,
   RUNTIME_GUARDED_PREFIXES,
+  GOVERNED_GUARDED_PREFIXES,
   ALLOWLIST,
   RUNTIME_ALLOWLIST,
   RUNTIME_ALLOWLIST_FILES,
+  GOVERNED_ALLOWLIST,
   resolveTarget,
   isUnderGuarded,
   isUnderRuntimeGuarded,
+  isUnderGovernedGuarded,
   isViolation,
   isRuntimeViolation,
+  isGovernedViolation,
   isRuntimeAllowlistedProcess,
   flagsAreWrite,
   runtimeMode,
+  governedMode,
   install,
 };

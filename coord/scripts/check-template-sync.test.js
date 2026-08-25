@@ -134,3 +134,36 @@ test("check-template-sync warns on advisory drift unless strict mode is enabled"
   assert.equal(strictPayload.failures[0].path, "coord/example.txt");
   assert.equal(strictPayload.failures[0].status, "mismatch");
 });
+
+test("--audit-coverage reports untracked engine files without changing the verdict", () => {
+  // COORD-606: the manifest is hand-curated, so an engine file added after the
+  // inventory snapshot is silently untracked — that is how the release-critical
+  // coord/scripts/test-runner.js escaped both this check and gov verify-engine.
+  // The audit makes the remainder visible; it must stay report-only.
+  const rootDir = path.resolve(__dirname, "..", "..");
+  const plain = spawnSync("bash", [scriptPath, "--json"], { encoding: "utf8", cwd: rootDir });
+  const audited = spawnSync("bash", [scriptPath, "--audit-coverage", "--json"], {
+    encoding: "utf8",
+    cwd: rootDir,
+  });
+  assert.equal(audited.status, plain.status, "the audit must not change the exit code");
+  const plainJson = JSON.parse(plain.stdout);
+  const auditJson = JSON.parse(audited.stdout);
+  assert.equal(plainJson.coverage_audit, undefined, "the audit is opt-in");
+  assert.ok(auditJson.coverage_audit, "--audit-coverage must publish the audit");
+  assert.ok(Array.isArray(auditJson.coverage_audit.untracked));
+  assert.equal(
+    auditJson.coverage_audit.untracked_count,
+    auditJson.coverage_audit.untracked.length
+  );
+  // The files COORD-606 brought under coverage must NOT appear as untracked.
+  for (const rel of [
+    "coord/scripts/test-runner.js",
+    "coord/scripts/test-isolation-guard.js",
+  ]) {
+    assert.ok(
+      !auditJson.coverage_audit.untracked.includes(rel),
+      `${rel} must be manifest-tracked`
+    );
+  }
+});

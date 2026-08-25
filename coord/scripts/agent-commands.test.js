@@ -508,6 +508,38 @@ test("claim transfer fails closed without override and records audited transfer 
     assert.equal(event.details.transfer_to, newOwner);
     assert.equal(event.details.override_reason, "approved transfer regression");
     assert.equal(event.details.legacy_force_alias, false);
+
+    // ---------------------------------------------------------------------
+    // COORD-663. The transfer preserving the worktree and branch (asserted
+    // above) is CORRECT and deliberate — renaming a branch that may already be
+    // merged is not a governance repair. What was missing is the record of
+    // WHOSE namespace those preserved paths belong to. Without it every later
+    // mutation validated the preserved paths against the NEW owner and failed,
+    // wedging the ticket after a transfer that had itself succeeded.
+    // ---------------------------------------------------------------------
+    assert.equal(
+      lockAfter.workspace_owner,
+      oldOwner,
+      "the physical namespace stays with the owner whose worktree and branch are preserved"
+    );
+    assert.ok(Array.isArray(lockAfter.transfer_provenance), "the transfer must be recorded on the lock");
+    assert.equal(lockAfter.transfer_provenance.length, 1);
+    const provenance = lockAfter.transfer_provenance[0];
+    assert.equal(provenance.from, oldOwner);
+    assert.equal(provenance.to, newOwner);
+    assert.equal(provenance.workspace_owner, oldOwner);
+    assert.equal(provenance.reason, "approved transfer regression");
+    assert.equal(provenance.previous_session_id, `${oldOwner}-stale`);
+    assert.ok(Number.isFinite(Date.parse(provenance.at)), "provenance must carry a parseable timestamp");
+
+    // The namespace the lock declares is the one its physical paths actually
+    // use — otherwise the declaration would be decoration.
+    assert.ok(
+      lockAfter.worktree.includes(`${path.sep}.worktrees${path.sep}${oldOwner}${path.sep}`),
+      "the declared namespace must match the preserved worktree path"
+    );
+    assert.ok(lockAfter.branch.startsWith(`agent/${oldOwner.toLowerCase()}-`));
+
   } finally {
     console.log = originalLog;
     __testing.paths.REPO_ROOTS = original.REPO_ROOTS;
@@ -873,7 +905,28 @@ test("terminal ticket release marks the current active session released without 
     __testing.paths.RUNTIME_DIR = runtimeDir;
     process.env.AGENT_THREAD_ID = "thread-current";
 
-    const result = __testing.releaseTerminalTicketSession(ticketId, { effectiveThread: "thread-current" });
+    const held = __testing.releaseTerminalTicketSession(ticketId, {
+      effectiveThread: "thread-current",
+      terminalSync: {
+        session_release_safe: false,
+        publication: { status: "ahead", published: false },
+      },
+    });
+    assert.equal(held.released.length, 0, "unpublished canonical history must retain the active session");
+    assert.equal(held.reason, "canonical-publication-unverified");
+    assert.equal(
+      JSON.parse(fs.readFileSync(sessionsPath, "utf8")).find((s) => s.session_id === "a00-current").status,
+      "active",
+      "the refusal must happen before the session ledger is rewritten",
+    );
+
+    const result = __testing.releaseTerminalTicketSession(ticketId, {
+      effectiveThread: "thread-current",
+      terminalSync: {
+        session_release_safe: true,
+        publication: { status: "published", published: true },
+      },
+    });
     assert.equal(result.released.length, 1, "current active session should be released");
     assert.equal(result.released[0].session_id, "a00-current");
 
@@ -1501,5 +1554,790 @@ test("resolveHumanAdminOverride accepts bare --force as the temporary legacy ali
       reason: "<legacy --force migration>",
       legacyForceAlias: true,
     }
+  );
+});
+
+// ---------------------------------------------------------------------------
+// COORD-680: factory dependency assertion + deferred-injection convention.
+//
+// The installed Amneal engine never passed `ensureGovernedWorkspaceForTicket`
+// into createAgentCommands at all. The destructure yielded `undefined`, and
+// `resume` only discovered it at the call site -- AFTER claimTicket had rebound
+// the ticket lock. These tests move that failure to construction time.
+// ---------------------------------------------------------------------------
+
+const createAgentCommandsFactory = require("./agent-commands.js");
+
+function completeAgentCommandDeps() {
+  const noop = () => {};
+  return {
+    fail: noop,
+    withGovernanceMutation: noop,
+    readBoard: noop,
+    getTicketRef: noop,
+    findLockForTicket: noop,
+    ensureGovernedWorkspaceForTicket: noop,
+    rebindTicketLock: noop,
+    // COORD-680 round 3: the COMPLETE set is built from the factory's OWN
+    // declared list, not a hand-maintained subset. A hand-written helper drifts
+    // the moment a dependency is added, and then every "missing dependency"
+    // assertion below starts passing for the wrong reason — which is exactly
+    // how a 7-name helper coexisted with a 44-name real surface.
+    //
+    // Built from the factory's own EXHAUSTIVE contract: callables get a noop,
+    // value/object collaborators get a present object. GovernanceError is in
+    // NEITHER list and is deliberately absent from this fixture: both
+    // factory-deps.js and agent-commands.js now `require` it directly
+    // (agent-commands.js:39) instead of taking it by injection, so there is no
+    // wiring under which it can be missing. An earlier revision did destructure
+    // it, and classifying it as a callable would have been unsound anyway — see
+    // the classification note in factory-deps.js.
+    ...Object.fromEntries(
+      ((createAgentCommandsFactory.DEP_CONTRACT || {}).callable || []).map((name) => [name, noop]),
+    ),
+    ...Object.fromEntries(
+      ((createAgentCommandsFactory.DEP_CONTRACT || {}).value || []).map((name) => [name, {}]),
+    ),
+  };
+}
+
+test("COORD-680: createAgentCommands rejects a missing required dependency at construction", () => {
+  const deps = completeAgentCommandDeps();
+  delete deps.ensureGovernedWorkspaceForTicket;
+
+  let error;
+  try {
+    createAgentCommandsFactory(deps);
+  } catch (caught) {
+    error = caught;
+  }
+  assert.ok(error, "an omitted helper must fail at wiring time, not at the first call site");
+  // COORD-680: the error must be TYPED, not merely shaped. cli.js formats only
+  // GovernanceError instances (cli.js, `error instanceof GovernanceError`) and
+  // rethrows everything else, so a plain Error carrying the right `code` and
+  // message still reaches the operator as a raw stack trace. Asserting the
+  // message and code alone passed while that was exactly what happened.
+  assert.equal(
+    error.constructor.name,
+    "GovernanceError",
+    "a plain Error is rethrown by cli.js as a raw stack — the typed-error criterion is about the TYPE, not the shape",
+  );
+  assert.match(error.message, /missing required dependencies/);
+  assert.equal(error.code, "governance_factory_dependency_missing");
+  assert.deepEqual(error.missing, ["ensureGovernedWorkspaceForTicket"]);
+  assert.equal(error.factory, "createAgentCommands");
+  assert.match(
+    error.message,
+    /engine wiring defect, not an operator error/,
+    "the typed error must not read as operator error",
+  );
+  // COORD-680: the deferred wrapper is house STYLE, not a correctness
+  // requirement (bare shorthand is correct for hoisted function declarations),
+  // and the message must not overstate that.
+  //
+  // Round 5: the remediation is now CLASSIFICATION-AWARE. A single
+  // callable-only sentence told an operator that a missing value collaborator
+  // "must be injected as a callable" and that "only callability is required" —
+  // wrong advice, and a failure of the actionable-hint requirement. A missing
+  // CALLABLE must get callable guidance and must NOT be told about the value
+  // class, and vice versa.
+  assert.match(error.message, /Callable dependencies \(must be typeof "function"\)/);
+  assert.doesNotMatch(
+    error.message,
+    /Value dependencies/,
+    "a missing callable must not be given value-collaborator remediation",
+  );
+  assert.doesNotMatch(
+    error.message,
+    /Each entry must be injected as a deferred/,
+    "the message must not claim a wrapper is required for correctness",
+  );
+});
+
+test("COORD-680: a dependency present but not callable is rejected like an omission", () => {
+  const deps = completeAgentCommandDeps();
+  deps.ensureGovernedWorkspaceForTicket = undefined;
+
+  let error;
+  try {
+    createAgentCommandsFactory(deps);
+  } catch (caught) {
+    error = caught;
+  }
+  assert.ok(error, "a non-callable dependency must be rejected like an omission");
+  assert.deepEqual(error.missing, ["ensureGovernedWorkspaceForTicket"]);
+});
+
+test("COORD-680: a fully wired deps object constructs cleanly", () => {
+  assert.doesNotThrow(() => createAgentCommandsFactory(completeAgentCommandDeps()));
+});
+
+test("COORD-680: deferred helpers are injected as lazy forwarders, never bare shorthand", () => {
+  const source = fs.readFileSync(path.join(__dirname, "lifecycle.js"), "utf8");
+
+  const forwarders = source.match(
+    /ensureGovernedWorkspaceForTicket: \(\.\.\.args\) => ensureGovernedWorkspaceForTicket\(\.\.\.args\)/g,
+  ) || [];
+  assert.equal(
+    forwarders.length,
+    2,
+    "both the createAgentCommands and createTicketTransitions wirings must use the deferred forwarder",
+  );
+
+  // A bare shorthand appended to a sibling's line is exactly how the original
+  // defect was introduced; it must not reappear in an injection object.
+  const bareShorthandInDepsObject = source
+    .split("\n")
+    .filter((line) => /\(\.\.\.args\) =>/.test(line))
+    .filter((line) => /,\s*ensureGovernedWorkspaceForTicket\s*,/.test(line));
+  assert.deepEqual(
+    bareShorthandInDepsObject,
+    [],
+    "ensureGovernedWorkspaceForTicket must not be a bare shorthand in a deferred deps object",
+  );
+});
+
+test("COORD-680: a resume whose workspace step fails leaves NO governed trace — atomic, not compensated", () => {
+  // The regression this ticket exists for. `claimTicket` rebinds the lock and
+  // `ensureGovernedWorkspaceForTicket` can still fail afterwards. Previously
+  // those were two transactions, so the failure could only be COMPENSATED:
+  // hand-restored lock bytes while the journal still asserted a successful
+  // rebind. Now both run inside ONE withGovernanceMutation, so the failure
+  // rolls back through the governance machinery itself.
+  //
+  // Asserts MORE than lock bytes, deliberately — a lock-bytes-only assertion
+  // passes for compensation too, and cannot tell atomicity from cleanup.
+  const ticketId = "MSRV-680";
+  const owner = "codexa00";
+  const threadA = "codex-thread-A";
+  const { coordRoot, backendRoot } = createMinimalGovernanceWorkspace("ebmr-coord680-atomic-");
+
+  const now = new Date().toISOString();
+  const boardPath = path.join(coordRoot, "board", "tasks.json");
+  const planPath = path.join(coordRoot, "PLAN.md");
+  const questionsPath = path.join(coordRoot, "QUESTIONS.md");
+  const promptPath = path.join(coordRoot, "prompts", `${ticketId}.md`);
+  const agentsPath = path.join(coordRoot, ".runtime", "agents.json");
+  const sessionsPath = path.join(coordRoot, ".runtime", "agent_sessions.json");
+  const lockPath = path.join(coordRoot, ".runtime", "locks", `${ticketId}.lock`);
+  const runtimeDir = path.join(coordRoot, ".runtime");
+  const eventLogPath = path.join(coordRoot, ".runtime", "governance-events.ndjson");
+
+  fs.writeFileSync(promptPath, `# ${ticketId}\n`, "utf8");
+  fs.writeFileSync(planPath, "", "utf8");
+  fs.writeFileSync(questionsPath, "# Questions\n", "utf8");
+  fs.writeFileSync(boardPath, `${JSON.stringify({
+    version: 1,
+    metadata: {
+      title: "Governance Test Board",
+      last_updated: now,
+      canonical_references: ["coord/GOVERNANCE.md"],
+      plan_markdown_render_statuses: ["doing", "review"],
+      preamble: [],
+    },
+    sections: [{
+      kind: "table", level: 3, heading: "Resume Atomicity", separator_before: false,
+      columns: ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      rows: [{
+        ID: ticketId, Repo: "B", Type: "bug", Pri: "P1", Status: "doing", Owner: owner,
+        Description: "Exercise resume atomicity across the rebind.", "Depends On": "",
+      }],
+    }],
+    prompt_index: { [ticketId]: `coord/prompts/${ticketId}.md` },
+    pr_index: {}, landing_index: {}, review_findings: {}, followup_exceptions: {},
+  }, null, 2)}\n`, "utf8");
+  fs.writeFileSync(agentsPath, `${JSON.stringify([{
+    id: "a00", handle: owner, provider: "openai", status: "active",
+    aliases: ["codex"], lane: "backend", default_repo: "B", created_at: now,
+  }], null, 2)}\n`, "utf8");
+
+  // The CURRENT thread's session is active; the lock is bound to a RELEASED
+  // same-owner session. So the rebind genuinely rewrites the lock (stale ->
+  // current). A no-op rebind would pass this test without proving anything.
+  const sessionActive = {
+    session_id: "a00-aaaa", agent_id: "a00", handle: owner, session_label: "codex:a",
+    host: "h", cwd: backendRoot, board_path: boardPath, board_root: coordRoot,
+    thread_id: threadA, claimed_at: now, last_seen_at: now, released_at: null,
+    status: "active", auto_claimed: false,
+  };
+  const sessionStale = {
+    ...sessionActive, session_id: "a00-cccc", thread_id: "codex-thread-C",
+    status: "released", released_at: now,
+  };
+  fs.writeFileSync(sessionsPath, `${JSON.stringify([sessionActive, sessionStale], null, 2)}\n`, "utf8");
+  fs.writeFileSync(lockPath, `${JSON.stringify({
+    agent_id: "a00", owner, ticket: ticketId, status: "doing",
+    repo: __testing.repoNameForCode("B"),
+    branch: `agent/${owner}-${ticketId.toLowerCase()}`,
+    head: "deadbeef",
+    // Reconstruction from this fixture fails (no base ref in the sandbox repo),
+    // which is the post-rebind failure the test needs.
+    worktree: path.join(backendRoot, ".worktrees", owner, ticketId),
+    started_at_utc: now, heartbeat_utc: now,
+    session_id: "a00-cccc",
+  }, null, 2)}\n`, "utf8");
+
+  const original = {
+    REPO_ROOTS: { ...__testing.paths.REPO_ROOTS },
+    BOARD_PATH: __testing.paths.BOARD_PATH, PLAN_PATH: __testing.paths.PLAN_PATH,
+    QUESTIONS_PATH: __testing.paths.QUESTIONS_PATH, AGENTS_PATH: __testing.paths.AGENTS_PATH,
+    AGENT_SESSIONS_PATH: __testing.paths.AGENT_SESSIONS_PATH,
+    PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+    LEGACY_PLAN_RECORDS_DIR: __testing.paths.LEGACY_PLAN_RECORDS_DIR,
+    PROMPTS_DIR: __testing.paths.PROMPTS_DIR, RENDERED_DIR: __testing.paths.RENDERED_DIR,
+    LOCKS_DIR: __testing.paths.LOCKS_DIR, LEGACY_LOCKS_DIR: __testing.paths.LEGACY_LOCKS_DIR,
+    RUNTIME_DIR: __testing.paths.RUNTIME_DIR,
+    GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
+    GOVERNANCE_SNAPSHOT_PATH: __testing.paths.GOVERNANCE_SNAPSHOT_PATH,
+    GOVERNANCE_SNAPSHOTS_DIR: __testing.paths.GOVERNANCE_SNAPSHOTS_DIR,
+    GOVERNANCE_EVENT_LOCK_DIR: __testing.paths.GOVERNANCE_EVENT_LOCK_DIR,
+    CODEX_THREAD_ID: process.env.CODEX_THREAD_ID,
+    CLAUDE_SESSION_ID: process.env.CLAUDE_SESSION_ID,
+    CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID,
+    AGENT_THREAD_ID: process.env.AGENT_THREAD_ID,
+  };
+  __testing.paths.REPO_ROOTS = { B: backendRoot };
+  __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.PLAN_PATH = planPath;
+  __testing.paths.QUESTIONS_PATH = questionsPath;
+  __testing.paths.AGENTS_PATH = agentsPath;
+  __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
+  fs.mkdirSync(path.join(coordRoot, "prompts", "tickets"), { recursive: true });
+  fs.mkdirSync(path.join(coordRoot, "rendered"), { recursive: true });
+  __testing.paths.PROMPTS_DIR = path.join(coordRoot, "prompts");
+  __testing.paths.RENDERED_DIR = path.join(coordRoot, "rendered");
+  __testing.paths.PLAN_RECORDS_DIR = path.join(coordRoot, ".runtime", "plans");
+  __testing.paths.LEGACY_PLAN_RECORDS_DIR = path.join(coordRoot, "board", "plans");
+  __testing.paths.LOCKS_DIR = path.join(coordRoot, ".runtime", "locks");
+  __testing.paths.LEGACY_LOCKS_DIR = path.join(coordRoot, "locks");
+  __testing.paths.RUNTIME_DIR = runtimeDir;
+  __testing.paths.GOVERNANCE_EVENT_LOG_PATH = eventLogPath;
+  __testing.paths.GOVERNANCE_SNAPSHOT_PATH = path.join(runtimeDir, "governance-latest-snapshot.json");
+  __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = path.join(runtimeDir, "governance-snapshots");
+  __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = path.join(runtimeDir, "governance.lock");
+  process.env.CODEX_THREAD_ID = threadA;
+  delete process.env.CLAUDE_SESSION_ID;
+  delete process.env.CLAUDE_CODE_SESSION_ID;
+  delete process.env.AGENT_THREAD_ID;
+
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(" "));
+
+  try {
+    const before = {
+      lock: fs.readFileSync(lockPath, "utf8"),
+      board: fs.readFileSync(boardPath, "utf8"),
+      agents: fs.readFileSync(agentsPath, "utf8"),
+      sessions: fs.readFileSync(sessionsPath, "utf8"),
+    };
+    assert.equal(JSON.parse(before.lock).session_id, "a00-cccc", "fixture: lock starts on the stale session");
+
+    // The workspace post-condition must fail, AFTER the rebind would have run.
+    assert.throws(() => __testing.resumeTicket(ticketId), /worktree|workspace/i,
+      "fixture must fail at the workspace step, not before it");
+
+    // (1) lock bytes unchanged — byte-for-byte, still naming the STALE session.
+    assert.equal(fs.readFileSync(lockPath, "utf8"), before.lock,
+      "lock must be byte-identical after a failed resume");
+    assert.equal(JSON.parse(fs.readFileSync(lockPath, "utf8")).session_id, "a00-cccc",
+      "the rebind must be rolled back, not merely rewritten");
+
+    // (2) board and agent/session state unchanged.
+    assert.equal(fs.readFileSync(boardPath, "utf8"), before.board, "board must be unchanged");
+    assert.equal(fs.readFileSync(agentsPath, "utf8"), before.agents, "agent registry must be unchanged");
+    assert.equal(fs.readFileSync(sessionsPath, "utf8"), before.sessions, "session registry must be unchanged");
+
+    // (3) NO successful claim/rebind event exists for the failed resume.
+    const events = fs.existsSync(eventLogPath)
+      ? fs.readFileSync(eventLogPath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l))
+      : [];
+    const succeededRebinds = events.filter(
+      (e) => ["resume", "claim-ticket"].includes(e.command) && e.result === "succeeded",
+    );
+    assert.deepEqual(succeededRebinds, [],
+      "a failed resume must leave NO successful resume/claim-ticket event — this is what separates atomicity from compensation");
+
+    // (4) NO failure event either — and that is the correct contract, not a gap.
+    // `withGovernanceMutation` appends a `result: "failed"` event ONLY when the
+    // rolled-back mutation had already produced EXTERNAL side effects (a merged
+    // PR, say) that rollback cannot undo. With governed state fully restored and
+    // nothing external done, the transaction genuinely did not happen, so
+    // recording that it failed would be recording an event with no referent.
+    //
+    // This is the sharper form of the assertion above: compensation leaves a
+    // successful rebind plus a correction; atomicity leaves NOTHING.
+    const failed = events.filter((e) => e.result === "failed");
+    assert.deepEqual(failed, [],
+      "a clean rollback with no external side effects must leave no failure event either");
+
+    // The external-side-effect path is the one case that MUST journal, since
+    // rollback cannot undo what already left the process. Asserted as a contract
+    // note here rather than exercised — this fixture performs no external effect.
+    assert.equal(typeof __testing.resumeTicket, "function");
+  } finally {
+    console.log = originalLog;
+    Object.assign(__testing.paths, {
+      REPO_ROOTS: original.REPO_ROOTS, BOARD_PATH: original.BOARD_PATH,
+      PLAN_PATH: original.PLAN_PATH, QUESTIONS_PATH: original.QUESTIONS_PATH,
+      AGENTS_PATH: original.AGENTS_PATH, AGENT_SESSIONS_PATH: original.AGENT_SESSIONS_PATH,
+      PLAN_RECORDS_DIR: original.PLAN_RECORDS_DIR,
+      LEGACY_PLAN_RECORDS_DIR: original.LEGACY_PLAN_RECORDS_DIR,
+      PROMPTS_DIR: original.PROMPTS_DIR, RENDERED_DIR: original.RENDERED_DIR,
+      LOCKS_DIR: original.LOCKS_DIR, LEGACY_LOCKS_DIR: original.LEGACY_LOCKS_DIR,
+      RUNTIME_DIR: original.RUNTIME_DIR,
+      GOVERNANCE_EVENT_LOG_PATH: original.GOVERNANCE_EVENT_LOG_PATH,
+      GOVERNANCE_SNAPSHOT_PATH: original.GOVERNANCE_SNAPSHOT_PATH,
+      GOVERNANCE_SNAPSHOTS_DIR: original.GOVERNANCE_SNAPSHOTS_DIR,
+      GOVERNANCE_EVENT_LOCK_DIR: original.GOVERNANCE_EVENT_LOCK_DIR,
+    });
+    if (original.CODEX_THREAD_ID === undefined) delete process.env.CODEX_THREAD_ID;
+    else process.env.CODEX_THREAD_ID = original.CODEX_THREAD_ID;
+  }
+});
+
+test("COORD-680: a same-owner cross-thread resume SUCCEEDS through real wiring — no TypeError, no raw stack", () => {
+  // The acceptance criterion the failure-path tests do not cover. AMNL-009's
+  // crash was `TypeError: ensureGovernedWorkspaceForTicket is not a function`
+  // on a resume that should have succeeded, so a suite that only exercises
+  // resume FAILING cannot show the defect is gone.
+  //
+  // Legitimate handoff: the lock is held by a RELEASED same-owner session on
+  // another thread, the current thread is active under the same owner, and the
+  // governed worktree genuinely exists — so the ownership guard permits the
+  // rebind and the COORD-635 post-condition is satisfiable.
+  const ticketId = "MSRV-681";
+  const owner = "codexa00";
+  const threadA = "codex-thread-A";
+  const { coordRoot, backendRoot } = createMinimalGovernanceWorkspace("ebmr-coord680-success-");
+
+  // A REAL governed worktree, built the way the engine builds them, so
+  // ensureGovernedWorkspaceForTicket verifies rather than reconstructs.
+  const branch = `agent/${owner}-${ticketId.toLowerCase()}`;
+  runGit(backendRoot, ["checkout", "-b", branch]);
+  runGit(backendRoot, ["checkout", "dev"]);
+  const worktreePath = path.join(backendRoot, ".worktrees", owner, ticketId);
+  fs.mkdirSync(path.dirname(worktreePath), { recursive: true });
+  runGit(backendRoot, ["worktree", "add", worktreePath, branch]);
+  const head = runGit(worktreePath, ["rev-parse", "HEAD"]).trim();
+
+  const now = new Date().toISOString();
+  const boardPath = path.join(coordRoot, "board", "tasks.json");
+  const planPath = path.join(coordRoot, "PLAN.md");
+  const questionsPath = path.join(coordRoot, "QUESTIONS.md");
+  const promptPath = path.join(coordRoot, "prompts", `${ticketId}.md`);
+  const agentsPath = path.join(coordRoot, ".runtime", "agents.json");
+  const sessionsPath = path.join(coordRoot, ".runtime", "agent_sessions.json");
+  const lockPath = path.join(coordRoot, ".runtime", "locks", `${ticketId}.lock`);
+  const runtimeDir = path.join(coordRoot, ".runtime");
+  const eventLogPath = path.join(coordRoot, ".runtime", "governance-events.ndjson");
+
+  fs.writeFileSync(promptPath, `# ${ticketId}\n`, "utf8");
+  fs.writeFileSync(planPath, "", "utf8");
+  fs.writeFileSync(questionsPath, "# Questions\n", "utf8");
+  fs.writeFileSync(boardPath, `${JSON.stringify({
+    version: 1,
+    metadata: {
+      title: "Governance Test Board", last_updated: now,
+      canonical_references: ["coord/GOVERNANCE.md"],
+      plan_markdown_render_statuses: ["doing", "review"], preamble: [],
+    },
+    sections: [{
+      kind: "table", level: 3, heading: "Resume Success", separator_before: false,
+      columns: ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      rows: [{
+        ID: ticketId, Repo: "B", Type: "bug", Pri: "P1", Status: "doing", Owner: owner,
+        Description: "Exercise a successful same-owner cross-thread resume.", "Depends On": "",
+      }],
+    }],
+    prompt_index: { [ticketId]: `coord/prompts/${ticketId}.md` },
+    pr_index: {}, landing_index: {}, review_findings: {}, followup_exceptions: {},
+  }, null, 2)}\n`, "utf8");
+  fs.writeFileSync(agentsPath, `${JSON.stringify([{
+    id: "a00", handle: owner, provider: "openai", status: "active",
+    aliases: ["codex"], lane: "backend", default_repo: "B", created_at: now,
+  }], null, 2)}\n`, "utf8");
+  const sessionActive = {
+    session_id: "a00-aaaa", agent_id: "a00", handle: owner, session_label: "codex:a",
+    host: "h", cwd: backendRoot, board_path: boardPath, board_root: coordRoot,
+    thread_id: threadA, claimed_at: now, last_seen_at: now, released_at: null,
+    status: "active", auto_claimed: false,
+  };
+  const sessionReleased = {
+    ...sessionActive, session_id: "a00-cccc", thread_id: "codex-thread-C",
+    status: "released", released_at: now,
+  };
+  fs.writeFileSync(sessionsPath, `${JSON.stringify([sessionActive, sessionReleased], null, 2)}\n`, "utf8");
+  fs.writeFileSync(lockPath, `${JSON.stringify({
+    agent_id: "a00", owner, ticket: ticketId, status: "doing",
+    repo: __testing.repoNameForCode("B"), branch, head,
+    worktree: worktreePath, started_at_utc: now, heartbeat_utc: now,
+    session_id: "a00-cccc",
+  }, null, 2)}\n`, "utf8");
+
+  const original = {
+    REPO_ROOTS: { ...__testing.paths.REPO_ROOTS },
+    BOARD_PATH: __testing.paths.BOARD_PATH, PLAN_PATH: __testing.paths.PLAN_PATH,
+    QUESTIONS_PATH: __testing.paths.QUESTIONS_PATH, AGENTS_PATH: __testing.paths.AGENTS_PATH,
+    AGENT_SESSIONS_PATH: __testing.paths.AGENT_SESSIONS_PATH,
+    PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
+    LEGACY_PLAN_RECORDS_DIR: __testing.paths.LEGACY_PLAN_RECORDS_DIR,
+    PROMPTS_DIR: __testing.paths.PROMPTS_DIR, RENDERED_DIR: __testing.paths.RENDERED_DIR,
+    LOCKS_DIR: __testing.paths.LOCKS_DIR, LEGACY_LOCKS_DIR: __testing.paths.LEGACY_LOCKS_DIR,
+    RUNTIME_DIR: __testing.paths.RUNTIME_DIR,
+    GOVERNANCE_EVENT_LOG_PATH: __testing.paths.GOVERNANCE_EVENT_LOG_PATH,
+    GOVERNANCE_SNAPSHOT_PATH: __testing.paths.GOVERNANCE_SNAPSHOT_PATH,
+    GOVERNANCE_SNAPSHOTS_DIR: __testing.paths.GOVERNANCE_SNAPSHOTS_DIR,
+    GOVERNANCE_EVENT_LOCK_DIR: __testing.paths.GOVERNANCE_EVENT_LOCK_DIR,
+    CODEX_THREAD_ID: process.env.CODEX_THREAD_ID,
+  };
+  __testing.paths.REPO_ROOTS = { B: backendRoot };
+  __testing.paths.BOARD_PATH = boardPath;
+  __testing.paths.PLAN_PATH = planPath;
+  __testing.paths.QUESTIONS_PATH = questionsPath;
+  __testing.paths.AGENTS_PATH = agentsPath;
+  __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
+  fs.mkdirSync(path.join(coordRoot, "prompts", "tickets"), { recursive: true });
+  fs.mkdirSync(path.join(coordRoot, "rendered"), { recursive: true });
+  __testing.paths.PROMPTS_DIR = path.join(coordRoot, "prompts");
+  __testing.paths.RENDERED_DIR = path.join(coordRoot, "rendered");
+  __testing.paths.PLAN_RECORDS_DIR = path.join(coordRoot, ".runtime", "plans");
+  __testing.paths.LEGACY_PLAN_RECORDS_DIR = path.join(coordRoot, "board", "plans");
+  __testing.paths.LOCKS_DIR = path.join(coordRoot, ".runtime", "locks");
+  __testing.paths.LEGACY_LOCKS_DIR = path.join(coordRoot, "locks");
+  __testing.paths.RUNTIME_DIR = runtimeDir;
+  __testing.paths.GOVERNANCE_EVENT_LOG_PATH = eventLogPath;
+  __testing.paths.GOVERNANCE_SNAPSHOT_PATH = path.join(runtimeDir, "governance-latest-snapshot.json");
+  __testing.paths.GOVERNANCE_SNAPSHOTS_DIR = path.join(runtimeDir, "governance-snapshots");
+  __testing.paths.GOVERNANCE_EVENT_LOCK_DIR = path.join(runtimeDir, "governance.lock");
+  process.env.CODEX_THREAD_ID = threadA;
+  delete process.env.CLAUDE_SESSION_ID;
+  delete process.env.CLAUDE_CODE_SESSION_ID;
+  delete process.env.AGENT_THREAD_ID;
+
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(" "));
+
+  try {
+    let thrown = null;
+    let result;
+    try {
+      result = __testing.resumeTicket(ticketId);
+    } catch (error) {
+      thrown = error;
+    }
+
+    // No TypeError, and no raw stack reaching the operator.
+    assert.equal(thrown, null,
+      `resume must SUCCEED through real wiring (got: ${thrown && thrown.stack ? thrown.stack.split("\n")[0] : thrown})`);
+    // `claimTicket` REPORTS by printing its payload rather than returning it, so
+    // `resumeTicket` legitimately resolves undefined. The success signal is the
+    // reported payload plus the rebound lock below — not a return value.
+    void result;
+    assert.match(logs.join("\n"), new RegExp(ticketId),
+      "a successful resume must report its claim payload");
+
+    // The rebind actually happened: the lock now names the CURRENT session.
+    const lockAfter = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+    assert.equal(lockAfter.session_id, "a00-aaaa",
+      "a successful resume must rebind the lock to the resuming session");
+    assert.equal(lockAfter.owner, owner, "owner is unchanged by a same-owner resume");
+
+    // COORD-635: the isolation post-condition still holds afterwards.
+    assert.ok(fs.existsSync(worktreePath), "the governed worktree must still exist");
+    assert.equal(runGit(worktreePath, ["rev-parse", "--show-toplevel"]).trim(),
+      fs.realpathSync(worktreePath),
+      "the worktree must still be its own git toplevel, not the canonical tree");
+  } finally {
+    console.log = originalLog;
+    Object.assign(__testing.paths, {
+      REPO_ROOTS: original.REPO_ROOTS, BOARD_PATH: original.BOARD_PATH,
+      PLAN_PATH: original.PLAN_PATH, QUESTIONS_PATH: original.QUESTIONS_PATH,
+      AGENTS_PATH: original.AGENTS_PATH, AGENT_SESSIONS_PATH: original.AGENT_SESSIONS_PATH,
+      PLAN_RECORDS_DIR: original.PLAN_RECORDS_DIR,
+      LEGACY_PLAN_RECORDS_DIR: original.LEGACY_PLAN_RECORDS_DIR,
+      PROMPTS_DIR: original.PROMPTS_DIR, RENDERED_DIR: original.RENDERED_DIR,
+      LOCKS_DIR: original.LOCKS_DIR, LEGACY_LOCKS_DIR: original.LEGACY_LOCKS_DIR,
+      RUNTIME_DIR: original.RUNTIME_DIR,
+      GOVERNANCE_EVENT_LOG_PATH: original.GOVERNANCE_EVENT_LOG_PATH,
+      GOVERNANCE_SNAPSHOT_PATH: original.GOVERNANCE_SNAPSHOT_PATH,
+      GOVERNANCE_SNAPSHOTS_DIR: original.GOVERNANCE_SNAPSHOTS_DIR,
+      GOVERNANCE_EVENT_LOCK_DIR: original.GOVERNANCE_EVENT_LOCK_DIR,
+    });
+    if (original.CODEX_THREAD_ID === undefined) delete process.env.CODEX_THREAD_ID;
+    else process.env.CODEX_THREAD_ID = original.CODEX_THREAD_ID;
+  }
+});
+
+
+test("COORD-680: the typed-error guarantee has no wiring-dependent escape hatch", () => {
+  // An earlier revision took GovernanceError from deps/options and fell back to
+  // a built-in Error when absent. The test helper always injected it, so the
+  // fallback was never exercised — a guarantee with an unexercised escape hatch.
+  // factory-deps.js now imports GovernanceError directly, so NO dependency set
+  // can produce an untyped error.
+  const { assertFactoryDependencies } = require("./factory-deps.js");
+  const { GovernanceError } = require("./governance-context.js");
+
+  for (const [label, deps] of [
+    ["deps without GovernanceError", { }],
+    ["deps with GovernanceError explicitly undefined", { GovernanceError: undefined }],
+    ["deps with a hostile non-constructor GovernanceError", { GovernanceError: 42 }],
+  ]) {
+    let error = null;
+    try {
+      assertFactoryDependencies("probeFactory", deps, ["someRequiredHelper"]);
+    } catch (caught) {
+      error = caught;
+    }
+    assert.ok(error, `${label}: a missing dependency must still throw`);
+    assert.ok(
+      error instanceof GovernanceError,
+      `${label}: must still be a typed GovernanceError — cli.js rethrows anything else as a raw stack`,
+    );
+    assert.equal(error.code, "governance_factory_dependency_missing");
+    assert.equal(error.factory, "probeFactory");
+    assert.deepEqual(error.missing, ["someRequiredHelper"]);
+  }
+});
+
+test("COORD-680: every destructured dependency is CLASSIFIED, and unclassified entries are rejected", () => {
+  // SCOPE: the two LIFECYCLE factories in this ticket. The repository has ~52
+  // create* factories; widening is out of scope and is recorded as a prompt
+  // amendment rather than left implied by a comment here.
+  //
+  // WHY CLASSIFICATION RATHER THAN USAGE INFERENCE. Deriving requiredness from
+  // direct `name(...)` call sites is blind to every other way a dependency is
+  // consumed, and two escaped that way:
+  //   - `appendReviewFollowupPlan` is passed as a REFERENCE
+  //     (`appendPlan: appendReviewFollowupPlan`) and invoked later;
+  //   - `GovernanceError` is used as the right-hand side of `instanceof`, which
+  //     with an absent dep throws a raw
+  //     `TypeError: Right-hand side of 'instanceof' is not an object`.
+  // Both survived construction. So each factory declares an EXHAUSTIVE contract,
+  // and this test fails if any destructured name is missing from it — meaning a
+  // newly added dependency cannot default to unvalidated.
+  const factories = [
+    {
+      name: "createAgentCommands",
+      file: path.join(__dirname, "agent-commands.js"),
+      marker: "module.exports = function createAgentCommands",
+      contract: require("./agent-commands.js").DEP_CONTRACT,
+    },
+    {
+      name: "createTicketTransitions",
+      file: path.join(__dirname, "ticket-transitions.js"),
+      marker: "module.exports = function createTicketTransitions",
+      contract: require("./ticket-transitions.js").DEP_CONTRACT,
+    },
+  ];
+
+  for (const factory of factories) {
+    assert.ok(factory.contract && Array.isArray(factory.contract.callable) && Array.isArray(factory.contract.value),
+      `${factory.name} must expose DEP_CONTRACT with callable and value arrays`);
+
+    const src = fs.readFileSync(factory.file, "utf8");
+    const body = src.slice(src.indexOf(factory.marker));
+    const destructured = body.match(/const\s*\{([\s\S]*?)\}\s*=\s*deps;/);
+    assert.ok(destructured, `${factory.name}: could not locate its deps destructuring`);
+
+    const names = destructured[1]
+      .split("\n")
+      .map((line) => line.replace(/\/\/.*/, "").trim().replace(/,$/, ""))
+      .filter((name) => /^[A-Za-z_$][\w$]*$/.test(name));
+    assert.ok(names.length > 0, `${factory.name}: parsed no dependencies — the parser is broken, not the factory`);
+
+    const classified = new Set([...factory.contract.callable, ...factory.contract.value]);
+
+    const unclassified = names.filter((name) => !classified.has(name));
+    assert.deepEqual(unclassified, [],
+      `${factory.name}: destructured but UNCLASSIFIED, so omitting one would survive construction and fail at its use site — classify each as callable or value: ${unclassified.join(", ")}`);
+
+    const phantom = [...classified].filter((name) => !names.includes(name));
+    assert.deepEqual(phantom, [],
+      `${factory.name}: classified but not destructured — the contract has drifted from the factory: ${phantom.join(", ")}`);
+
+    // The classification is enforced, not decorative: omitting any single entry
+    // must refuse construction with a typed error naming it.
+    const noop = () => {};
+    const build = () => ({
+      ...Object.fromEntries(factory.contract.callable.map((n) => [n, noop])),
+      ...Object.fromEntries(factory.contract.value.map((n) => [n, {}])),
+    });
+    const factoryFn = require(factory.file);
+    assert.doesNotThrow(() => factoryFn(build()),
+      `${factory.name} must construct with a complete classified dependency set`);
+
+    for (const name of names) {
+      const deps = build();
+      delete deps[name];
+      let error = null;
+      try {
+        factoryFn(deps);
+      } catch (caught) {
+        error = caught;
+      }
+      assert.ok(error, `${factory.name}: omitting ${name} must refuse construction`);
+      assert.equal(error.constructor.name, "GovernanceError",
+        `${factory.name}: omitting ${name} must raise a TYPED GovernanceError`);
+      assert.ok(error.missing.includes(name),
+        `${factory.name}: the error must name ${name}`);
+    }
+  }
+});
+
+test("COORD-680: the composition root supplies EVERY contract entry for the scoped factories", () => {
+  // SCOPE: the two lifecycle factories named in the prompt's SCOPE NARROWED
+  // amendment. Replaces the single-symbol convention check, which asserted only
+  // that `ensureGovernedWorkspaceForTicket` was a deferred forwarder in two
+  // places — that catches one historical defect and nothing else.
+  //
+  // The construction-time assertion refuses a factory built with a missing
+  // dependency, but it only fires if someone CONSTRUCTS one. This asserts the
+  // real composition root actually supplies every classified entry, so a
+  // dependency dropped from a wiring object fails here rather than at whichever
+  // verb reaches it first.
+  const lifecycleSrc = fs.readFileSync(path.join(__dirname, "lifecycle.js"), "utf8");
+
+  function injectionKeys(marker) {
+    const start = lifecycleSrc.indexOf(marker);
+    assert.ok(start > -1, `could not find the ${marker} composition call`);
+    const open = lifecycleSrc.indexOf("{", start);
+    let depth = 0;
+    let end = open;
+    for (let i = open; i < lifecycleSrc.length; i += 1) {
+      if (lifecycleSrc[i] === "{") depth += 1;
+      else if (lifecycleSrc[i] === "}") {
+        depth -= 1;
+        if (depth === 0) { end = i; break; }
+      }
+    }
+    // Line-independent on purpose: the composition root puts MULTIPLE entries on
+    // one line (e.g. `findLockForTicket: (...) , ensureGovernedWorkspaceForTicket:
+    // (...)`), and a per-line regex silently captured only the first — which
+    // reported a supplied dependency as missing. Over-capture is safe here
+    // because the assertion is required ⊆ supplied.
+    const body = lifecycleSrc
+      .slice(open + 1, end)
+      .split("\n")
+      .map((line) => line.replace(/\/\/.*/, ""))
+      .join("\n");
+
+    const supplied = new Set();
+    for (const match of body.matchAll(/([A-Za-z_$][\w$]*)\s*:/g)) {
+      supplied.add(match[1]);
+    }
+    // Shorthand entries (`name,` / `name` before the closing brace).
+    for (const match of body.matchAll(/(?:^|[,{])\s*([A-Za-z_$][\w$]*)\s*(?=,|$)/gm)) {
+      supplied.add(match[1]);
+    }
+    return supplied;
+  }
+
+  for (const factory of [
+    { name: "createAgentCommands", marker: "createAgentCommands({", contract: require("./agent-commands.js").DEP_CONTRACT },
+    { name: "createTicketTransitions", marker: "createTicketTransitions({", contract: require("./ticket-transitions.js").DEP_CONTRACT },
+  ]) {
+    const supplied = injectionKeys(factory.marker);
+    const required = [...factory.contract.callable, ...factory.contract.value];
+    const notSupplied = required.filter((name) => !supplied.has(name));
+    assert.deepEqual(
+      notSupplied,
+      [],
+      `${factory.name}: the composition root does not supply these classified dependencies, so construction would refuse at runtime: ${notSupplied.join(", ")}`,
+    );
+  }
+});
+
+test("COORD-680: a missing VALUE dependency gets value-specific remediation, never callable guidance", () => {
+  // Pins behaviour that was previously verified only by a manual probe. Deleting
+  // the entire value-remediation block left all 23 focused tests passing — the
+  // guidance read as covered while being unprotected, which is the same
+  // test-passes-for-the-wrong-reason class as the arrow-function noops that
+  // masked the instanceof defect a round earlier.
+  const factory = require("./agent-commands.js");
+  const contract = factory.DEP_CONTRACT;
+  const noop = () => {};
+  const build = () => ({
+    ...Object.fromEntries(contract.callable.map((n) => [n, noop])),
+    ...Object.fromEntries(contract.value.map((n) => [n, {}])),
+  });
+
+  assert.ok(contract.value.includes("STATUS"), "fixture: STATUS must be a classified VALUE dependency");
+
+  // --- value side -----------------------------------------------------------
+  const valueDeps = build();
+  delete valueDeps.STATUS;
+  let valueError = null;
+  try {
+    factory(valueDeps);
+  } catch (caught) {
+    valueError = caught;
+  }
+  assert.ok(valueError, "omitting a value dependency must refuse construction");
+  assert.deepEqual(valueError.missing_value, ["STATUS"], "missing_value must name the value dependency");
+  assert.deepEqual(valueError.missing_callable, [], "a value-only failure must not report missing callables");
+  assert.match(
+    valueError.message,
+    /Value dependencies \(must be PRESENT, and are NOT required to be callable\)/,
+    "a missing value collaborator must get VALUE-specific remediation",
+  );
+  assert.doesNotMatch(
+    valueError.message,
+    /Callable dependencies/,
+    "a value-only failure must not be given callable remediation",
+  );
+  // The precise wording that was rejected in review: telling an operator a value
+  // collaborator must be callable is wrong advice, and wrapping one in a
+  // function does not satisfy the check.
+  assert.doesNotMatch(
+    valueError.message,
+    /only callability is required/i,
+    "the rejected callable-only guidance must not return for a value dependency",
+  );
+  assert.match(valueError.message, /wrapping one in a function is wrong/);
+
+  // --- callable side, asserted here too so the split cannot regress one-way ---
+  const callableDeps = build();
+  delete callableDeps.readBoard;
+  let callableError = null;
+  try {
+    factory(callableDeps);
+  } catch (caught) {
+    callableError = caught;
+  }
+  assert.ok(callableError, "omitting a callable dependency must refuse construction");
+  assert.deepEqual(callableError.missing_callable, ["readBoard"]);
+  assert.deepEqual(callableError.missing_value, []);
+  assert.match(callableError.message, /Callable dependencies \(must be typeof "function"\)/);
+  assert.doesNotMatch(callableError.message, /Value dependencies/);
+
+  // --- the corrected callability claim --------------------------------------
+  // "only callability is required" was an overstatement: an `instanceof` operand
+  // additionally needs a prototype, which an arrow function lacks. That
+  // overstatement is what made the arrow-function hole look acceptable, so the
+  // message must now say what the check does and does NOT guarantee.
+  assert.match(
+    callableError.message,
+    /not sufficient for every use/,
+    "the callable guidance must not overstate what callability guarantees",
+  );
+  assert.match(callableError.message, /instanceof/);
+  // The rejected phrase must be absent from the CALLABLE remediation too, not
+  // only the value one. Round 6 asserted it against `valueError` alone, so
+  // re-adding "only callability is required" to the callable branch — while
+  // keeping the corrected paragraph beside it — left every focused test
+  // passing. A message that both corrects and repeats the overstatement is
+  // still wrong advice, and asserting only the correction does not exclude it.
+  // Case-INSENSITIVE deliberately: the first attempt at this assertion was
+  // case-sensitive, and re-adding the phrase as "Only callability is required."
+  // — sentence-cased, as it would naturally be written at the start of a
+  // sentence — slipped straight past it. A negative assertion that the obvious
+  // reintroduction evades is itself a green-looking surface.
+  assert.doesNotMatch(
+    callableError.message,
+    /only callability is required/i,
+    "the rejected callable-only guidance must not return to the callable remediation",
   );
 });

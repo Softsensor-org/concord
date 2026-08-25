@@ -15,6 +15,15 @@ The adoption model is an overlay:
 This is different from using `coord-template` as a starter template for a new
 project.
 
+Before you present this internally, read the scope statement in
+`coord/product/PUBLIC_CLAIMS_POLICY.md`. In short: Concord coordinates the work
+that goes through `gov`, reduces collisions for governed actions rather than
+eliminating them, records supported lifecycle operations rather than all agent
+activity, and gives each ticket repository separation rather than process,
+filesystem, network, provider, or secret isolation. Overlaying it onto a repo
+does not change what an agent can reach — that stays with your environment and
+provider configuration.
+
 Related docs:
 
 - [`SOFTSENSORAI_DONOR_LESSONS.md`](SOFTSENSORAI_DONOR_LESSONS.md)
@@ -24,28 +33,46 @@ Related docs:
 
 ## 1. Copy Or Install The Concord Layer
 
-Use the current supported installer path for the repo.
-
-For a local template checkout:
+Run the installer from the **parent workspace** that contains the independent
+product repositories. Review first, then apply the exact digest:
 
 ```bash
-bash /path/to/coord-template/init.sh --repo B:app --project my-project
+npx create-concord . --from-existing --dry-run
+npx create-concord . --from-existing --apply-plan <digest-from-plan>
 ```
 
-Or, if the Concord engine is already present in the repo, run:
+The standalone SEA binary is the second transactional channel:
 
 ```bash
-coord/scripts/coord onboard . --dry-run
+concord init . --dry-run
+concord init . --apply-plan <digest-from-plan>
+```
+
+`init.sh` is retired and intentionally absent from release artifacts. Manual
+copying is recovery only, not a transactional installer; see `USER_MANUAL.md`.
+
+After the Concord engine is present in the parent workspace, run:
+
+```bash
+coord/scripts/coord onboard . --dry-run --json
+# Review plan_digest, repo/branch/tier/track/gate decisions and starter proposals.
+coord/scripts/coord onboard . --write --approve <plan-digest>
+# Optional, only after separately approving the proposed starter backlog:
+coord/scripts/coord onboard . --write --approve <plan-digest> --approve-starters
 coord/scripts/coord init --dry-run
 coord/scripts/coord init
 ```
 
-The onboard path is read-only by default: it detects the repo shape, recommends
-a governance tier and track preset, and prints next steps. `coord init` is
-intended to create missing governance seams without replacing existing files;
+The onboard path is read-only by default. Discovery reads only the declared
+metadata allowlist, and its preview omits private absolute paths, source excerpts,
+remote URLs, raw Git output and secret values. Apply accepts the exact reviewed
+digest, writes config/decisions/context/receipt in a rollback-capable transaction,
+and files explicitly approved starter items only through governed `proposed`
+intake. `coord init` is intended to create missing governance seams without replacing existing files;
 verify the installer and target state before relying on that behavior. The
-existing-repo overlay installer remains subject to the collision and rollback
-limitations documented in the release backlog until its transaction tests pass.
+existing-repo overlay embeds this same sanitized onboarding preview in its
+reviewed install plan, binds apply to both digests, and restores every declared
+onboarding output if a later install phase fails.
 
 ## 2. Review The Repo Map
 
@@ -62,7 +89,9 @@ Confirm:
 - `testCommand` matches the existing local test command;
 - track prefixes match the ticket naming convention;
 - `coord/setup.decisions.json` captures the chosen adoption profile, phase,
-  suggested tracks, suggested gates, detected repo shape, and next steps;
+  governance tier, suggested tracks, suggested gates, detected repo shape, and next steps;
+- `coord/onboarding.receipt.json` links the reviewed digest, sanitized inputs,
+  approved decisions, written files, and any governed proposed-ticket ids;
 - no one has hardcoded local machine paths.
 
 For a multi-repo family, update `coord/product/REPOS.md` as the human-readable

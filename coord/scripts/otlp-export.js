@@ -4,8 +4,9 @@
 //
 // Emits the durable governance journal (coord/.runtime/governance-events.ndjson,
 // ENT-001/ENT-002) as OpenTelemetry so a team's fleet of governed tickets/agents
-// renders in tools they already run (Datadog/Grafana — already pre-wired in
-// .mcp.json). Complements (does NOT replace) the future ENT-003 collector.
+// renders in tools they already run (for example Datadog/Grafana). External
+// MCP connectors remain explicit opt-ins and are not part of this exporter.
+// Complements (does NOT replace) the future ENT-003 collector.
 //
 // Zero-dependency + deterministic by design: we emit the OTLP/JSON wire shape
 // (the JSON encoding of OTLP ResourceSpans / ResourceLogs) DIRECTLY rather than

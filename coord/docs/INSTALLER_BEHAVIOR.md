@@ -1,8 +1,10 @@
 # Installer behavior and risk boundary
 
-Concord's npm, standalone SEA, and `init.sh` entry points use the same versioned
-plan/apply transaction (`concord.install/v1`). Installation is intentionally a
-two-step operation:
+Concord has two transactional installation entry points: the npm
+`create-concord` package and the standalone SEA binary. Both use the same
+versioned plan/apply transaction (`concord.install/v1`). The donor checkout's
+`init.sh` is retired, performs no writes, and is removed from release cuts; it is
+not an installation channel. Installation is intentionally a two-step operation:
 
 1. Run with `--dry-run` (or without `--apply-plan` on the npm path) to produce a
    write-free plan and SHA-256 digest.
@@ -27,9 +29,67 @@ paths, content digests, rollback actions, artifact identity, and verification;
 it excludes file contents, credential paths, environment values, and raw command
 output.
 
-The installer never initializes Git or creates a baseline commit. Those are
-separate operator decisions after installation; no installer path runs
-`git add .`, changes a product repository HEAD, or pushes to a remote.
+The installer never initializes Git or creates a baseline commit by default.
+
+Git ownership is per directory (ADR-0008). The **workspace container is never a
+Git repository** — not by default and not with consent; requesting container
+initialization by name (`--git-scope workspace`) is refused, naming the reason,
+before anything is written. **Product repositories are independent siblings**
+the installer never initializes. The only directory any bootstrap consent can
+reach is the optional independent control-plane repository at
+`<workspace>/coord`, and every Git subprocess is pinned to it with
+`git -C <workspace>/coord`.
+
+That confinement is enforced with the same two layers COORD-624 established for
+product repositories: an in-process `fs` write barrier over `<workspace>/.git`
+that fails closed on any write (including a transient one), plus a
+`.git`-presence / HEAD / branch / refs / index / config witness sampled after
+every install phase and around the git bootstrap — because `git init` is a
+spawned process an in-process hook structurally cannot observe, and a
+final-state comparison alone cannot distinguish "never touched" from "touched
+and put back". The container's absence of Git state is asserted positively
+after install, upgrade, recovery and removal, and recorded in the receipt.
+
+Control-plane Git bootstrap (COORD-477, retargeted by COORD-631) is a set of
+four separately named, separately consented actions, each previewed in the
+plan's `git_actions` section before any mutation so one consent can never imply
+another:
+
+- `--git-init` — run `git init` in `coord/` when it is outside Git. This
+  creates an unborn repository and nothing else; no commit is made without the
+  separate commit consent. A `coord/` inside an unrelated ancestor repository
+  is refused before anything is written (`--git-allow-nested-root` is the
+  explicit override for a deliberately nested control-plane repository; an
+  existing container repository is never adopted, relocated or removed —
+  migration is an explicit, reviewed, human action).
+- `--git-ignore-block` — write a managed, sentinel-delimited block into
+  `coord/.gitignore` recording the sibling product repositories observed at
+  install time and ignoring common secret-file patterns. Siblings are recorded
+  as evidence rather than as ignore patterns, because they are outside this
+  repository and no rule is what keeps them out. This block is defense in depth
+  for `git status` readability only; it is never the safety boundary.
+- `--git-stage` — stage exactly the manifest-derived file allowlist listed in
+  the plan, translated to coord-relative paths (`git add -- <path>...`). No
+  installer path ever runs `git add .`, `git add -A`, or any other recursive
+  staging shortcut. Workspace container assets (`.claude/`, `AGENTS.md`,
+  `package.json`, the root `.gitignore`) are outside `coord/`, so they are
+  excluded by construction and listed in the plan as
+  `stage.excluded_workspace_assets`.
+- `--git-baseline-commit` — create the initial baseline commit (requires the
+  separate `--git-stage` consent). Commits run with `--no-verify
+  --no-gpg-sign`; Git identity, credential helpers, remotes, hooks, and
+  product-repository configuration are never read into the plan or modified. A
+  failed commit (for example, missing identity) never rolls back the installed
+  files — it leaves the reviewable `bootstrap-pending` state that
+  `coord/scripts/gov doctor` explains with exact next steps, and strict
+  journal/derived-artifact diagnostics resume automatically after the first
+  committed baseline.
+
+No installer path changes a product repository HEAD or pushes to a remote;
+protected product repositories are re-verified (HEAD, branch, refs, dirty-state
+fingerprint and a metadata-only tree inventory) around the git bootstrap phase
+as well as around apply. The workspace container is re-verified the same way and
+is asserted to remain a non-repository.
 
 These controls reduce installation risk for the tested artifact and local
 environment. They are technical behavior, not a warranty, certification,

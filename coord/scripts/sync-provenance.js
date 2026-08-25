@@ -1,5 +1,7 @@
 "use strict";
 
+const { nonForcePush } = require("./control-plane-push.js");
+
 // COORD-292: the sync / provenance-baseline service, extracted from lifecycle.js
 // (lifecycle decomposition epic COORD-291..297, slice #1 — the first behavior-
 // preserving extraction after the COORD-291 boundary contract). ONE cohesive
@@ -25,8 +27,9 @@
 //   - COORD-196 (atomic terminal row commit): terminal callers set
 //     `includeBoardJson:true` so the board-row transition lands atomically with the
 //     derived-artifact sync commit.
-//   - ENT-001 (opt-in push-on-finalize): push is OPT-IN (flag/env), never default,
-//     and pushes only when the sync actually committed.
+//   - ENT-001/COORD-696 (opt-in push-on-finalize): push is OPT-IN (flag/env),
+//     never default, and may converge canonical commits stranded by an earlier
+//     terminal attempt even when the current sync is a no-op.
 //
 // Everything external is INJECTED via the createSyncProvenance factory (NO
 // `require()` of governance internals here):
@@ -41,7 +44,7 @@
 //
 // lifecycle.js wires this factory (deferred `(...a)=>fn(...a)` wrappers for the
 // function deps, by-reference for the value constants) and re-destructures the
-// eight returned functions back into its scope so the `commands` dispatch table,
+// returned functions back into its scope so the `commands` dispatch table,
 // the `__testing` facade, and `cli.js` (autoSyncAfterLifecycle / runSyncCommand)
 // all resolve exactly as before the move.
 
@@ -247,7 +250,60 @@ module.exports = function createSyncProvenance(deps = {}) {
   }
 
   function pushAfterLifecycleSync({ verb, repoRoot = COORD_DIR, pushFn } = {}) {
-    const doPush = typeof pushFn === "function" ? pushFn : (root) => gitTry(root, ["push"]);
+    // COORD-691: the push PRIMITIVE is shared with the governed pre-closeout
+    // push rather than each end of a landing keeping its own `git push` call.
+    //
+    // ROUND 1 REVIEW, finding 1: this used to call the primitive with NO
+    // refspec — the historical `git push` — which delegates the decision to
+    // `remote.<name>.push` / `push.default`. With
+    // `remote.origin.push=+refs/heads/main:refs/heads/main` configured, that
+    // call force-overwrote a diverged remote and reported success. The
+    // dangerous instruction was in configuration, not in the argv, so no
+    // argv-level check could have caught it. The remote and refspec are now
+    // resolved and named EXPLICITLY, and the primitive refuses an implicit
+    // push outright.
+    // ROUND 2 REVIEW, finding 1. The round-1 repair named the remote and
+    // refspec explicitly — correct — but derived them from the LOCAL branch
+    // name and `branch.<b>.remote`, which is not what `git push` did. Two
+    // regressions followed, both measured in review:
+    //
+    //   * with NO upstream, the historical call SKIPPED ("no upstream"); the
+    //     repair pushed to origin/<local-branch> instead, creating a remote
+    //     branch nobody asked for.
+    //   * with `main` tracking `origin/trunk`, it pushed main:main — leaving
+    //     trunk untouched, creating origin/main, and reporting success.
+    //
+    // Both come from assuming the destination ref shares the local branch's
+    // name. The upstream is the authority on where this branch pushes, so it is
+    // resolved as a unit (`@{upstream}` -> <remote>/<remote-branch>) and the
+    // refspec is <local>:<remote-branch>. No upstream is a REFUSAL to guess:
+    // the opt-in push has nothing to push to, which is the original behaviour.
+    const doPush = typeof pushFn === "function"
+      ? pushFn
+      : (root) => {
+        const branch = String((gitTry(root, ["symbolic-ref", "--short", "HEAD"]).stdout || "")).trim();
+        if (!branch) {
+          return { status: 1, stdout: "", stderr: "no upstream: HEAD is detached, so there is no branch to push" };
+        }
+        const upstream = gitTry(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", `${branch}@{upstream}`]);
+        const tracked = upstream && upstream.status === 0 ? String(upstream.stdout || "").trim() : "";
+        if (!tracked) {
+          return {
+            status: 1,
+            stdout: "",
+            stderr: `no upstream configured for ${branch}; refusing to guess a destination`,
+          };
+        }
+        const slash = tracked.indexOf("/");
+        const remote = slash > 0 ? tracked.slice(0, slash) : "origin";
+        const remoteBranch = slash > 0 ? tracked.slice(slash + 1) : tracked;
+        if (!remoteBranch) {
+          return { status: 1, stdout: "", stderr: `no upstream branch resolved for ${branch} (tracked "${tracked}")` };
+        }
+        // <local>:<remote-branch>, NOT <local>:<local> — the two differ
+        // whenever a branch tracks an upstream under another name.
+        return nonForcePush(root, [remote, `${branch}:${remoteBranch}`], { gitFn: gitTry });
+      };
     const result = doPush(repoRoot);
     if (result && result.status === 0) {
       return { pushed: true };
@@ -260,7 +316,8 @@ module.exports = function createSyncProvenance(deps = {}) {
     console.warn(
       `[gov sync] opt-in post-${verb} push failed: ${stderr || "unknown error"}\n` +
       `The ${verb} action and local sync commit succeeded; the durable journal/` +
-      `plans/snapshots are committed locally. Push manually with \`git push\`.`
+      `plans/snapshots are committed locally. Resolve the upstream state, then ` +
+      `retry the governed terminal verb with \`--push-after-sync\`.`
     );
     return { pushed: false, failed: true, detail: stderr };
   }
@@ -306,6 +363,150 @@ module.exports = function createSyncProvenance(deps = {}) {
     }
   }
 
+  // COORD-696: terminal governance may create a canonical sync commit and then
+  // fail (or simply omit) the opt-in push. A successful local commit is not a
+  // durable closeout when the configured upstream does not contain it. Resolve
+  // the branch's upstream as a unit and refresh that exact remote ref before
+  // classifying publication; never infer the destination from the local branch
+  // name, and never trust a previous fetch or a push exit status.
+  function assessCanonicalPublication({ repoRoot = COORD_DIR } = {}) {
+    // A missing collaborator is not evidence that publication is inapplicable.
+    // Fail closed so a future composition regression cannot silently turn this
+    // integrity check off. A real non-git/no-remote installation is identified
+    // positively below and remains release-safe.
+    if (typeof gitTry !== "function" || !repoRoot) {
+      return {
+        required: true,
+        published: false,
+        status: "publication-check-not-configured",
+      };
+    }
+
+    const inside = gitTry(repoRoot, ["rev-parse", "--is-inside-work-tree"]);
+    if (!inside || inside.status !== 0 || String(inside.stdout || "").trim() !== "true") {
+      return { required: false, published: true, status: "not-a-git-repository" };
+    }
+
+    const remotesResult = gitTry(repoRoot, ["remote"]);
+    if (!remotesResult || remotesResult.status !== 0) {
+      return {
+        required: true,
+        published: false,
+        status: "remote-list-failed",
+        detail: String((remotesResult && remotesResult.stderr) || "unable to list git remotes").trim(),
+      };
+    }
+    const remotes = String(remotesResult.stdout || "").split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+    if (remotes.length === 0) {
+      return { required: false, published: true, status: "no-remote" };
+    }
+
+    const branchResult = gitTry(repoRoot, ["symbolic-ref", "--short", "HEAD"]);
+    const branch = branchResult && branchResult.status === 0
+      ? String(branchResult.stdout || "").trim()
+      : "";
+    if (!branch) {
+      return { required: true, published: false, status: "detached-head" };
+    }
+
+    const remoteResult = gitTry(repoRoot, ["config", "--get", `branch.${branch}.remote`]);
+    const mergeResult = gitTry(repoRoot, ["config", "--get", `branch.${branch}.merge`]);
+    const remote = remoteResult && remoteResult.status === 0
+      ? String(remoteResult.stdout || "").trim()
+      : "";
+    const mergeRef = mergeResult && mergeResult.status === 0
+      ? String(mergeResult.stdout || "").trim()
+      : "";
+    if (!remote || !mergeRef) {
+      return { required: true, published: false, status: "no-upstream", branch };
+    }
+    if (remote === ".") {
+      return { required: false, published: true, status: "local-upstream", branch };
+    }
+
+    const remoteBranch = mergeRef.replace(/^refs\/heads\//, "");
+    const upstream = `${remote}/${remoteBranch}`;
+    const fetch = gitTry(repoRoot, ["fetch", "--quiet", remote, remoteBranch]);
+    if (!fetch || fetch.status !== 0) {
+      return {
+        required: true,
+        published: false,
+        status: "fetch-failed",
+        branch,
+        upstream,
+        detail: String((fetch && fetch.stderr) || "unable to refresh configured upstream").trim(),
+      };
+    }
+
+    const localResult = gitTry(repoRoot, ["rev-parse", "HEAD"]);
+    const remoteShaResult = gitTry(repoRoot, ["rev-parse", `refs/remotes/${upstream}`]);
+    const localSha = localResult && localResult.status === 0 ? String(localResult.stdout || "").trim() : "";
+    const remoteSha = remoteShaResult && remoteShaResult.status === 0
+      ? String(remoteShaResult.stdout || "").trim()
+      : "";
+    if (!localSha || !remoteSha) {
+      return {
+        required: true,
+        published: false,
+        status: "upstream-unresolved",
+        branch,
+        upstream,
+        local_sha: localSha || null,
+        remote_sha: remoteSha || null,
+      };
+    }
+
+    const remoteContainsLocal = gitTry(repoRoot, ["merge-base", "--is-ancestor", localSha, remoteSha]);
+    if (remoteContainsLocal && remoteContainsLocal.status === 0) {
+      return {
+        required: true,
+        published: true,
+        status: "published",
+        branch,
+        upstream,
+        local_sha: localSha,
+        remote_sha: remoteSha,
+      };
+    }
+
+    const localContainsRemote = gitTry(repoRoot, ["merge-base", "--is-ancestor", remoteSha, localSha]);
+    if (localContainsRemote && localContainsRemote.status === 0) {
+      const count = gitTry(repoRoot, ["rev-list", "--count", `${remoteSha}..${localSha}`]);
+      return {
+        required: true,
+        published: false,
+        status: "ahead",
+        branch,
+        upstream,
+        local_sha: localSha,
+        remote_sha: remoteSha,
+        ahead_by: Number.parseInt(String((count && count.stdout) || "0").trim(), 10) || 0,
+      };
+    }
+
+    return {
+      required: true,
+      published: false,
+      status: "diverged",
+      branch,
+      upstream,
+      local_sha: localSha,
+      remote_sha: remoteSha,
+    };
+  }
+
+  function attachPublicationEvidence(summary, { syncSucceeded }) {
+    const publication = assessCanonicalPublication();
+    return {
+      ...summary,
+      publication,
+      // A repository with no external publication contract can release. When
+      // publication is required, BOTH the terminal sync and remote containment
+      // must be proven; either half missing retains the session for recovery.
+      session_release_safe: publication.required === false || (syncSucceeded === true && publication.published === true),
+    };
+  }
+
   function autoSyncAfterLifecycle({ verb, ticketId, options = {}, syncFn, pushFn } = {}) {
     // COORD-275: scope every post-mutation baseline advance below to exactly the
     // derived paths this terminal lifecycle sync is authorized to rewrite, so a
@@ -316,7 +517,7 @@ module.exports = function createSyncProvenance(deps = {}) {
       // (plan record / QUESTIONS) are already on disk and must be absorbed into the
       // baseline so the next governed mutation does not trip the fail-closed seal.
       advanceProvenanceBaselineAfterLifecycle(verb, scopePaths);
-      return { skipped: true, reason: "--no-sync" };
+      return attachPublicationEvidence({ skipped: true, reason: "--no-sync" }, { syncSucceeded: false });
     }
     const sync = typeof syncFn === "function" ? syncFn : runSyncCommand;
     const message = buildAutoSyncMessage(verb, ticketId);
@@ -329,20 +530,22 @@ module.exports = function createSyncProvenance(deps = {}) {
       // derived-artifact sync; without this the source of truth reads not-done
       // until a manual corrective commit (observed across the X-lane finalizes).
       const result = sync({ commit: message, quiet: true, includeBoardJson: true, currentTicketId: ticketId || null });
-      // ENT-001: opt-in push only when something was actually committed, so a
-      // no-op sync doesn't push an unrelated already-tracked tip.
+      // COORD-696: the explicit governed push also runs when THIS sync is a
+      // no-op. A prior terminal attempt may already have committed canonical
+      // history locally and failed before publication; restricting recovery to
+      // a newly-created commit strands that history forever. The destination is
+      // still the configured upstream and the shared primitive still refuses
+      // every non-fast-forward/destructive form.
       let push = { pushed: false, reason: "not-requested" };
       if (pushOnFinalizeEnabled(options)) {
-        push = result && result.committed
-          ? pushAfterLifecycleSync({ verb, pushFn })
-          : { pushed: false, reason: "no-commit-to-push" };
+        push = pushAfterLifecycleSync({ verb, pushFn });
       }
       // COORD-246: the sync above regenerated + (possibly) committed the post-journal
       // artifacts; now re-baseline the journal to that final on-disk state so the next
       // governed mutation's fail-closed seal does not mistake this mutation's own
       // output for an out-of-band edit.
       advanceProvenanceBaselineAfterLifecycle(verb, scopePaths);
-      return { skipped: false, result, push };
+      return attachPublicationEvidence({ skipped: false, result, push }, { syncSucceeded: true });
     } catch (error) {
       const reason = error && error.message ? error.message : String(error);
       // Benign: a coord/ checkout that isn't itself a git worktree can't be
@@ -351,7 +554,10 @@ module.exports = function createSyncProvenance(deps = {}) {
       // baseline before returning.
       if (/not a git repository|show-toplevel failed|rev-parse --show-toplevel/i.test(reason)) {
         advanceProvenanceBaselineAfterLifecycle(verb, scopePaths);
-        return { skipped: true, reason: "coord-root-not-a-git-repo" };
+        return attachPublicationEvidence(
+          { skipped: true, reason: "coord-root-not-a-git-repo" },
+          { syncSucceeded: false },
+        );
       }
       // Best-effort: never throw out of this helper. The lifecycle action
       // already succeeded by the time we get here.
@@ -362,7 +568,10 @@ module.exports = function createSyncProvenance(deps = {}) {
         `manually, or rely on \`gov doctor\` to surface persistent drift.`
       );
       advanceProvenanceBaselineAfterLifecycle(verb, scopePaths);
-      return { skipped: false, failed: true, error: reason };
+      return attachPublicationEvidence(
+        { skipped: false, failed: true, error: reason },
+        { syncSucceeded: false },
+      );
     }
   }
 
@@ -375,5 +584,6 @@ module.exports = function createSyncProvenance(deps = {}) {
     lifecycleSyncScopePaths,
     advanceProvenanceBaselineAfterLifecycle,
     autoSyncAfterLifecycle,
+    assessCanonicalPublication,
   };
 };

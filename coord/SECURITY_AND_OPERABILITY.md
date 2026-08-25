@@ -32,7 +32,7 @@ This file defines the non-functional security and operational requirements that 
 - Health check and readiness probe requirements
 - Alerting and escalation policy
 - Runbook expectations for critical paths
-- SLA definitions
+- Service-level expectations you commit to for your own services
 
 ## Governance Integration
 

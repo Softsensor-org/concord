@@ -19,9 +19,89 @@ const path = require("path");
 const { GovernanceError, defaultFail, ROOT_DIR } = require("./governance-context.js");
 const { STATUS, FINDING_STATUS } = require("./governance-constants.js");
 const { stableIdempotencyKey } = require("./idempotency.js");
+const { assertFactoryDependencies } = require("./factory-deps.js");
+
+
+// COORD-680: the sibling factory had NO construction-time validation, so the
+// same wiring defect that produced `TypeError: ensureGovernedWorkspaceForTicket
+// is not a function` inside `gov resume` could reappear here — this factory owns
+// `startTicket` and `returnDoing`, both of which reconstruct governed
+// workspaces. Validated against the same shared assertion agent-commands uses.
+const REQUIRED_TICKET_TRANSITION_DEPS = {
+  callable: [
+    "readBoard",
+    "writeBoard",
+    "getTicketRef",
+    "getRows",
+    "rowsById",
+    "applyTicketStatus",
+    "assignTicketOwner",
+    "clearTicketOwner",
+    "setTicketPrRefs",
+    "isLegalStatus",
+    "runBoardSync",
+    "runBoardValidate",
+    "withBoardTransaction",
+    "withCoordStateLock",
+    "withGovernanceMutation",
+    "inferTicketStatus",
+    "resolveOwnerIdentity",
+    "ensureCurrentAgentIdentity",
+    "ensureTicketMutationOwnership",
+    "assertTicketMutationOwnership",
+    "detectColocatedForeignSessions",
+    "buildColocatedForeignSessionMessage",
+    "recordGovernanceCollision",
+    "findLockForTicket",
+    "resolveTicketLockPath",
+    "ensureDoingTicketLockIntegrity",
+    "ensureGitWorktree",
+    "ensureGovernedWorkspaceForTicket",
+    "withPreparedTicketWorkspace",
+    "cleanupClosedTicketWorkspace",
+    "writeLock",
+    "defaultWorktreePath",
+    "evaluateReadiness",
+    "formatTransitiveBlockerDetails",
+    "formatDependencyCycleList",
+    "findDoingTicketForOwner",
+    "canOwnerHoldConcurrentDoing",
+    "resolveLifecyclePrRefs",
+    "assertReviewPlanReady",
+    "assertAlreadyLandedNoPrReconcileReady",
+    "assertCommittedReviewState",
+    "refsContainMergedPrForTicket",
+    "prCreate",
+    "appendReviewFollowupPlan",
+    "inferNextRound",
+    "prepareDoneCloseout",
+    "buildStartOwnershipRaceMessage",
+    "buildHistoricalCloseoutStartBlocker",
+    "ensurePromptCoverageOrDiscover",
+    "assertPromptPreconditionsResolve",
+    "ensurePlanStub",
+    "updateCanonicalPlanState",
+    "buildStartPlanSeedUpdate",
+    "seedStartIntendedFilesFromPrompt",
+    "assertStartPlanReady",
+    "buildStartPlanBootstrapCommand",
+    "detectSupersedeLandingBypass",
+    "isRepoBackedCode",
+    "repoNameForCode",
+    "repoDisplayNameForCode",
+    "resolveTicketBaseRef",
+    "toArray",
+    "slugify",
+    "integerOrDefault",
+    "isDoingStatus",
+  ],
+  value: [
+  ],
+};
 
 module.exports = function createTicketTransitions(deps = {}) {
   const fail = deps.fail || defaultFail;
+  assertFactoryDependencies("createTicketTransitions", deps, REQUIRED_TICKET_TRANSITION_DEPS);
 
   const {
     // board-state mutators / readers
@@ -55,6 +135,7 @@ module.exports = function createTicketTransitions(deps = {}) {
     resolveTicketLockPath,
     ensureDoingTicketLockIntegrity,
     ensureGitWorktree,
+    ensureGovernedWorkspaceForTicket,
     withPreparedTicketWorkspace,
     cleanupClosedTicketWorkspace,
     writeLock,
@@ -245,9 +326,27 @@ module.exports = function createTicketTransitions(deps = {}) {
       );
     }
 
+    assertTicketDependenciesReady(ticketId, ref.row, board);
     assertReviewPlanReady(ticketId, ref.row);
+    // COORD-697: submit used to leave dependency and committed-state checks to
+    // moveReview, which runs only AFTER prCreate has published the branch and
+    // created the PR. Re-run the complete locally fallible transition preflight
+    // before delegating to either external action. prCreate keeps its own copy
+    // because it is also a public verb and must be safe when called directly.
+    assertCommittedReviewState(ticketId, ref.row, lock);
     prCreate(ticketId, { ...options, push: true });
     moveReview(ticketId, {});
+  }
+
+  function assertTicketDependenciesReady(ticketId, row, board) {
+    const readiness = evaluateReadiness(row, rowsById(board), board);
+    if (readiness.blockedBy.length === 0) return;
+    const transitiveDetails = formatTransitiveBlockerDetails(readiness.blockerChains);
+    fail(
+      `Ticket ${ticketId} still has unmet dependencies: ${readiness.blockedBy.join(", ")}.` +
+      (transitiveDetails ? ` Transitive blocker chains: ${transitiveDetails}.` : "") +
+      (readiness.cycles.length > 0 ? ` Dependency cycle(s): ${formatDependencyCycleList(readiness.cycles)}.` : "")
+    );
   }
 
   function markDone(ticketId, options = {}) {
@@ -404,15 +503,7 @@ module.exports = function createTicketTransitions(deps = {}) {
       }
       const lock = ensureDoingTicketLockIntegrity(ticketId, ref.row, options);
       mutation.identity = ensureTicketMutationOwnership(ticketId, ref.row, lock, options);
-      const readiness = evaluateReadiness(ref.row, rowsById(board), board);
-      if (readiness.blockedBy.length > 0) {
-        const transitiveDetails = formatTransitiveBlockerDetails(readiness.blockerChains);
-        fail(
-          `Ticket ${ticketId} still has unmet dependencies: ${readiness.blockedBy.join(", ")}.` +
-          (transitiveDetails ? ` Transitive blocker chains: ${transitiveDetails}.` : "") +
-          (readiness.cycles.length > 0 ? ` Dependency cycle(s): ${formatDependencyCycleList(readiness.cycles)}.` : "")
-        );
-      }
+      assertTicketDependenciesReady(ticketId, ref.row, board);
       assertReviewPlanReady(ticketId, ref.row);
       const prRefs = resolveLifecyclePrRefs(ticketId, ref.row, board, options);
       const allowAlreadyLandedNoPrReconcile = assertAlreadyLandedNoPrReconcileReady(
@@ -473,19 +564,50 @@ module.exports = function createTicketTransitions(deps = {}) {
         fail(`Ticket ${ticketId} must be review; current status is "${ref.row.Status}".`);
       }
       assertTicketMutationOwnership(ticketId, ref.row, null);
+      // COORD-692: consult the SAME concurrency exception startTicket uses
+      // below. This site used to fail on any hit, so an owner the model
+      // explicitly permits to hold a declared closeout-blocker pair could START
+      // the follow-up and then not take a REVIEW REJECTION on it — the lane sat
+      // in review with repaired code and unrecordable findings, and the only
+      // ways out were an override or falsifying the parent's status. Measured
+      // on the COORD-667/COORD-691 pair, 2026-08-22.
+      //
+      // Deliberately the same helper rather than a second predicate: two
+      // definitions of "may this owner hold two" is how the surfaces drifted
+      // apart in the first place (COORD-558). The WIP limit itself is
+      // unchanged — an unrelated same-owner pair still refuses here, with the
+      // same message.
       const ownerDoing = findDoingTicketForOwner(board, owner, ticketId);
-      if (ownerDoing) {
+      if (ownerDoing && !canOwnerHoldConcurrentDoing(board, ticketId, ownerDoing.ID)) {
         fail(`Owner ${owner} already has an active doing ticket: ${ownerDoing.ID}.`);
       }
 
       const findings = board.review_findings[ticketId] || [];
       const nextId = `${ticketId}-F${findings.length + 1}`;
+      // COORD-649: return-doing is the ONE round-advancing transition — it
+      // writes this round onto the finding AND onto the plan record, so the
+      // pair is consistent by construction. An explicit --round that is not the
+      // round this transition actually advances into FAILS CLOSED rather than
+      // being silently accepted: accepting it writes a plan round that claims
+      // repair rounds which never happened.
+      const advancedRound = inferNextRound(findings);
+      if (options.round !== undefined && options.round !== null && options.round !== "") {
+        const requested = integerOrDefault(options.round, null);
+        if (requested !== advancedRound) {
+          fail(
+            `return-doing --round ${options.round} disagrees with lifecycle state: this transition advances ${ticketId} ` +
+            `into review round ${advancedRound}. Omit --round (or pass ${advancedRound}); a round is earned by a real ` +
+            `review -> doing repair, not chosen. To repair a finding already filed under the wrong round, use ` +
+            `\`coord/scripts/gov correct-finding-round ${ticketId} --id <finding-id> --round <n> --human-admin-override "<reason>"\`.`
+          );
+        }
+      }
       const finding = {
         id: nextId,
         severity: options.severity,
         summary: options.summary,
         status: FINDING_STATUS.OPEN,
-        round: integerOrDefault(options.round, inferNextRound(findings)),
+        round: advancedRound,
         qref: options.qref,
       };
 
@@ -493,16 +615,22 @@ module.exports = function createTicketTransitions(deps = {}) {
         options.branch ||
         `agent/${owner.toLowerCase()}-${ticketId.toLowerCase()}-${slugify(options.topic || ref.row.Description).slice(0, 40)}`;
       const worktree = options.worktree || defaultWorktreePath(ref.row.Repo, owner, ticketId);
-      if (isRepoBackedCode(ref.row.Repo)) {
-        ensureGitWorktree({
-          repoCode: ref.row.Repo,
-          worktree,
-          branch,
-          base: resolveTicketBaseRef(ticketId, ref.row, options),
-        });
-      } else if (ref.row.Repo === "X") {
-        fs.mkdirSync(worktree, { recursive: true });
-      }
+      // COORD-635: this used ensureGitWorktree for product repos and a bare
+      // `fs.mkdirSync(worktree)` for Repo X — a PLAIN DIRECTORY presented as a
+      // governed worktree. Because the path is nested inside the canonical
+      // tree, git resolves such a directory to CANONICAL, so an agent sent
+      // there edits and stages main while believing it is isolated. Both repo
+      // kinds now go through the one recovery entry point, which reconstructs
+      // via the same ensureTicketWorkspace `gov start` uses and then PROVES
+      // isolation (own toplevel + registered) before returning.
+      ensureGovernedWorkspaceForTicket({
+        ticketId,
+        row: ref.row,
+        worktree,
+        branch,
+        base: resolveTicketBaseRef(ticketId, ref.row, options),
+        stage: "return-doing",
+      });
 
       persistReturnDoingState({
         board,
@@ -827,3 +955,5 @@ module.exports = function createTicketTransitions(deps = {}) {
     persistReturnDoingState,
   };
 };
+
+module.exports.DEP_CONTRACT = REQUIRED_TICKET_TRANSITION_DEPS;

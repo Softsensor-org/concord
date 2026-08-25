@@ -5,8 +5,11 @@ Use this when a ticket is already `doing` or `review` and this Claude session ne
 ## Step 1: Inspect the current identity
 
 ```bash
-coord/scripts/gov whoami
+coord/scripts/gov agentid
 ```
+
+If this session has no bound identity yet, run the provider-neutral cold-start
+contract first: `coord/scripts/agent bootstrap`.
 
 If the current thread is blocked by a foreign same-handle session and must stay detached from that foreign ticket:
 
@@ -32,5 +35,5 @@ Report:
 
 Rules:
 - use `coord/scripts/gov resume $ARGUMENTS` only when you need the raw governance command directly
-- use `coord/scripts/gov takeover ... --human-admin-override` or `coord/scripts/gov lock-abandon ... --human-admin-override` only with explicit human-admin authorization
+- use `coord/scripts/gov claim <ticket> --transfer-to <current-agent-handle> --human-admin-override "<reason>"` or `coord/scripts/gov lock-abandon <ticket> --human-admin-override "<reason>"` only with explicit human-admin authorization
 - do not use resume to seize a foreign ticket silently

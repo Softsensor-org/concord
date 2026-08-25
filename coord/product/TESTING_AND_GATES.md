@@ -822,7 +822,7 @@ The journal hash-chain is versioned (see
   leaks into ownership tests) and the chain/era tests are deterministic only when
   serial.
 
-## Test-Harness Isolation: never write the live `coord/` tree (COORD-290, COORD-299)
+## Test-Harness Isolation: never write the live `coord/` tree (COORD-290, COORD-299, COORD-606)
 
 Tests that mutate `coord/` fixtures MUST run in isolated temp dirs / dedicated
 sandboxes — **NEVER against the live governed runtime.** Writing transient
@@ -844,13 +844,45 @@ Rules:
   registry at render time, and `token-economics.js` resolves prompts via
   `state.PROMPTS_DIR`.
 - **The harness guard enforces this.** `coord/scripts/test-isolation-guard.js` is a
-  `--require` preload (loaded by `coord/scripts/check-test-isolation.sh`) that
+  `--require` preload (loaded by `coord/scripts/test-runner.js`, the authoritative
+  entrypoint behind `coord/scripts/check-test-isolation.sh`) that
   THROWS the instant any test writes under the live `coord/prompts/**` /
-  `coord/rendered/**` (seal class) or the live-runtime class (see COORD-299 below)
+  `coord/rendered/**` (seal class), the live-runtime class (see COORD-299 below),
+  or the governed-state class (see COORD-606 below)
   outside its sandbox — catching transient write-then-restore leaks that a
   post-suite `git status` cannot see. A future test cannot silently regress the
-  rule. `coord/scripts/test-isolation-guard.test.js` unit-covers both classifiers
-  and proves the runtime class fails-closed.
+  rule. `coord/scripts/test-isolation-guard.test.js` unit-covers all three
+  classifiers and proves the runtime and governed classes fail-closed.
+- **Governed-state class (COORD-606).** The guard also fails-closed on the tracked
+  governed coordination state the first two classes left open: `coord/board/**`
+  (the live board, its schemas and `board.js`), `coord/PLAN.md`,
+  `coord/QUESTIONS.md` and `coord/active/**`. Sandbox through `__testing.paths`
+  (`BOARD_PATH` / `PLAN_PATH` / `QUESTIONS_PATH`). Staged with the same vocabulary
+  as the runtime class via `COORD_TEST_ISOLATION_GOVERNED`
+  (`enforce` default | `detect` | `off`); an unknown value fails closed.
+- **What the isolation guarantee actually is, and what it is not (COORD-606).**
+  COORD-480 advertised "the runner fails if a test writes outside its allowed
+  temporary roots". That claim was wider than the enforcement: the guard is an
+  in-process `fs` hook, so it could neither see writes to the board/plan/questions
+  (not guarded at all) nor writes made by a SPAWNED process (`git`, a shell script,
+  a `gov` child) — which is the most likely way a test corrupts the tree. The
+  guarantee is now enforced in two halves and stated at its true width:
+  1. the `fs` hook above, covering in-process writes to the three guarded classes;
+  2. a GOVERNED-TREE FINGERPRINT taken by `coord/scripts/test-runner.js` before and
+     after EVERY module — content hashes of `coord/board/**`, `coord/prompts/**`,
+     `coord/rendered/**`, `coord/active/**`, `coord/PLAN.md` and
+     `coord/QUESTIONS.md`. A module that leaves the tree changed fails the run, the
+     changed paths are printed, and they are recorded in the run report under
+     `governed_tree_violations`. This is what catches subprocess mutations.
+
+  The guarantee is therefore: **no test run may leave the governed tracked surfaces
+  changed.** It is NOT a general "no write outside a temp root" guarantee — a test
+  writing to engine source (`coord/scripts/**`) or to a path outside `coord/` is
+  still not intercepted by either half. `coord/.runtime/**` is covered by the hook
+  only (it is gitignored, legitimately churning state, so it is deliberately not
+  fingerprinted). Corollary, unchanged: never run the suite concurrently with
+  governed mutations — a concurrent `gov` write is indistinguishable from a leaking
+  test, and the fingerprint will (correctly) fail the run.
 - **Allowlist (kept tiny and conservative).** `withCanonicalTicketPrompt`
   legitimately provisions the REAL canonical ticket prompt
   (`coord/prompts/tickets/COORD-023.md`, `COORD-024.md`) to exercise canonical
@@ -888,10 +920,44 @@ Rules:
   COORD-300 follow-up. `COORD_TEST_ISOLATION_RUNTIME=detect` re-enumerates all
   offenders to a report file without failing.
 - **Gate-then-mutate; never run the suite concurrently with governed mutations.**
-  Run serially: `env -u COORD_SESSION_ID node --test --test-concurrency=1
-  coord/scripts/*.test.js coord/board/*.test.js` (or `coord/scripts/check-test-isolation.sh`
-  to run the same suite with the guard active). `COORD_SESSION_ID` must be unset
-  for the runner (it leaks into ownership tests).
+  Run the ONE authoritative entrypoint (COORD-480): `node
+  coord/scripts/test-runner.js` — equivalently `npm test --prefix coord`, or the
+  `coord/scripts/check-test-isolation.sh` shim, which now delegates to it. The
+  runner owns the whole execution contract, so no consumer maintains a test glob:
+  it normalizes the test root from its own location (so the same command works
+  from the repository root, from `coord/`, and from a packed artifact), discovers
+  every suite recursively and deterministically (a nested suite cannot dodge
+  `--list`), runs serially (`--test-concurrency=1`), STRIPS ambient session
+  identity from the child environment, preloads this guard, fingerprints the
+  governed tree around every module, and writes a JSON report
+  with the aggregate execution order + environment needed to reproduce
+  order-dependent defects. An aggregate failure is never forgiven because an
+  isolated rerun passes. Identity stripping is PROVIDER-COMPLETE (COORD-606):
+  every `envThread`/alias in the `governance-session.js` `PROVIDER_REGISTRY`
+  (`CODEX_THREAD_ID`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_SESSION_ID`,
+  `GEMINI_THREAD_ID`, `GROK_THREAD_ID`), the provider-neutral `AGENT_THREAD_ID` /
+  `GOVERNANCE_MCP_THREAD_ID`, and the coord identity variables (`COORD_SESSION_ID`,
+  `COORD_PROVIDER_SESSION_ID`, `COORD_INSTANCE_ID`) are named explicitly, and a
+  shape-based sweep (`*_SESSION_ID` / `*_THREAD_ID` / `*_INSTANCE_ID`) removes
+  anything a future provider adds before the list is updated;
+  `test-runner.test.js` fails if a registry variable is missing from the
+  enumeration. The run REPORT is the gate's evidence: if it cannot be persisted the
+  run exits non-zero and prints `result=FAIL` + `report=NOT-WRITTEN` rather than
+  claiming PASS against a path that does not exist (COORD-606).
+- **The runner is under integrity coverage (COORD-606).** `test-runner.js`,
+  `test-runner.test.js`, `test-isolation-guard.js` and
+  `test-isolation-guard.test.js` are tracked in `coord/TEMPLATE_SYNC_MANIFEST.json`
+  and pinned in `coord/engine-pin.json`, so `check-template-sync.sh` and `gov
+  verify-engine` fail on drift in the entrypoint that publication is fail-closed
+  on. They were missed originally because the manifest is a HAND-CURATED list
+  seeded from a static maintainer inventory snapshot — there is no discovery
+  rule, so any engine file created later stays untracked until it is added by hand.
+  `coord/scripts/check-template-sync.sh --audit-coverage` reports the untracked
+  remainder (report-only; it never changes the exit code). Focused local iteration: `--module <name>` / `--file
+  <path>` (npm: `test:core`, `test:board`, `test:hooks`, `test:gates`,
+  `test:enterprise`, `test:packaging`). The same entrypoint is what active PR CI
+  (`.github/workflows/governance-suite.yml`), public-cut hygiene
+  (`release/check-public-release.sh`), and binary verification call.
 
 ## Governance Integration
 

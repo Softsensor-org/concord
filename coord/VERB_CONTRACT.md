@@ -28,6 +28,7 @@ The goal is:
 
 The default operator surface is:
 
+- `agent bootstrap`
 - `agent next`
 - `agent do <ticket>`
 - `agent review <ticket>`
@@ -60,6 +61,16 @@ These are internal or advanced surfaces, not the primary operator story.
 ## Contract Per Verb
 
 Each section below lists the target-state contract for the verb. Bullets marked *(target)* describe behaviors this file commits the facade to eventually deliver; today's thin adapter satisfies the un-marked bullets only. The "Still deferred" list in Current Mapping is the authoritative inventory of which target behaviors have not yet shipped.
+
+### `agent bootstrap`
+
+- the provider-neutral cold-start contract shared by every wrapper (Claude
+  `/initiate`, the `CODEX.md` / `GEMINI.md` shims, and the plain shell path)
+- binds the session identity via governance (`gov agentid`, assigning only when
+  governance reports the session is unbound)
+- runs the shared health check (`gov doctor`) and fails visibly when it fails
+- recommends the next governed action (`gov pick`)
+- must not start, claim, or mutate any ticket
 
 ### `agent next`
 
@@ -109,6 +120,7 @@ The mapping is:
 
 Current implementation in `coord/scripts/agent`:
 
+- `agent bootstrap` -> `coord/scripts/gov agentid` (then `agentid --assign` only when unbound), `coord/scripts/gov doctor`, `coord/scripts/gov pick --mode general --limit 1`
 - `agent next` -> `coord/scripts/gov pick --mode general --limit 1` by default
 - `agent do <ticket>` / `agent do prepare <ticket>` -> `ticket`, then `start` for `todo`/`deferred`, `resume` for `doing`/`review`, then `explain`
 - `agent do submit <ticket>` -> `coord/scripts/gov submit <ticket> ...`

@@ -27,12 +27,7 @@ Read:
 - the target repo `AGENTS.md`
 - `coord/docs/IDENTITY_RUNTIME_EXTRACT.md` if identity or resume semantics are relevant
 
-If the ticket is repo-backed and a governed worktree was created, rebase onto the canonical integration branch before editing:
-
-```bash
-cd <worktree-path>
-git fetch origin dev && git rebase origin/dev
-```
+If the ticket is repo-backed and a governed worktree was created, trust `gov start` base selection: the worktree is branched from the repo's configured integration branch (`integrationBranch` in `coord/project.config.js`) and freshened from origin at start time. Do not rebase onto a hardcoded branch; if the base looks stale, re-run through governance (`coord/scripts/gov resume $ARGUMENTS`, or unstart/start) so base selection stays governed.
 
 ## Step 3: Implement inline in this session
 

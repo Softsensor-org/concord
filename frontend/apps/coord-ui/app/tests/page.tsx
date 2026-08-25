@@ -20,6 +20,11 @@ export default function TestsPage() {
           failing lane steps: <strong>{t.failingLaneSteps}</strong>
         </span>
         <span>maturity: {t.maturity.notRun ? 'not yet run' : 'tracked'}</span>
+        {t.unresolvedRepos > 0 ? (
+          <span>
+            repos NOT inspected: <strong>{t.unresolvedRepos}</strong>
+          </span>
+        ) : null}
         <span>sources: gate steps · file walk · TEST_MATURITY.md</span>
       </div>
 
@@ -30,9 +35,14 @@ export default function TestsPage() {
             <h3>
               {inv.repo}{' '}
               <span className="git-branch">
-                {inv.exists ? `${inv.totalTestFiles} test files` : '(repo not found)'}
+                {inv.exists
+                  ? `${inv.totalTestFiles} test files`
+                  : `(${inv.status === 'ok' ? 'repo not found' : `${inv.status} — not inspected`})`}
               </span>
             </h3>
+            {/* COORD-543: say why nothing was counted rather than showing a
+                number produced from some other tree. */}
+            {inv.statusReason ? <div className="card__title">{inv.statusReason}</div> : null}
             <dl className="git-meta">
               {Object.entries(inv.byExt)
                 .sort()

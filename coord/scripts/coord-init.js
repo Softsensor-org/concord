@@ -158,6 +158,38 @@ module.exports = function createCoordInit(deps = {}) {
     return actions;
   }
 
+  // COORD-478: anchor the governance-journal genesis for the starter board init
+  // just created. In-process (no subprocess — the COORD-477 guarantee holds) and
+  // idempotent (`ensureGovernanceJournalBaseline` no-ops once a snapshot
+  // baseline exists). Only runs when THIS engine instance is the target's own
+  // vendored engine; a fail here warns rather than failing the bootstrap.
+  function anchorStarterBoardJournalGenesis(targetRoot) {
+    // Compare REAL paths so a symlinked cwd (e.g. macOS /var -> /private/var)
+    // does not misread the engine's own workspace as foreign.
+    const real = (p) => {
+      try {
+        return nodeFs.realpathSync(p);
+      } catch {
+        return nodePath.resolve(p);
+      }
+    };
+    const engineCoordRoot = real(nodePath.resolve(__dirname, ".."));
+    if (real(nodePath.resolve(targetRoot, "coord")) !== engineCoordRoot) {
+      log("  note    journal genesis not anchored (init targeted a root outside this engine's workspace; the target's own vendored engine anchors on its first init)");
+      return;
+    }
+    try {
+      const anchor =
+        deps.anchorJournalBaseline ||
+        (() => require("./lifecycle.js").ensureGovernanceJournalBaseline("coord-init-starter-board"));
+      anchor();
+      log("  anchor  coord/.runtime/governance-events.ndjson  (journal genesis for the starter board)");
+    } catch (error) {
+      log(`  warn    could not anchor the journal genesis: ${error && error.message ? error.message : error}`);
+      log("          run `coord/scripts/gov doctor` before the first governed mutation.");
+    }
+  }
+
   // Apply (or, in dry-run, just report) the plan. Idempotent + no-clobber:
   // "create" entries write the file (creating parent dirs); "skip" entries
   // touch nothing.
@@ -209,6 +241,16 @@ module.exports = function createCoordInit(deps = {}) {
         const abs = nodePath.join(targetRoot, action.rel);
         fs.mkdirSync(nodePath.dirname(abs), { recursive: true });
         fs.writeFileSync(abs, action.content);
+      }
+      // COORD-478: init just CREATED the starter board (rows without a journal).
+      // Without a journal genesis, the first governed mutation on this fresh
+      // artifact is refused by the COORD-273 lost-journal seal (board rows +
+      // absent journal reads as tamper). Init is the one writer that KNOWS this
+      // state is a fresh bootstrap, so it anchors the genesis for the board it
+      // itself wrote. Guarded to this engine's own workspace: `init --dir` at a
+      // foreign root must not anchor a foreign engine's journal.
+      if (created.some((a) => a.rel === "coord/board/tasks.json")) {
+        anchorStarterBoardJournalGenesis(targetRoot);
       }
     }
 

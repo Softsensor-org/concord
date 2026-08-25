@@ -38,6 +38,7 @@ const phaseModel = require("./governance-phase-model.js");
 // ---------------------------------------------------------------------------
 
 const SINGLE_UPPER = /^[A-Z]$/;
+const GOVERNANCE_TIERS = new Set(["lite", "standard", "full"]);
 const CONFIG_REL = "coord/project.config.js";
 const SETUP_DECISIONS_REL = "coord/setup.decisions.json";
 
@@ -104,8 +105,12 @@ function normalizeAnswers(answers = {}) {
   const gates = Array.isArray(answers.gates)
     ? Array.from(new Set(answers.gates.map((g) => String(g).trim()).filter(Boolean))).sort()
     : [];
+  const tier = String(answers.tier || "full").trim().toLowerCase();
+  if (!GOVERNANCE_TIERS.has(tier)) {
+    throw new Error(`wizard: governance tier must be lite, standard, or full (got ${JSON.stringify(answers.tier)})`);
+  }
 
-  return { coordTicketPrefix, repos, profile, phase, tracks, gates };
+  return { coordTicketPrefix, repos, profile, phase, tracks, gates, tier };
 }
 
 function jsArrayLiteral(items) {
@@ -143,6 +148,15 @@ function generateProjectConfig(answers = {}) {
 //   - \`integrationBranch\` is the per-repo integration base.
 module.exports = {
   coordTicketPrefix: ${JSON.stringify(cfg.coordTicketPrefix)},
+  governance: {
+    tier: ${JSON.stringify(cfg.tier)},
+  },
+  adoption: {
+    profile: ${JSON.stringify(cfg.profile)},
+    phase: ${JSON.stringify(cfg.phase)},
+    tracks: ${jsArrayLiteral(cfg.tracks)},
+    gates: ${jsArrayLiteral(cfg.gates)},
+  },
   repos: {
 ${repoBlocks}
   },
@@ -278,6 +292,7 @@ function generateSetupDecisionArtifact(answers = {}, context = {}) {
     target_root: targetRoot,
     decisions: {
       coord_ticket_prefix: cfg.coordTicketPrefix,
+      governance_tier: cfg.tier,
       adoption_profile: {
         id: profile.id,
         label: profile.label,

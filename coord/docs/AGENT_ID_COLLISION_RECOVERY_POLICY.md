@@ -154,7 +154,7 @@ Bootstrapping gap:
 - current CLI behavior does not always give the session a stable same-thread artifact during binding drift
 - the target primitive is a session-local readable record containing at least `(thread_id, current_ticket, claimed_at_utc)`
 - until that exists, tier 1 is the only binding precedence rule and tiers 2 through 5 remain advisory design intent
-- operator aid such as `gov agentid` (alias: `gov whoami`) should expose the current session binding, owned tickets, and mismatch warnings so rebinding decisions do not require manual archaeology across locks, board state, and runtime metadata
+- operator aid such as `gov agentid` should expose the current session binding, owned tickets, and mismatch warnings so rebinding decisions do not require manual archaeology across locks, board state, and runtime metadata
 
 Sub-agent rule:
 - sub-agents and skills inherit the parent session binding
@@ -572,7 +572,7 @@ Tracking note:
 | 3 | overlap is limited to the same governed worktree root or a descendant inside that same governance prefix, not arbitrary ancestors | broken | overlap semantics are not formalized at this precision | codify governed-worktree-root overlap checks and tests |
 | 4 | tier-1 ownership is determined from lock-embedded `thread_id` first, with exact `session_id` fallback only when `thread_id` is unknown | advisory | lock fields exist but tier-1 semantics are not formalized | codify thread-id-first lock match logic, conflict handling, and tests |
 | 4 | same-session artifact exists for resume identity | broken | none reliable | add stable readable same-thread artifact |
-| 4 | operator identity introspection such as `gov agentid` (alias: `gov whoami`) exposes current binding, owned tickets, and mismatch warnings | advisory | identity is spread across multiple surfaces and requires manual synthesis | add a supported introspection command or equivalent MCP surface for current-session identity |
+| 4 | operator identity introspection such as `gov agentid` exposes current binding, owned tickets, and mismatch warnings | advisory | identity is spread across multiple surfaces and requires manual synthesis | add a supported introspection command or equivalent MCP surface for current-session identity |
 | 3 | same-thread matching uses explicit non-null, non-sentinel `thread_id` equality and treats unknown values as foreign | broken | unknown and fallback semantics are not formally defined | define matching semantics, sentinel handling, and collision tests |
 | 3 | runtime session-binding state such as `.runtime/agent_sessions.json` is excluded from governance-drift reconciliation when ticket state is unchanged | broken | runtime churn is often reported as governance drift | classify session-binding files separately and suppress pure runtime drift noise |
 | 4 | sub-agent mutation serialization uses process-local mutex plus advisory file lock | partially enforced | in-process serialization exists in some paths | add cross-process advisory lock and tests |

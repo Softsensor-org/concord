@@ -173,6 +173,201 @@ function sanitizeProjectConfig(raw) {
   return { repos };
 }
 
+/**
+ * COORD-543 / SEC-002 — configured-repo scope resolution.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * The original confinement clamped any repo dir resolving outside PROJECT_ROOT
+ * back TO PROJECT_ROOT. In the documented sibling-coord topology
+ *
+ *     workspace/
+ *       coord-checkout/      <- PROJECT_ROOT (contains coord/)
+ *       backend/             <- configured as "../backend"
+ *       frontend/            <- configured as "../frontend"
+ *
+ * BOTH product repos resolve outside PROJECT_ROOT, so both were silently
+ * re-pointed at the engine tree. The git view then inspected the engine three
+ * times and reported "clean", and the test-file inventory counted the engine's
+ * own suite once per repo. Plausible-looking numbers from the wrong tree.
+ *
+ * THE FIX IS NOT TO REMOVE THE GUARD. It is to make membership an ALLOWLIST of
+ * the explicitly CONFIGURED repository roots instead of a containment test, and
+ * to make every non-member REPORT rather than SUBSTITUTE.
+ *
+ * Boundary contract:
+ *   - The workspace is derived from the INSTALLED coord/ location:
+ *       projectRoot   = dirname(coordDir)                 (embedded layout)
+ *       workspaceRoot = dirname(projectRoot)              (sibling layout)
+ *     No arbitrary ancestor walk, no ancestor-of-workspaceRoot is ever reached.
+ *   - Every declared repo path is canonicalized through realpath BEFORE any
+ *     comparison, so symlink escapes and `..` traversal cannot slip through.
+ *   - A canonical path is ADMISSIBLE only when it is inside projectRoot, inside
+ *     an operator allowlist root, or a STRICT SIBLING subtree of projectRoot
+ *     within workspaceRoot. workspaceRoot itself and anything above it are
+ *     rejected — the parent tree is the outer BOUND, never the permit set.
+ *   - The PERMIT SET is exactly the configured, admissible repo roots. An
+ *     unconfigured sibling directory is not a member no matter where it lives:
+ *     it is never enumerated, and `isRepoDirPermitted` rejects it.
+ *   - A configured repo that does not exist is 'unavailable'; a configured repo
+ *     that fails admissibility is 'out-of-scope'. NEITHER is ever replaced with
+ *     a fallback directory. Callers render the status; they never read a tree
+ *     that is not the declared one.
+ *
+ * Pure apart from the INJECTED fs probes (`realpath`, `isDirectory`), which the
+ * caller supplies. The module itself still requires only node:path.
+ */
+
+/** @typedef {'ok'|'unavailable'|'out-of-scope'} RepoScopeStatus */
+
+function defaultRealpath(p) {
+  return p;
+}
+
+function defaultIsDirectory() {
+  return true;
+}
+
+/**
+ * Admissibility verdict for ONE canonical repo path.
+ *
+ * @param {object} opts
+ * @param {string} opts.projectRoot
+ * @param {string} opts.workspaceRoot
+ * @param {string} opts.canonical
+ * @param {string[]} [opts.allowlist]
+ * @returns {{ admissible: boolean, reason: string }}
+ */
+function evaluateRepoRoot(opts) {
+  const { projectRoot, workspaceRoot, canonical, allowlist = [] } = opts || {};
+  if (!canonical) return { admissible: false, reason: 'unresolvable' };
+
+  if (isWithinRoot(projectRoot, canonical)) {
+    return { admissible: true, reason: 'within-project-root' };
+  }
+  if (isAllowlisted(canonical, allowlist)) {
+    return { admissible: true, reason: 'allowlisted' };
+  }
+  // Sibling-coord topology: the repo lives beside the coord checkout, inside the
+  // same workspace. Strictly BELOW workspaceRoot — workspaceRoot itself (and
+  // therefore every ancestor of it) stays out of bounds.
+  if (
+    workspaceRoot &&
+    workspaceRoot !== projectRoot &&
+    isWithinRoot(workspaceRoot, canonical) &&
+    path.resolve(canonical) !== path.resolve(workspaceRoot)
+  ) {
+    return { admissible: true, reason: 'workspace-sibling' };
+  }
+  return { admissible: false, reason: 'outside-workspace' };
+}
+
+/**
+ * Resolve the configured repo scope from a sanitized project config.
+ *
+ * @param {object} opts
+ * @param {string} opts.coordDir              Absolute path of the installed coord/ dir.
+ * @param {Record<string, {path?: string}>} [opts.repos]  Sanitized repos map.
+ * @param {string[]} [opts.allowlist]         Operator allowlist roots.
+ * @param {(p: string) => string|null} [opts.realpath]     Canonicalizer; null when missing.
+ * @param {(p: string) => boolean} [opts.isDirectory]      Directory probe.
+ * @returns {{ projectRoot: string, workspaceRoot: string, entries: Array<{
+ *   code: string, declaredPath: string, resolvedPath: string, dir: string|null,
+ *   status: RepoScopeStatus, reason: string|null }> }}
+ */
+function resolveRepoScope(opts) {
+  const {
+    coordDir,
+    repos = {},
+    allowlist = [],
+    realpath = defaultRealpath,
+    isDirectory = defaultIsDirectory,
+  } = opts || {};
+
+  const projectRoot = path.dirname(path.resolve(coordDir || '.'));
+  const workspaceRoot = path.dirname(projectRoot);
+
+  const entries = Object.entries(repos && typeof repos === 'object' ? repos : {}).map(
+    ([code, cfg]) => {
+      const declaredPath =
+        cfg && typeof cfg.path === 'string' && cfg.path ? cfg.path : code;
+      const resolvedPath = path.isAbsolute(declaredPath)
+        ? path.resolve(declaredPath)
+        : path.resolve(projectRoot, declaredPath);
+
+      let canonical = null;
+      try {
+        canonical = realpath(resolvedPath);
+      } catch {
+        canonical = null;
+      }
+
+      if (!canonical || !isDirectory(canonical)) {
+        return {
+          code,
+          declaredPath,
+          resolvedPath,
+          dir: null,
+          status: 'unavailable',
+          reason:
+            `configured repo "${code}" -> "${declaredPath}" does not exist as a ` +
+            `directory in this workspace. Nothing is inspected for it (no ` +
+            `fallback tree is substituted). Fix coord/project.config.js or check ` +
+            `out the repository.`,
+        };
+      }
+
+      const verdict = evaluateRepoRoot({ projectRoot, workspaceRoot, canonical, allowlist });
+      if (!verdict.admissible) {
+        return {
+          code,
+          declaredPath,
+          resolvedPath,
+          dir: null,
+          status: 'out-of-scope',
+          reason:
+            `configured repo "${code}" -> "${declaredPath}" resolves outside the ` +
+            `coord workspace (after symlink canonicalization) and is refused by the ` +
+            `SEC-002 repo boundary. Nothing is inspected for it (no fallback tree ` +
+            `is substituted). Allowed: a path inside the coord checkout, or a ` +
+            `sibling directory of it in the same workspace; add an explicit ` +
+            `COORD_UI_PATH_ALLOWLIST entry to opt anything else in.`,
+        };
+      }
+
+      return {
+        code,
+        declaredPath,
+        resolvedPath,
+        dir: canonical,
+        status: 'ok',
+        reason: verdict.reason,
+      };
+    }
+  );
+
+  return { projectRoot, workspaceRoot, entries };
+}
+
+/**
+ * Membership test against a resolved scope: `dir` is permitted iff it IS, or is
+ * contained within, one of the scope's admissible configured repo roots. An
+ * unconfigured sibling — however plausible — is not a member.
+ *
+ * @param {string} dir
+ * @param {{ entries: Array<{ dir: string|null, status: string }> }} scope
+ * @returns {boolean}
+ */
+function isRepoDirPermitted(dir, scope) {
+  if (typeof dir !== 'string' || !dir) return false;
+  const entries = scope && Array.isArray(scope.entries) ? scope.entries : [];
+  for (const entry of entries) {
+    if (!entry || entry.status !== 'ok' || !entry.dir) continue;
+    if (isWithinRoot(entry.dir, dir)) return true;
+  }
+  return false;
+}
+
 module.exports = {
   isWithinRoot,
   isAllowlisted,
@@ -180,4 +375,7 @@ module.exports = {
   assertWithinBoundary,
   parseAllowlist,
   sanitizeProjectConfig,
+  evaluateRepoRoot,
+  resolveRepoScope,
+  isRepoDirPermitted,
 };

@@ -42,6 +42,42 @@ test("buildNoPrCloseoutPlanUpdate keeps already-landed no-pr closeouts distinct 
   });
 });
 
+// COORD-667: prepareDoneCloseout must FORWARD its options to the Repo-X gate.
+//
+// The in-process control-plane workspace merge is opt-in (`--merge-workspace`),
+// and the opt-in reaches the gate only through this one argument. The gate was
+// previously called as `ensureRepoXCloseoutReady(ticketId)` with no options at
+// all, so dropping the second argument again would not break a single existing
+// test — it would just silently make the flag a no-op and leave every repo-X
+// ticket unlandable exactly as COORD-667 found them.
+test("COORD-667: prepareDoneCloseout forwards closeout options to the Repo-X gate", () => {
+  const createCloseout = require("./closeout.js");
+  const seen = [];
+  const board = {
+    pr_index: { "COORD-667": ["local-review (no PR)"] },
+    review_findings: {},
+    landing_index: {},
+  };
+  const ref = { row: { Repo: "X", Status: "review", Owner: "claudea675" } };
+  const closeout = createCloseout({
+    fail: (m) => { throw new Error(m); },
+    assertReviewPlanReady: () => {},
+    verifyPrEvidence: () => {},
+    findOutstandingCloseoutBlockerFollowups: () => [],
+    findLockForTicket: () => null,
+    ensureRepoXCloseoutReady: (ticketId, options) => { seen.push([ticketId, options]); },
+    cleanupTicketWorktree: () => {},
+    isRepoBackedCode: (code) => code === "B" || code === "F",
+  });
+
+  closeout.prepareDoneCloseout("COORD-667", board, ref, { mergeWorkspace: true, base: "main" });
+
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0][0], "COORD-667");
+  assert.equal(seen[0][1].mergeWorkspace, true, "the --merge-workspace opt-in never reached the Repo-X gate");
+  assert.equal(seen[0][1].base, "main");
+});
+
 // COORD-066: end-to-end finalize/land wiring-guard test.
 //
 // Wave 2 (COORD-061/062) split the lifecycle into a near-circular pair:

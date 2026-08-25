@@ -14,6 +14,11 @@ function createContextPackAcknowledgementGate(deps) {
     toArray,
   } = deps;
 
+  // COORD-572: every issue below describes a STATE the ack must reach. Describing
+  // the state without naming the writer is the shape of advice that produced the
+  // forbidden hand-edits COORD-612 documents, so each one also carries the
+  // sanctioned `--context-pack-ack` command. context_pack_ack is written as one
+  // whole object, so the writer command is the same for all of them.
   function collectContextPackAcknowledgementIssues(ticketId, row, planState) {
     if (!ticketRequiresContextPackAcknowledgement(row, planState)) {
       return [];
@@ -23,8 +28,14 @@ function createContextPackAcknowledgementGate(deps) {
       return [{
         code: "context_pack_ack",
         message: `Plan state for ${ticketId} must record a structured context_pack_ack before review, including active constraints, ADRs, business rules, conflicts, stale warnings, open questions, authority use, and closeout learning disposition.`,
+        // COORD-612: this advice used to say only "record context_pack_ack in
+        // the canonical plan record" — with the writer flag absent from every
+        // help surface, three agents read that as an instruction to edit
+        // coord/.runtime/plans/<ticket>.json by hand, which governance forbids.
+        // Name the sanctioned writer instead.
         next_steps: [
-          `Record context_pack_ack in the canonical plan record with refs, considered sections, authority constraints/advisory-only split, and closeout_learning disposition.`,
+          `coord/scripts/gov update-plan ${ticketId} --context-pack-ack '{"considered":{"active_constraints":["..."],"adrs":["none"],"business_rules":["none"],"conflicts":["none"],"stale_warnings":["none"],"open_questions":["none"]},"authority":{"constraints":["..."],"advisory_only":["..."]},"closeout_learning":{"decision":"scratch-only","rationale":"..."}}'`,
+          `Run "coord/scripts/gov update-plan --help" for the accepted JSON shape. Do NOT hand-edit coord/.runtime/plans/${ticketId}.json.`,
         ],
       }];
     }
@@ -47,6 +58,7 @@ function createContextPackAcknowledgementGate(deps) {
         message: `Plan state for ${ticketId} context_pack_ack must explicitly say which ${missingConsidered.join(", ")} were considered.`,
         next_steps: [
           "Complete context_pack_ack.considered for active_constraints, adrs, business_rules, conflicts, stale_warnings, and open_questions.",
+          `Rewrite the whole object through the sanctioned writer: coord/scripts/gov update-plan ${ticketId} --context-pack-ack '<json>'`,
         ],
       });
     }
@@ -79,6 +91,7 @@ function createContextPackAcknowledgementGate(deps) {
         message: `Plan state for ${ticketId} context_pack_ack marks mandatory section(s) ${mishandled.join(", ")} as none even though the context pack contains matching items.`,
         next_steps: [
           "Update context_pack_ack.considered with handled conflict, stale-warning, and open-question details.",
+          `Rewrite the whole object through the sanctioned writer: coord/scripts/gov update-plan ${ticketId} --context-pack-ack '<json>'`,
         ],
       });
     }
@@ -97,6 +110,7 @@ function createContextPackAcknowledgementGate(deps) {
         message: `Plan state for ${ticketId} uses advisory, stale, private, rejected, inferred, or conflicted memory as implementation authority. Advisory memory may be cited only as advisory context or investigation input.`,
         next_steps: [
           "Move advisory, stale, private, rejected, inferred, or conflicted entries from context_pack_ack.authority.constraints to authority.advisory_only.",
+          `Rewrite the whole object through the sanctioned writer: coord/scripts/gov update-plan ${ticketId} --context-pack-ack '<json>'`,
         ],
       });
     }
@@ -115,6 +129,7 @@ function createContextPackAcknowledgementGate(deps) {
         message: `Plan state for ${ticketId} context_pack_ack must record whether new learning should be promoted, demoted, or left scratch-only before closeout.`,
         next_steps: [
           "Set context_pack_ack.closeout_learning.decision to promote, demote, scratch-only, mixed, or none.",
+          `Rewrite the whole object through the sanctioned writer: coord/scripts/gov update-plan ${ticketId} --context-pack-ack '<json>'`,
         ],
       });
     }

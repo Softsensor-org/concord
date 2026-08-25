@@ -29,6 +29,31 @@ interface PathBoundaryCore {
   sanitizeProjectConfig: (raw: unknown) => {
     repos: Record<string, { path?: string; integrationBranch?: string }>;
   };
+  resolveRepoScope: (opts: {
+    coordDir: string;
+    repos?: Record<string, { path?: string }>;
+    allowlist?: string[];
+    realpath?: (p: string) => string | null;
+    isDirectory?: (p: string) => boolean;
+  }) => RepoScope;
+  isRepoDirPermitted: (dir: string, scope: RepoScope) => boolean;
+}
+
+export type RepoScopeStatus = 'ok' | 'unavailable' | 'out-of-scope';
+
+export interface RepoScopeEntry {
+  code: string;
+  declaredPath: string;
+  resolvedPath: string;
+  dir: string | null;
+  status: RepoScopeStatus;
+  reason: string | null;
+}
+
+export interface RepoScope {
+  projectRoot: string;
+  workspaceRoot: string;
+  entries: RepoScopeEntry[];
 }
 
 function loadBoundaryCore(coordDir: string): PathBoundaryCore {
@@ -114,6 +139,55 @@ export function sanitizeProjectConfig(raw: unknown): {
   repos: Record<string, { path?: string; integrationBranch?: string }>;
 } {
   return boundaryCore.sanitizeProjectConfig(raw);
+}
+
+/**
+ * COORD-543 / SEC-002 — the workspace that contains the coord checkout and its
+ * sibling product repositories. PROJECT_ROOT stays the embedded-layout root
+ * (dirname of coord/); WORKSPACE_ROOT is its parent and is the OUTER BOUND for
+ * the sibling topology, never itself a permitted read root.
+ */
+export const WORKSPACE_ROOT = path.dirname(PROJECT_ROOT);
+
+function realpathOrNull(candidate: string): string | null {
+  try {
+    return fs.realpathSync(candidate);
+  } catch {
+    return null;
+  }
+}
+
+function isDirectory(candidate: string): boolean {
+  try {
+    return fs.statSync(candidate).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * COORD-543 / SEC-002 — resolve the CONFIGURED repo scope through the shared,
+ * tested boundary core. Repos that cannot be resolved come back as explicit
+ * 'unavailable' / 'out-of-scope' entries with `dir: null`; nothing is ever
+ * substituted with a different tree.
+ */
+export function resolveRepoScope(repos: Record<string, { path?: string }>): RepoScope {
+  return boundaryCore.resolveRepoScope({
+    coordDir: COORD_DIR,
+    repos,
+    allowlist: PATH_ALLOWLIST,
+    realpath: realpathOrNull,
+    isDirectory
+  });
+}
+
+/**
+ * COORD-543 / SEC-002 — membership test against a resolved scope. Only the
+ * configured, admissible repo roots (or paths inside them) are permitted; an
+ * unconfigured sibling directory is not a member.
+ */
+export function isRepoDirPermitted(dir: string, scope: RepoScope): boolean {
+  return boundaryCore.isRepoDirPermitted(dir, scope);
 }
 
 export const RUNTIME_DIR = path.join(COORD_DIR, '.runtime');

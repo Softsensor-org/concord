@@ -1,4 +1,4 @@
-import { loadGitStatus } from '../../lib/git';
+import { summarizeGitStatus } from '../../lib/git';
 import { requireRole, redact } from '../../lib/access';
 
 // SEC-001: sensitive route — exposes branch/worktree paths and dirty-file lists.
@@ -15,13 +15,33 @@ function codeClass(code: string): string {
 
 export default async function GitPage() {
   const role = await requireRole();
-  const repos = loadGitStatus();
+  const summary = summarizeGitStatus();
+  const repos = summary.repos;
   return (
     <>
       <div className="board-meta">
         <span>sibling repos: {repos.map((r) => r.name).join(' · ')}</span>
+        <span>
+          inspected: {summary.inspected}/{repos.length}
+          {summary.unresolved > 0 ? ` · ${summary.unresolved} not inspected` : ''}
+        </span>
         <span>git status --porcelain</span>
       </div>
+
+      {/* COORD-543: unresolved repos are stated outright. The cockpit must never
+          imply it looked at a repo it could not resolve. */}
+      {summary.unresolved > 0 ? (
+        <div className="panel">
+          <h3>repos NOT inspected ({summary.unresolved})</h3>
+          {repos
+            .filter((r) => r.status !== 'ok')
+            .map((r) => (
+              <div key={`unresolved-${r.name}`} className="card__title">
+                <strong>{r.name}</strong> — {r.status}: {r.statusReason ?? 'unresolved'}
+              </div>
+            ))}
+        </div>
+      ) : null}
 
       <div className="git-grid">
         {repos.map((r) => (
@@ -31,11 +51,15 @@ export default async function GitPage() {
               {r.exists && r.branch ? (
                 <span className="git-branch"> @ {r.branch}</span>
               ) : (
-                <span className="git-branch"> (not a git repo)</span>
+                <span className="git-branch">
+                  {' '}
+                  ({r.status === 'ok' ? 'not a git repo' : `${r.status} — not inspected`})
+                </span>
               )}
             </h3>
 
             {r.error ? <div className="card__title">error: {r.error}</div> : null}
+            {r.statusReason ? <div className="card__title">{r.statusReason}</div> : null}
 
             {r.exists ? (
               <>

@@ -12,28 +12,29 @@ Read these files in parallel:
 - `coord/docs/IDENTITY_RUNTIME_EXTRACT.md`
 - The repo-local `AGENTS.md` for the target repo (the repo-local `AGENTS.md` for each governed repo)
 
-## Phase 2: Claim Agent Identity
+## Phase 2: Bootstrap (identity + health + recommendation)
 
-1. Check current agent status:
+1. Run the provider-neutral cold-start contract. It binds the session identity
+   (assigning one only when governance reports `needs_assignment: true`), runs
+   the shared health check, and recommends the next governed action:
    ```bash
-   coord/scripts/gov whoami
+   coord/scripts/agent bootstrap
    ```
 
-2. If no agent is claimed for this session, let governance assign or bind one:
-   ```bash
-   coord/scripts/gov whoami --assign
-   ```
-
-3. If the current thread is blocked by a foreign same-handle session and must not touch that foreign ticket state:
+2. If the current thread is blocked by a foreign same-handle session and must not touch that foreign ticket state:
    ```bash
    coord/scripts/gov agent-rebind --fresh
    ```
+   then re-run `coord/scripts/agent bootstrap`.
 
-4. Verify the claim succeeded — the output should show `needs_assignment: false`.
+3. Verify identity binding succeeded — the identity payload should show `needs_assignment: false`. To re-inspect at any time:
+   ```bash
+   coord/scripts/gov agentid
+   ```
 
 ## Phase 3: Health Check
 
-Run the shared health surfaces:
+`bootstrap` already ran the shared health check. For a board-count summary or a ticket-scoped recheck, use:
 ```bash
 coord/scripts/agent status
 coord/scripts/agent check

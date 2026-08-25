@@ -5,7 +5,6 @@ Layer label: `architecture-reference`
 Use this file for:
 - current layering and design intent
 - rationale for facade / CLI / MCP / core separation
-- follow-on architecture direction for the remaining lifecycle/test split
 
 If this file conflicts with `coord/GOVERNANCE.md` on current enforced behavior, `coord/GOVERNANCE.md` wins.
 
@@ -529,7 +528,7 @@ Deliver in this slice:
 - `gov start` optionally fetches/rebases origin/dev (GOV-001 #7)
 - Ticket-scoped validation isolation (GOV-001 #3)
 - Gate failure attribution (new-on-ticket vs pre-existing-on-base) (GOV-001 #4)
-- `gov agentid` (alias: `whoami`) and rebinding ergonomics (GOV-001 #5)
+- `gov agentid` (no `whoami` alias is implemented) and rebinding ergonomics (GOV-001 #5)
 - Stale drift-note auto-cleanup (GOV-001 #6)
 - Parity harness from day one (old CLI snapshot vs new adapter snapshot)
 

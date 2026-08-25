@@ -160,6 +160,33 @@ function deployGateLaneSet() {
   return new Set(DEPLOY_GATE_LANES);
 }
 
+// COORD-572: an accepted-value enum must be PRINTED AT THE POINT OF USE. The
+// `--status` parser rejected a bad value with `Invalid status "x".` and named
+// none of the values it would have accepted, so the only way to learn the enum
+// was to read the source — the same shape of gap that made the business-context
+// gate advise `<owner/status>` for a closed enum (COORD-553/569). Both flag
+// parsers (cli.js and lifecycle-flags.js) share this builder, so the printed
+// list is derived from the live sets and can never drift from them.
+//
+// The `Accepted: a | b | c` rendering is also the machine contract: the
+// coverage guard re-feeds every literal it finds after `Accepted:` back through
+// the live parser and requires each one to be accepted, so an enum that is
+// printed but wrong fails the build.
+function buildInvalidStatusMessage(value, extraStatuses = []) {
+  const accepted = [
+    ...ORDERED_STATUSES,
+    ...ORDERED_FINDING_STATUSES.filter((status) => !ORDERED_STATUSES.includes(status)),
+    ...[...extraStatuses].filter(
+      (status) => !ORDERED_STATUSES.includes(status) && !ORDERED_FINDING_STATUSES.includes(status)
+    ),
+  ];
+  return (
+    `Invalid status "${value}". ` +
+    `Accepted: ${accepted.join(" | ")} ` +
+    `(a blocked ticket is stored as the "doing (blocked: <reason>)" form of doing).`
+  );
+}
+
 // Escape an arbitrary string for safe embedding in a RegExp source.
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -182,6 +209,7 @@ module.exports = {
   legalFindingStatusSet,
   GATE_LANES,
   gateLaneSet,
+  buildInvalidStatusMessage,
   CANONICAL_GATE_ENTRYPOINTS,
   DEPLOY_GATE_LANES,
   deployGateLaneSet,

@@ -751,7 +751,10 @@ function withCanonicalTicketPrompt(ticketId, content, fn) {
 // tree is left untouched. Lifted here (out of governance.test.js) because the
 // register-prompt VERB tests stay in the facade suite while the prompt-coverage
 // behavior tests moved to prompt-coverage.test.js — both consume this harness.
-function withRegisterPromptHarness(prefix, { ticketId = "IMP-700", promptRegistered = null, status = "todo", type = "feature", pri = "P2" }, body) {
+// COORD-673: `extraRows` seeds ADDITIONAL board rows (dependency candidates) so
+// verbs that relate one ticket to another — set-followup-relation — can be
+// exercised on a fixture board instead of the live one.
+function withRegisterPromptHarness(prefix, { ticketId = "IMP-700", promptRegistered = null, status = "todo", type = "feature", pri = "P2", extraRows = [] }, body) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const boardPath = path.join(tempDir, "tasks.json");
   const promptOnDisk = path.join(tempDir, "external-prompt.md");
@@ -768,6 +771,16 @@ function withRegisterPromptHarness(prefix, { ticketId = "IMP-700", promptRegiste
         columns: ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
         rows: [
           { ID: ticketId, Repo: "B", Type: type, Pri: pri, Status: status, Owner: "unassigned", Description: "RP", "Depends On": "" },
+          ...extraRows.map((extra) => ({
+            ID: extra.ID,
+            Repo: extra.Repo || "B",
+            Type: extra.Type || "feature",
+            Pri: extra.Pri || "P2",
+            Status: extra.Status || "todo",
+            Owner: extra.Owner || "unassigned",
+            Description: extra.Description || "RP dependency",
+            "Depends On": extra["Depends On"] || "",
+          })),
         ],
       },
     ],

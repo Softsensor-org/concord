@@ -1324,7 +1324,12 @@ function isCompleteLockPayload(lock) {
   return requiredFields.every((field) => typeof lock[field] === "string" && lock[field].trim().length > 0);
 }
 
-function rebindTicketLock(lock, agent, session) {
+// COORD-663: `options.transfer` marks a rebind that changes LOGICAL ownership.
+// A transfer deliberately preserves the physical worktree and branch, so the
+// namespace stays with the previous owner and must be recorded as such —
+// otherwise every later mutation validates the preserved paths against the new
+// owner and the ticket wedges. `{ from, reason, previousSessionId }`.
+function rebindTicketLock(lock, agent, session, options = {}) {
   if (!lock?.path) {
     return null;
   }
@@ -1343,6 +1348,28 @@ function rebindTicketLock(lock, agent, session) {
   };
   if (v2Lock) {
     next.identity_model = "v2";
+  }
+  // COORD-663. `workspace_owner` and `transfer_provenance` ride on `...lock`
+  // for every ordinary rebind, so a previously transferred lock keeps both. A
+  // rebind that CHANGES the owner pins the namespace to whoever held it and
+  // appends one attributable history entry.
+  const transfer = options.transfer && typeof options.transfer === "object" ? options.transfer : null;
+  const previousOwner = typeof transfer?.from === "string" ? transfer.from.trim() : "";
+  const namespaceOwner =
+    (typeof lock.workspace_owner === "string" && lock.workspace_owner.trim()) || lock.owner;
+  if (previousOwner && next.owner && previousOwner !== next.owner) {
+    next.workspace_owner = namespaceOwner;
+    next.transfer_provenance = [
+      ...(Array.isArray(lock.transfer_provenance) ? lock.transfer_provenance : []),
+      {
+        from: previousOwner,
+        to: next.owner,
+        at: new Date().toISOString(),
+        workspace_owner: namespaceOwner,
+        reason: typeof transfer.reason === "string" && transfer.reason.trim() ? transfer.reason.trim() : null,
+        previous_session_id: transfer.previousSessionId || null,
+      },
+    ];
   }
   delete next.path;
   fs.writeFileSync(nextPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");

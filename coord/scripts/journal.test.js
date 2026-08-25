@@ -533,6 +533,11 @@ test("withGovernanceMutation restores governed files when a mutation fails after
   const runtimeDir = path.join(tempDir, ".runtime");
   const boardPath = path.join(tempDir, "tasks.json");
   const planPath = path.join(tempDir, "PLAN.md");
+  // COORD-606: QUESTIONS_PATH must be sandboxed too. collectGovernedSnapshotFilePaths()
+  // includes it in the rollback snapshot, so leaving it un-overridden made this test
+  // RESTORE the live coord/QUESTIONS.md — invisible only because the bytes were
+  // unchanged. The widened isolation guard (governed-state class) blocks that write.
+  const questionsPath = path.join(tempDir, "QUESTIONS.md");
   const agentsPath = path.join(tempDir, "agents.json");
   const sessionsPath = path.join(tempDir, "agent_sessions.json");
   const recordsDir = path.join(tempDir, "plans");
@@ -545,6 +550,7 @@ test("withGovernanceMutation restores governed files when a mutation fails after
   fs.mkdirSync(locksDir, { recursive: true });
   fs.writeFileSync(boardPath, JSON.stringify({ sections: [] }, null, 2));
   fs.writeFileSync(planPath, "baseline plan\n");
+  fs.writeFileSync(questionsPath, "# Questions\n");
   fs.writeFileSync(agentsPath, JSON.stringify([], null, 2));
   fs.writeFileSync(sessionsPath, JSON.stringify([], null, 2));
   fs.writeFileSync(path.join(promptsDir, "tickets", "IMP-100.md"), "# baseline prompt\n", "utf8");
@@ -553,6 +559,7 @@ test("withGovernanceMutation restores governed files when a mutation fails after
   const original = {
     BOARD_PATH: __testing.paths.BOARD_PATH,
     PLAN_PATH: __testing.paths.PLAN_PATH,
+    QUESTIONS_PATH: __testing.paths.QUESTIONS_PATH,
     AGENTS_PATH: __testing.paths.AGENTS_PATH,
     AGENT_SESSIONS_PATH: __testing.paths.AGENT_SESSIONS_PATH,
     PLAN_RECORDS_DIR: __testing.paths.PLAN_RECORDS_DIR,
@@ -568,6 +575,7 @@ test("withGovernanceMutation restores governed files when a mutation fails after
 
   __testing.paths.BOARD_PATH = boardPath;
   __testing.paths.PLAN_PATH = planPath;
+  __testing.paths.QUESTIONS_PATH = questionsPath;
   __testing.paths.AGENTS_PATH = agentsPath;
   __testing.paths.AGENT_SESSIONS_PATH = sessionsPath;
   __testing.paths.PLAN_RECORDS_DIR = recordsDir;
@@ -620,6 +628,7 @@ test("withGovernanceMutation restores governed files when a mutation fails after
   } finally {
     __testing.paths.BOARD_PATH = original.BOARD_PATH;
     __testing.paths.PLAN_PATH = original.PLAN_PATH;
+    __testing.paths.QUESTIONS_PATH = original.QUESTIONS_PATH;
     __testing.paths.AGENTS_PATH = original.AGENTS_PATH;
     __testing.paths.AGENT_SESSIONS_PATH = original.AGENT_SESSIONS_PATH;
     __testing.paths.PLAN_RECORDS_DIR = original.PLAN_RECORDS_DIR;

@@ -9,6 +9,7 @@ REPO_ROOT="$ROOT_DIR"
 MANIFEST_PATH="$COORD_DIR/TEMPLATE_SYNC_MANIFEST.json"
 STRICT=0
 JSON_OUTPUT=0
+AUDIT_COVERAGE=0
 
 usage() {
   cat <<'EOF'
@@ -21,12 +22,20 @@ Options:
   --repo-root <path>   Project root to validate. Defaults to the current template/project root.
   --manifest <path>    Manifest file to use. Defaults to coord/TEMPLATE_SYNC_MANIFEST.json.
   --strict             Treat advisory drift as a failure.
+  --audit-coverage     Also verify that the manifest tracks every engine-managed
+                       file discovered by the COORD-607 rule over the roots in
+                       coord/docs/GCV4_ENGINE_CONFIG_SEAM.md, minus the reasoned
+                       exclusions in coord/scripts/template-sync-discovery.js.
+                       An untracked engine-managed file FAILS the check (COORD-606
+                       made this report-only; COORD-607 made coverage enforceable
+                       because a silent gap is what let engine code drift unseen).
   --json               Emit machine-readable JSON instead of plain text.
   -h, --help           Show this help text.
 
 Exit codes:
   0  All exact-match surfaces passed (advisory drift may still be present unless --strict is used)
-  1  Manifest error or one or more required drift checks failed
+  1  Manifest error, a required drift check failed, or (with --audit-coverage) an
+     engine-managed file is untracked
 EOF
 }
 
@@ -52,6 +61,10 @@ while [[ $# -gt 0 ]]; do
       STRICT=1
       shift
       ;;
+    --audit-coverage)
+      AUDIT_COVERAGE=1
+      shift
+      ;;
     --json)
       JSON_OUTPUT=1
       shift
@@ -73,7 +86,9 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-export REPO_ROOT MANIFEST_PATH STRICT JSON_OUTPUT
+DISCOVERY_MODULE="$SCRIPT_DIR/template-sync-discovery.js"
+
+export REPO_ROOT MANIFEST_PATH STRICT JSON_OUTPUT AUDIT_COVERAGE DISCOVERY_MODULE
 
 node <<'NODE'
 const crypto = require("node:crypto");
@@ -84,6 +99,19 @@ const repoRoot = path.resolve(process.env.REPO_ROOT);
 const manifestPath = path.resolve(process.env.MANIFEST_PATH);
 const strict = process.env.STRICT === "1";
 const jsonOutput = process.env.JSON_OUTPUT === "1";
+const auditCoverage = process.env.AUDIT_COVERAGE === "1";
+
+// COORD-606 saw the shape of the bug: the manifest tracked what someone LISTED,
+// not what the engine contained, so coord/scripts/test-runner.js drifted while
+// both this check and `gov verify-engine` reported green. Its audit was
+// report-only and used a local extension allowlist, which could not even see the
+// extensionless `coord/scripts/agent` entrypoint.
+//
+// COORD-607 replaces both: coverage is now computed by the single shared rule in
+// coord/scripts/template-sync-discovery.js (every file under the engine-managed
+// roots minus reasoned exclusions), and an untracked engine-managed file FAILS.
+// One rule, one exclusion list with recorded reasons, one place to change.
+const discovery = require(process.env.DISCOVERY_MODULE);
 
 class CheckTemplateSyncError extends Error {}
 
@@ -203,6 +231,34 @@ try {
     results,
   };
 
+  if (auditCoverage) {
+    const audit = discovery.auditCoverage(repoRoot, seenPaths);
+    summary.coverage_audit = {
+      ...audit,
+      tracked: audit.tracked_total,
+      note:
+        "COORD-607: membership is derived by rule over the engine-managed roots, not " +
+        "hand-curated. An untracked engine-managed file fails this check. Exclusions are " +
+        "explicit and each carries a recorded reason; regenerate the manifest with " +
+        "`node coord/scripts/template-sync-discovery.js --write`.",
+    };
+    if (!audit.ok) {
+      summary.ok = false;
+      for (const rel of audit.untracked) {
+        summary.failures.push({
+          path: rel,
+          policy: "exact",
+          status: "untracked",
+          message:
+            `Untracked engine-managed file: ${rel}. It is under an engine-managed root and is ` +
+            "not on the reasoned exclusion list, so the manifest — and therefore " +
+            "check-template-sync, gov verify-engine, and conformance attestation — cannot see it.",
+        });
+      }
+      summary.counts.failures = summary.failures.length;
+    }
+  }
+
   if (jsonOutput) {
     process.stdout.write(JSON.stringify(summary, null, 2));
     process.stdout.write("\n");
@@ -224,6 +280,20 @@ try {
     console.log(
       `Summary: ${summary.counts.passed} passed, ${summary.counts.warnings} warnings, ${summary.counts.failures} failures.`
     );
+    if (summary.coverage_audit) {
+      const audit = summary.coverage_audit;
+      console.log(
+        `Coverage audit (rule-based, ${audit.discovery_source}): ${audit.engine_managed_count} engine-managed ` +
+          `file(s) under ${audit.roots.join(", ")}; ${audit.untracked_count} untracked; ` +
+          `${audit.excluded_count} excluded with a recorded reason.`
+      );
+      for (const entry of audit.excluded) {
+        console.log(`[EXCLUDED] ${entry.path} (${entry.category}) — ${entry.reason}`);
+      }
+      for (const rel of audit.untracked) {
+        console.log(`[UNTRACKED] ${rel}`);
+      }
+    }
   }
 
   process.exitCode = summary.ok ? 0 : 1;

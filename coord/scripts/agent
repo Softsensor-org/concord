@@ -7,6 +7,7 @@ GOV="$SCRIPT_DIR/gov"
 usage() {
   cat <<'EOF'
 Usage:
+  coord/scripts/agent bootstrap
   coord/scripts/agent next [<pick args>]
   coord/scripts/agent do <ticket-id>
   coord/scripts/agent do prepare <ticket-id>
@@ -26,6 +27,10 @@ Notes:
   - This is a thin neutral facade over coord/scripts/gov.
   - It does not replace the governance core or agent-native UX layers.
   - coord/scripts/gov remains the admin, CI, and break-glass surface.
+  - `bootstrap` is the provider-neutral cold-start contract: it binds the
+    session identity (assigning one only when unbound), runs the shared
+    health check, and recommends the next governed action. Claude, Codex,
+    Gemini, and shell operators all start from this one command.
 EOF
 }
 
@@ -75,6 +80,58 @@ review_prepare() {
   exec "$GOV" explain "$ticket"
 }
 
+# Provider-neutral cold-start contract (COORD-478).
+#
+# ONE bootstrap command backs every provider wrapper (/initiate for Claude,
+# the CODEX.md / GEMINI.md cold-start shims, and the plain shell path):
+#   1. bind identity  — read the current session binding via `gov agentid`;
+#      only when governance reports needs_assignment does it run
+#      `gov agentid --assign`. It never manufactures identity churn for an
+#      already-bound session.
+#   2. check health   — `gov doctor` (shared health surface).
+#   3. recommend next — `gov pick --mode general --limit 1`.
+#
+# This is the ONLY function in the facade allowed to invoke `gov agentid`
+# (enforced by the GOV-070 scoped lint in agent.test.js). Lifecycle verbs
+# (do/next/resume/land/...) must keep delegating identity decisions to the
+# core lifecycle command itself.
+bootstrap_command() {
+  local identity_json
+  identity_json="$("$GOV" agentid)"
+  printf '%s\n' "$identity_json"
+
+  local needs_assignment
+  needs_assignment="$(printf '%s' "$identity_json" | node -e '
+    let raw = "";
+    process.stdin.on("data", (chunk) => { raw += chunk; });
+    process.stdin.on("end", () => {
+      try {
+        process.stdout.write(JSON.parse(raw).needs_assignment ? "yes" : "no");
+      } catch {
+        process.stdout.write("unknown");
+      }
+    });
+  ')"
+
+  if [[ "$needs_assignment" == "unknown" ]]; then
+    echo "agent bootstrap: could not parse identity payload from gov agentid" >&2
+    exit 1
+  fi
+  if [[ "$needs_assignment" == "yes" ]]; then
+    "$GOV" agentid --assign
+  fi
+
+  local health_status=0
+  "$GOV" doctor || health_status=$?
+
+  "$GOV" pick --mode general --limit 1
+
+  if [[ "$health_status" -ne 0 ]]; then
+    echo "agent bootstrap: identity bound, but the health check failed (gov doctor exit ${health_status}). Repair via /recover or coord/scripts/gov doctor before starting work." >&2
+    exit "$health_status"
+  fi
+}
+
 land_command() {
   local ticket="$1"
   shift
@@ -109,6 +166,9 @@ main() {
   case "$command" in
     help|-h|--help)
       usage
+      ;;
+    bootstrap)
+      bootstrap_command
       ;;
     next)
       if [[ $# -eq 0 ]]; then

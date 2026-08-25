@@ -516,7 +516,7 @@ Responsibilities each cycle:
 - enforce max one active `doing` ticket per owner unless the board declares an explicit closeout-blocker exception
 - detect stale, malformed, missing, or future-dated locks
 - triage unresolved items addressed to `orchestrator` in `coord/QUESTIONS.md`
-- detect blocked tickets that exceeded the SLA
+- detect blocked tickets that exceeded the board's configured staleness threshold
 - keep canonical board state, governed locks, and passive alert queues coherent before making new assignment decisions
 
 Required command:

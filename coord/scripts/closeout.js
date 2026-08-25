@@ -23,6 +23,13 @@ const { defaultFail, ROOT_DIR } = require("./governance-context.js");
 const { DEFAULT_INTEGRATION_BRANCH } = require("../paths.js");
 const { STATUS, FINDING_STATUS } = require("./governance-constants.js");
 
+// COORD-635 / ADR-0008: control-plane landing evidence. Required directly —
+// lifecycle.js is an append-free composition root (arch-checks compositionRoot).
+const {
+  ensureControlPlaneLandingRecord,
+  assertControlPlaneLandingIntegrity,
+} = require("./control-plane-landing.js");
+
 module.exports = function createCloseout(deps = {}) {
   const fail = deps.fail || defaultFail;
 
@@ -284,13 +291,25 @@ module.exports = function createCloseout(deps = {}) {
     }
 
     if (ref.row.Repo === "X") {
-      ensureRepoXCloseoutReady(ticketId);
+      // COORD-667: options carry `--merge-workspace`, the opt-in that lets
+      // governance perform the control-plane workspace merge in-process rather
+      // than printing a `git merge` the pre-bash-guard is designed to refuse.
+      ensureRepoXCloseoutReady(ticketId, options);
     }
     if (isRepoBackedCode(ref.row.Repo)) {
       const landing = ensureLandingRecord(ticketId, board, ref.row, options);
       assertLandingIntegrity(ticketId, ref.row, landing);
       ensureTestingInfrastructureLandingAudit(ticketId, ref.row, landing, { recordEvidence: true });
       ensureFeatureProofLandingAudit(ticketId, ref.row, landing, board.metadata, { recordEvidence: true });
+      cleanupTicketWorktree(ticketId, ref.row, options);
+    } else if (ref.row.Repo === "X") {
+      // COORD-635 defects (2)+(3): a control-plane closeout previously did
+      // NEITHER of the two things a product closeout does — it recorded no
+      // landing evidence and it cleaned no worktree. Successful closeout was
+      // therefore the largest producer of stale X worktrees, and the one that
+      // had to be repaired by hand. Both now run, through the same verbs.
+      const landing = ensureControlPlaneLandingRecord(ticketId, board, ref.row, options);
+      assertControlPlaneLandingIntegrity(ticketId, landing);
       cleanupTicketWorktree(ticketId, ref.row, options);
     }
   }

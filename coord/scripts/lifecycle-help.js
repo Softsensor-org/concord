@@ -33,9 +33,12 @@ module.exports = function createLifecycleHelp(deps = {}) {
     COORD_DIR,
   } = deps;
 
-function printHelp(options = {}) {
+// COORD-612: the help TEXT is now built (not printed) so a second consumer —
+// per-verb help (`gov <verb> --help`) — can filter the same single source of
+// truth. printHelp keeps emitting byte-identical output.
+function buildHelpText(options = {}) {
   if (!options.all) {
-    console.log(`Governance helper CLI
+    return `Governance helper CLI
 
 Preferred workflow:
   coord/scripts/gov initiate
@@ -51,8 +54,8 @@ Preferred workflow:
   coord/scripts/gov submit <ticket-id> [--fill]
   coord/scripts/gov guided-closeout <ticket-id> [--json] [--write]
   coord/scripts/gov publishability-check <ticket-id> [--json] [--files <path[,path]>]
-  coord/scripts/gov finalize <ticket-id> --no-pr [--already-landed] --landed "<evidence>" [--source-commit <sha>] [--fulfilled-by-ticket <ticket-id> | --fulfilled-by-commit <sha>]
-  coord/scripts/gov land <ticket-id> [--method <merge|squash|rebase>] [--delete-branch] [--source-commit <sha>] [--fulfilled-by-ticket <ticket-id> | --fulfilled-by-commit <sha>]
+  coord/scripts/gov finalize <ticket-id> --no-pr [--already-landed] [--merge-workspace] --landed "<evidence>" [--source-commit <sha>] [--fulfilled-by-ticket <ticket-id> | --fulfilled-by-commit <sha>]
+  coord/scripts/gov land <ticket-id> [--method <merge|squash|rebase>] [--delete-branch] [--merge-workspace] [--source-commit <sha>] [--fulfilled-by-ticket <ticket-id> | --fulfilled-by-commit <sha>]
   coord/scripts/gov supersede <ticket-id> [--reason "<why>"] [--consolidated-into <ticket-id>]
 
 If review/governance state needs repair:
@@ -65,7 +68,10 @@ If review/governance state needs repair:
   coord/scripts/gov file-ticket [<new-ticket-id>|--prefix <PREFIX>] --repo <repo-code> --type <type> --pri <priority> --description <text> [--status <todo|proposed>] [--depends-on <ticket-id>] [--prompt <path>] [--with-prompt] [--prompt-template ticket] [--owner <handle>]   # alias: gov new. Low-ceremony backlog create through the locked transaction — NO mandatory prompt coverage, NO forced parent dependency (the differentiator from open-followup). Add --with-prompt to create/register coord/prompts/tickets/<ID>.md atomically in the same journaled mutation. Status=todo (or proposed for quarantined machine-proposed debt), Owner=unassigned by default; ID reserved under the lock.
   coord/scripts/gov next-id <PREFIX>   # print the next free PREFIX-N ticket id
   coord/scripts/gov split-ticket <parent-ticket-id> --into <repo-codes> [--prefix <PREFIX>]   # one auto-allocated related followup per repo
-  coord/scripts/gov set-followup-relation <ticket-id> [--depends-on <ticket-id>] --relation <blocking|related|closeout-blocker|independent>
+  coord/scripts/gov set-followup-relation <ticket-id> [--depends-on <id[,id...]> ...] --relation <blocking|related|closeout-blocker|independent> [--replace]
+      # edges ACCUMULATE: --depends-on takes a comma list and may repeat; every edge feeds readiness.blockedBy
+      # --relation independent removes only the named --depends-on edges (all of them when none is named)
+      # --replace is required to replace a recorded follow-up exception; without it the verb refuses rather than discarding it
   coord/scripts/gov set-priority <ticket-id> --pri <P0|P1|P2|P3>   # reprioritize a non-terminal ticket through gov (TASKS.md is a rendered view)
   coord/scripts/gov set-type <ticket-id> --type <feature|bug|chore|task|spike|refactor|docs|test>   # retype a non-terminal ticket through gov
   coord/scripts/gov approve <ticket-id>   # human-only: promote a quarantined "proposed" ticket to todo (proposed -> todo), one journal event
@@ -81,6 +87,10 @@ Code-quality automation (COORD-083):
       (runs the arch-checks library over <root>, dedups findings against open board tickets, and DRY-RUNS by default; --apply files governed follow-ups via open-followup. A per-run cap prevents board flooding. Schedulable via cron/CI — see coord/product/QUALITY_AUTOMATION.md)
 
 Structured plan helpers:
+  coord/scripts/gov update-plan <ticket-id> [--summary <text>] [--verify <cmd>] [--files <path>] [--drop-file <path>] [--security <yes|no>] [--startup <completed>] [--traceability <verified|closing-gap|exempt>] [--baseline <text>] [--invariant <text>] [--closure <text>] [--feature-proof <text>] [--drop-feature-proof <text>] [--repo-gate <text>] [--rollback <text>] [--closeout-method <pr|no_pr|fulfilled_by>] [--closeout-base-ref <ref>] [--provenance-note <text>] [--review-profile <standard|bounded_repair>] [--context-pack-ack '<json>'|none] [--live-mcp '<json>'|none] [--gate-plan '<json>'|none] [--bootstrap-risk '<json>'|none] [--decision-required '<json>'|none] [--review-cycle <text>] [--replace-review-cycle <N> --review-cycle <text>] [--drop-review-cycle <N>]
+      (--context-pack-ack is the ONLY sanctioned writer for the context_pack_ack the review gate requires; NEVER hand-edit coord/.runtime/plans/<ticket>.json. It takes a JSON object, or the literal "none" to clear. Accepted shape (schema-validated example):
+       coord/scripts/gov update-plan <ticket-id> --context-pack-ack '{"considered":{"active_constraints":["<constraint or none>"],"adrs":["none"],"business_rules":["none"],"conflicts":["none"],"stale_warnings":["none"],"open_questions":["none"]},"authority":{"constraints":["<authority actually relied on>"],"advisory_only":["<advisory item>"]},"closeout_learning":{"decision":"scratch-only","rationale":"<why>"}}'
+       Keys are closed: only refs / considered / authority / closeout_learning. "refs" holds business-context PACK PATHS (not doc citations — cite docs under considered.active_constraints); considered.* and authority.* are arrays of strings; closeout_learning.decision is promote|demote|scratch-only|mixed|none.)
   coord/scripts/gov add-review-cycle <ticket-id> --lens <name> --diff <text> --risk <text> --risk <text> --findings <text> --verification <cmd> --verdict <pass|fail> [--replace-review-cycle <N>]
   coord/scripts/gov set-review-cycles <ticket-id> --review-cycle "<structured cycle>" [--review-cycle "<structured cycle>" ...]
   coord/scripts/gov set-requirement-closure <ticket-id> --ticket-ask <text> --implemented <text> [--not-implemented <text>] [--deferred-to <text>] --closeout-verdict <complete|incomplete> [--supersede]
@@ -161,6 +171,7 @@ Useful inspection:
   coord/scripts/gov recent [<ticket-id>] --limit 10 [--full]
   coord/scripts/gov explain <ticket-id>
   coord/scripts/gov counts
+  coord/scripts/gov surface [--json]   # GENERATED machine-facing inventory: every dispatched verb, alias groups, every accepted flag and the option key it parses to, the enum literals the parser advertises, and the snake_case/camelCase spellings of the JSON plan fields
   coord/scripts/gov doctor [--fix | --repair-all [--confirm]] [--ticket <ticket-id>]
   coord/scripts/gov conform [--json] [--attest] [--verify-attestation <file>]
   coord/scripts/gov repair-chain [--confirm --reason "<why>"] [--json]
@@ -171,6 +182,7 @@ Notes:
   - "start" requires a claimed owner context (or explicit --owner) before ticket mutations begin.
   - "agentid" reports the current window's agent id when claimed, returns assignment guidance when unclaimed, and can assign explicitly via --assign or --owner.
   - "claim" is different from "start": it binds the current session to an agent, and only takes over an existing ticket owner/lock when --force is explicit.
+  - "surface" prints the machine-facing CLI surface GENERATED from the live dispatch table and flag parser (COORD-572). Use it when a capability seems missing: absence from prose documentation is not absence from the product, and five wrongly-filed tickets in one session came from reading it that way. Unknown verbs and unknown flags also suggest near-matches ranked by shared word-parts, so a guessed name like "add-prompt" resolves to the shipped "register-prompt --create".
   - "set-waiver" records machine-readable prompt-coverage waivers in board state; free-text QUESTIONS.md notes are optional narrative context, not the start gate authority.
   - "resume" is the preferred same-owner session handoff for an already-started doing/review ticket; it rebinds the governed ticket lock into the current claimed session.
   - "commit" stages and commits inside the governed worktree for a doing ticket.
@@ -178,6 +190,9 @@ Notes:
   - "finalize" is the shortcut for the common no-PR local-review closeout path; it moves to review and marks done once landing evidence is provided. Use --already-landed only to repair a no-PR ticket that was merged to dev before move-review. If the repo has a remote, prefer PR-backed landing unless no-PR is intentional.
   - "land" merges the PR, records source-vs-landed provenance, removes the clean canonical ticket worktree, closes the ticket, and appends the standard governance closeout note.
   - "supersede" moves any ticket to superseded, removes active lock/worktree residue, and preserves its historical evidence without reopening it later. Pass --reason "<why>" and/or --consolidated-into <ticket-id> to record inline supersession provenance on the board row (Supersede Reason / Superseded By) so a retired ticket is never left without a reason or replacement pointer. It is not a substitute for review/done closeout when the work already landed on dev.
+  - COORD-667: --merge-workspace (on "land" / "finalize" / the mark-done verbs) makes governance perform the Repo-X CONTROL-PLANE WORKSPACE MERGE itself, in-process, inside the closeout transaction, with --no-ff (the merge commit is what the COORD-591 engine-surface attribution reads) and the merge commit journaled as an external side effect. Without it, closeout still fails closed exactly as COORD-512 requires — it never auto-advances an adopter's live integration branch. Do not hand-run "git merge" instead: coord/scripts/hooks/pre-bash-guard.js refuses it whenever HEAD is on a protected integration branch (head-on-protected-branch, COORD-664), and that pairing was the COORD-667 deadlock in which no repo-X ticket could land by any sanctioned path.
+  - COORD-612: "start" / "claim" fail closed when another governed writer already holds this checkout/runtime. --allow-shared-worktree is the sanctioned opt-out for the documented orchestrator-spawns-N-subagents topology (each sub-agent should still use its own worktree). Use it instead of breaking locks by hand.
+  - the terminal verbs ("land", "finalize", "close", "finish", "mark-done", "finish-ticket") auto-sync canonical derived artifacts afterwards. --no-sync opts out of that sync; --push-after-sync (or COORD_PUSH_ON_FINALIZE=1) opts canonical history into a governed push to the configured upstream, including commits stranded by an earlier terminal attempt even when the current sync is a no-op. A terminal session is retained until the sync succeeds and the configured upstream is proven to contain local HEAD; divergence or an unverifiable remote fails closed. --push-before-closeout (or COORD_PUSH_BEFORE_CLOSEOUT=1) opts the LANDING commit into a governed push of the control-plane integration branch BEFORE the remote-ancestry check, which is the step a hand-run push cannot perform because pre-bash-guard refuses it (COORD-691). None is default; none ever force-pushes, and the governed pushes refuse outright when the remote has diverged rather than resolving it.
   - "recent" / "explain" / "recover" read from the append-only governance journal and are the supported way to diagnose or repair live drift.
   - "conform" is a read-only journal hash-chain self-verify: it verifies every event's prev_event_hash link end-to-end and prints the chain head plus a pass/fail verdict (--json for machine output). A broken link means the journal was reordered, tampered, or had an event dropped; legacy pre-chain events validate as accepted-but-unverified. "doctor" runs the same chain check board-wide and fails on a broken link. ENT-010: "conform --attest" ALSO emits a signed (local ed25519 keypair) conformance attestation over the engine-integrity inputs (engine version, TEMPLATE_SYNC_MANIFEST.json fingerprint, gate config + latest gate-artifact result/coverage/audit, RELEASE_PROVENANCE donor SHA when present, and the journal chain head) under coord/.runtime/attestations/ (private signing key stays gitignored under coord/.runtime/conformance-keys/). "conform --verify-attestation <file>" re-derives the live inputs, recomputes the digest, checks the signature, and flags drift/tamper. This is the Community per-team self-verify; the signed attestation is the exact input a future central re-hash service (ENT-007) would re-compute.
   - "repair-chain" (COORD-124) is a GUARDED, AUDITABLE repair for a journal hash-chain broken by crossed prev_event_hash links (e.g. two governed agents appending concurrently). With NO flags it is a DRY-RUN: it reports the broken links that WOULD be re-linked (offending indices/ids + claimed-vs-expected prev-hash) and writes NOTHING; it no-ops cleanly when the chain is already valid. With "--confirm --reason \"<why>\"" it APPLIES: it backs the pre-repair journal up to a timestamped .pre-repair-<ts> sidecar (gitignored off-chain evidence), appends an explicit on-chain "chain-repair" marker capturing the broken-link evidence + the human reason + actor + ts, and re-stamps prev_event_hash for every chained event from the first broken link forward (reusing the canonical hasher) so the chain is GENUINELY re-linked — after which "conform" PASSES and the verified chain permanently contains the marker (repair is visible, never silent). The marker does NOT relax the verifier: a chain broken WITHOUT a recorded repair still FAILS conform, so this cannot be used to launder tampering. (--json for machine output.)
@@ -194,15 +209,14 @@ Notes:
   - "add-repo-gate" accepts --result <pass|fail> and --base-result <pass|fail> to attribute a failing gate to new-on-ticket vs pre-existing-on-base vs fixed-on-ticket; attribution is encoded as an annotation on the recorded repo_gates entry. --audit <summary> records the dependency/security audit signal (QGATE-002) as an audit=... annotation on the same entry.
   - Closed tickets are not reopened; use "open-followup" for post-close findings.
   - Run "node coord/scripts/governance.js help --all" for advanced/admin commands.
-`);
-    return;
+`;
   }
-  console.log(`Governance helper CLI
+  return `Governance helper CLI
 
 Usage:
   node coord/scripts/governance.js initiate
   node coord/scripts/governance.js agentid [--assign | --owner <handle|simple-id>]
-  node coord/scripts/governance.js claim [<ticket-id>] [--owner <handle|simple-id>] [--handoff [--reason <text>]] [--human-admin-override "<reason>"]
+  node coord/scripts/governance.js claim [<ticket-id>] [--owner <handle|simple-id>] [--handoff [--reason <text>]] [--human-admin-override "<reason>"] [--allow-shared-worktree]
       (same-owner recovery of a live lease: --handoff; cross-owner takeover: --human-admin-override "<reason>"; bare --force is a deprecated legacy alias only)
   node coord/scripts/governance.js resume <ticket-id>
   node coord/scripts/governance.js agents list
@@ -215,7 +229,7 @@ Usage:
   node coord/scripts/governance.js rebuild-board <ticket-id> | --all
   node coord/scripts/governance.js agent-status [<handle|simple-id>]
   node coord/scripts/governance.js pick [all] [--repo <repo-code>] [--mode <backend|frontend|design|general>] [--owner <owner>] [--limit <n>] [--include-blocked] [--why <ticket-id>]
-  node coord/scripts/governance.js start <ticket-id> [--owner <owner>] [--topic <slug>] [--base <branch>]
+  node coord/scripts/governance.js start <ticket-id> [--owner <owner>] [--topic <slug>] [--base <branch>] [--allow-shared-worktree]
   node coord/scripts/governance.js unstart <ticket-id> [--owner <owner>]
   node coord/scripts/governance.js block <ticket-id> [--owner <owner>] --reason <text>
   node coord/scripts/governance.js unblock <ticket-id> [--owner <owner>]
@@ -224,8 +238,8 @@ Usage:
   node coord/scripts/governance.js commit <ticket-id> --message <text> [--all] [--files <path> ...] [--owner <owner>]
   node coord/scripts/governance.js submit <ticket-id> [--pr <ref> ...] [--base <branch>] [--title <text> --body <text> | --fill] [--draft]
   node coord/scripts/governance.js review <ticket-id> [--pr <ref> ...]
-  node coord/scripts/governance.js land <ticket-id> [--pr <ref> ...] [--landed <evidence> ...] [--method <merge|squash|rebase>] [--delete-branch] [--admin] [--source-commit <sha>] [--fulfilled-by-ticket <ticket-id> | --fulfilled-by-commit <sha>]
-  node coord/scripts/governance.js finalize <ticket-id> [--no-pr] [--already-landed] [--pr <ref> ...] [--landed <evidence> ...] [--source-commit <sha>] [--fulfilled-by-ticket <ticket-id> | --fulfilled-by-commit <sha>]
+  node coord/scripts/governance.js land <ticket-id> [--pr <ref> ...] [--landed <evidence> ...] [--method <merge|squash|rebase>] [--delete-branch] [--merge-workspace] [--admin] [--source-commit <sha>] [--fulfilled-by-ticket <ticket-id> | --fulfilled-by-commit <sha>]
+  node coord/scripts/governance.js finalize <ticket-id> [--no-pr] [--already-landed] [--merge-workspace] [--pr <ref> ...] [--landed <evidence> ...] [--source-commit <sha>] [--fulfilled-by-ticket <ticket-id> | --fulfilled-by-commit <sha>]
   node coord/scripts/governance.js supersede <ticket-id> [--reason <text>]
   node coord/scripts/governance.js finish <ticket-id> [--pr <ref> ...]
   node coord/scripts/governance.js close <ticket-id> [--pr <ref> ...]
@@ -233,6 +247,7 @@ Usage:
   node coord/scripts/governance.js backfill-plan-records [--from <ticket-id>] [--status <review|done>] [--limit <n>]
   node coord/scripts/governance.js counts
   node coord/scripts/governance.js board-state
+  node coord/scripts/governance.js surface [--json]
   node coord/scripts/governance.js recent [<ticket-id>] [--limit <n>] [--full]
   node coord/scripts/governance.js explain <ticket-id>
   node coord/scripts/governance.js recover <ticket-id>
@@ -256,21 +271,25 @@ Usage:
   node coord/scripts/governance.js move-review <ticket-id> [--pr <ref> ...]
   node coord/scripts/governance.js reopen-ticket <ticket-id>   # deprecated compatibility alias; now errors with guidance
   node coord/scripts/governance.js return-doing <ticket-id> [--owner <owner>] --summary <text> --severity <HIGH|MED|LOW> --qref <Lxx>
-  node coord/scripts/governance.js start-ticket <ticket-id> [--owner <owner>] [--topic <slug>] [--base <branch>]
+  node coord/scripts/governance.js start-ticket <ticket-id> [--owner <owner>] [--topic <slug>] [--base <branch>] [--allow-shared-worktree]
   node coord/scripts/governance.js commit-ticket <ticket-id> --message <text> [--all] [--files <path> ...] [--owner <owner>]
   node coord/scripts/governance.js open-followup [<new-ticket-id>|--prefix <PREFIX>] --depends-on <ticket-id> --repo <repo-code> --type <type> --pri <priority> --description <text> [--relation <blocking|related|closeout-blocker>]
   node coord/scripts/governance.js file-ticket [<new-ticket-id>|--prefix <PREFIX>] --repo <repo-code> --type <type> --pri <priority> --description <text> [--depends-on <ticket-id>] [--prompt <path>] [--with-prompt] [--prompt-template ticket] [--owner <handle>]   # alias: new
   node coord/scripts/governance.js next-id <PREFIX>
   node coord/scripts/governance.js split-ticket <parent-ticket-id> --into <repo-codes> [--prefix <PREFIX>]
-  node coord/scripts/governance.js set-followup-relation <ticket-id> [--depends-on <ticket-id>] --relation <blocking|related|closeout-blocker|independent>
+  node coord/scripts/governance.js set-followup-relation <ticket-id> [--depends-on <id[,id...]> ...] --relation <blocking|related|closeout-blocker|independent> [--replace]
   node coord/scripts/governance.js set-waiver <ticket-id> --reason <text> [--clear]
   node coord/scripts/governance.js register-prompt <ticket-id> [<path>] [--path <path>] [--create] [--template ticket] [--force] [--replace]
   node coord/scripts/governance.js set-pr <ticket-id> --pr <ref> [--pr <ref> ...]
   node coord/scripts/governance.js add-finding <ticket-id> --severity <HIGH|MED|LOW> --summary <text> --qref <Lxx> [--round <n>]
+      (the finding is recorded under the round the ticket is CURRENTLY in, so every finding from ONE review shares one round. Rounds advance only through "return-doing"; an explicit --round that disagrees with lifecycle state is refused.)
+  node coord/scripts/governance.js correct-finding-round <ticket-id> --id <finding-id> --round <n> --human-admin-override "<reason>"
+      (human-admin repair for a finding already filed under the wrong round — e.g. findings auto-incremented to rounds 1..N by one review before COORD-649. Journals the before and after round with the override reason; refuses a round above the round the ticket has actually reached. Hand-editing the board or coord/.runtime/plans/<ticket>.json is never the remedy.)
   node coord/scripts/governance.js update-finding <ticket-id> --id <finding-id> --status <resolved|deferred|consolidated> [--deferred-to <ticket>] [--consolidated-into <ticket>]
   node coord/scripts/governance.js log-question --from <agent> --to <target> --question <text> --answer <text> --resolved <yes|no|n/a>
   node coord/scripts/governance.js heartbeat <ticket-id>
-  node coord/scripts/governance.js update-plan <ticket-id> [--summary <text>] [--verify <cmd>] [--files <path>] [--security <yes|no>] [--startup <completed>] [--traceability <verified|closing-gap|exempt>] [--baseline <text>] [--invariant <text>] [--closure <text>] [--feature-proof <text>] [--repo-gate <text>] [--rollback <text>] [--closeout-method <pr|no_pr|fulfilled_by>] [--closeout-base-ref <ref>] [--provenance-note <text>] [--review-profile <standard|bounded_repair>] [--review-cycle <text>] [--replace-review-cycle <N> --review-cycle <text>] [--drop-review-cycle <N>]
+  node coord/scripts/governance.js update-plan <ticket-id> [--summary <text>] [--verify <cmd>] [--files <path>] [--drop-file <path>] [--security <yes|no>] [--startup <completed>] [--traceability <verified|closing-gap|exempt>] [--baseline <text>] [--invariant <text>] [--closure <text>] [--feature-proof <text>] [--drop-feature-proof <text>] [--repo-gate <text>] [--rollback <text>] [--closeout-method <pr|no_pr|fulfilled_by>] [--closeout-base-ref <ref>] [--provenance-note <text>] [--review-profile <standard|bounded_repair>] [--context-pack-ack '<json>'|none] [--live-mcp '<json>'|none] [--gate-plan '<json>'|none] [--bootstrap-risk '<json>'|none] [--decision-required '<json>'|none] [--review-cycle <text>] [--replace-review-cycle <N> --review-cycle <text>] [--drop-review-cycle <N>]
+      (--context-pack-ack / --live-mcp / --gate-plan / --bootstrap-risk / --decision-required each take a JSON object, or the literal "none" to clear. The record spellings are the snake_case forms context_pack_ack / live_mcp / gate_plan / bootstrap_risk / decision_required — "coord/scripts/gov surface" prints both spellings against the writing flag. --context-pack-ack is the ONLY sanctioned writer for the context_pack_ack the review gate requires — run "coord/scripts/gov update-plan --help" for the accepted JSON shape and never hand-edit the canonical plan record.)
   node coord/scripts/governance.js add-review-cycle <ticket-id> --lens <name> --diff <text> --risk <text> --risk <text> --findings <text> --verification <cmd> --verdict <pass|fail> [--replace-review-cycle <N>]
   node coord/scripts/governance.js set-review-cycles <ticket-id> --review-cycle "<structured cycle>" [--review-cycle "<structured cycle>" ...]
   node coord/scripts/governance.js set-requirement-closure <ticket-id> --ticket-ask <text> --implemented <text> [--not-implemented <text>] [--deferred-to <text>] --closeout-verdict <complete|incomplete> [--supersede]
@@ -328,7 +347,84 @@ Notes:
   - "cleanup-helpers" removes helper/temp worktrees that are not canonical ticket worktrees.
   - "cleanup-worktree" is destructive and requires --yes.
   - "clean-runtime" is the supported safe alternative to ad hoc 'git clean/reset' for coord: dry-run by default, requires --yes to delete, only touches regenerable runtime scratch under coord/.runtime, never touches ticket-local state (locks/, plans/), session files, the journal/snapshots, or git-tracked board/docs, and refuses on rollback drift unless --force.
-`);
+`;
+}
+
+function printHelp(options = {}) {
+  console.log(buildHelpText(options));
+}
+
+// COORD-612: `gov <verb> --help`. A supported-but-undocumented flag is not a
+// cosmetic gap — `--context-pack-ack` was wired, required by the submit gate,
+// and invisible in every help surface, so three agents concluded no CLI verb
+// existed and hand-edited the canonical plan record instead. Per-verb help
+// makes the flag list reachable at the point of use. It is a pure PROJECTION of
+// the same help text printHelp emits (both cuts), never a second hand-maintained
+// list: the lines are selected by matching the verb token, so any flag published
+// in `gov help` is automatically published here too.
+function buildVerbHelpText(verb) {
+  const name = String(verb || "").trim();
+  if (!name) {
+    return null;
+  }
+  const usagePattern = new RegExp(`(?:^|[\\s/])${name.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}(?=\\s|$)`);
+  const notePattern = new RegExp(`^\\s*-\\s*"${name}"`);
+  const usage = [];
+  const notes = [];
+  for (const cut of [buildHelpText({ all: false }), buildHelpText({ all: true })]) {
+    const lines = cut.split("\n");
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (notePattern.test(line)) {
+        if (!notes.includes(line)) {
+          notes.push(line);
+        }
+        continue;
+      }
+      if (!/^\s+(?:coord\/scripts\/gov|node coord\/scripts\/governance\.js)\s/.test(line)) {
+        continue;
+      }
+      const invocation = line.replace(/^\s+(?:coord\/scripts\/gov|node coord\/scripts\/governance\.js)\s+/, "");
+      if (!usagePattern.test(` ${invocation.split(/\s/)[0]}`)) {
+        continue;
+      }
+      const block = [line];
+      // Keep the indented continuation/explanation lines that belong to the entry.
+      for (let j = i + 1; j < lines.length; j += 1) {
+        if (/^\s{6,}\S/.test(lines[j]) && !/^\s+(?:coord\/scripts\/gov|node coord\/scripts\/governance\.js)\s/.test(lines[j])) {
+          block.push(lines[j]);
+        } else {
+          break;
+        }
+      }
+      const rendered = block.join("\n");
+      if (!usage.includes(rendered)) {
+        usage.push(rendered);
+      }
+    }
+  }
+  if (usage.length === 0 && notes.length === 0) {
+    return null;
+  }
+  const out = [`Governance helper CLI — ${name}`, ""];
+  if (usage.length > 0) {
+    out.push("Usage:", ...usage, "");
+  }
+  if (notes.length > 0) {
+    out.push("Notes:", ...notes, "");
+  }
+  out.push(`Run "coord/scripts/gov help --all" for the full command surface.`);
+  return out.join("\n");
+}
+
+function printVerbHelp(verb) {
+  const text = buildVerbHelpText(verb);
+  if (!text) {
+    printHelp({ all: false });
+    return null;
+  }
+  console.log(text);
+  return text;
 }
 
 function buildInitiateSummary() {
@@ -720,6 +816,9 @@ function signJournalCommand(sub, options = {}) {
 
 return {
   printHelp,
+  buildHelpText,
+  buildVerbHelpText,
+  printVerbHelp,
   buildInitiateSummary,
   printInitiate,
   recallCommand,

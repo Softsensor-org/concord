@@ -67,7 +67,20 @@ module.exports = function createLifecycleEvidence(deps = {}) {
   } = deps;
 
   function resolveTicketGitContext(row, ticketId) {
-    if (!isRepoBackedCode(row.Repo)) {
+    // COORD-635 defect (4): this returned an all-null context for Repo X, which
+    // is what told the rest of the lifecycle that a control-plane ticket has no
+    // git context at all — while `gov start` was simultaneously creating a real
+    // git worktree for it. Under ADR-0008 the control plane HAS a repository,
+    // so X resolves against coordRepoRoot by the same lock-first /
+    // worktree-fallback rule as a product repo. When no control-plane
+    // repository exists the context is still all-null, which is the truthful
+    // answer for that topology rather than a blanket carve-out.
+    const controlPlane = row.Repo === "X"
+      ? (typeof deps.controlPlaneLayout === "function"
+        ? deps.controlPlaneLayout()
+        : (deps.controlPlaneLayout || require("./control-plane-paths.js").defaultControlPlaneLayout()))
+      : null;
+    if (!isRepoBackedCode(row.Repo) && !(row.Repo === "X" && controlPlane?.coordRepoRoot)) {
       return {
         repoRoot: null,
         branch: null,
@@ -76,7 +89,7 @@ module.exports = function createLifecycleEvidence(deps = {}) {
       };
     }
 
-    const repoRoot = getRepoRoot(row.Repo);
+    const repoRoot = row.Repo === "X" ? controlPlane.coordRepoRoot : getRepoRoot(row.Repo);
     const lock = findLockForTicket(ticketId);
     if (lock) {
       return {

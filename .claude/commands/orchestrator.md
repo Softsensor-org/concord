@@ -170,7 +170,7 @@ Take over an in-progress ticket from another agent:
 
 1. Take over the ticket only with explicit human-admin authorization:
    ```bash
-   coord/scripts/gov takeover <ticket> --human-admin-override "<reason>"
+   coord/scripts/gov claim <ticket> --transfer-to <current-agent-handle> --human-admin-override "<reason>"
    ```
 
 2. Inspect the prior agent's progress:
@@ -178,9 +178,9 @@ Take over an in-progress ticket from another agent:
      ```bash
      cd <worktree-path> && git status --short
      ```
-   - Check commits ahead of base:
+   - Check commits ahead of the configured integration branch (the repo's `integrationBranch` in `coord/project.config.js`; `gov explain` reports it as the closeout base):
      ```bash
-     git log --oneline origin/dev..HEAD
+     git log --oneline origin/<integration-branch>..HEAD
      ```
    - Read the plan state:
      ```bash
@@ -194,10 +194,7 @@ Take over an in-progress ticket from another agent:
    - What remains to complete the ticket
    - Recommended next step
 
-4. If the worktree base is stale, rebase:
-   ```bash
-   git stash && git fetch origin dev && git rebase origin/dev && git stash pop
-   ```
+4. If the worktree base is stale, do not hand-rebase onto a hardcoded branch: re-enter through governance (`coord/scripts/gov resume <ticket>`), which reports the configured base, and rebase only onto that configured integration branch if governance directs it.
 
 ---
 

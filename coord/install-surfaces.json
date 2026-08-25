@@ -1,0 +1,135 @@
+{
+  "schema": "concord.install.surfaces/v1",
+  "_comment": [
+    "COORD-624: the payload's OWN declaration of what each of its paths is for.",
+    "",
+    "Concord installs into a PARENT WORKSPACE and lives as a SIBLING of the",
+    "product repositories it governs:",
+    "",
+    "    project-workspace/",
+    "    |-- coord/        <- Concord control plane   (class: workspace)",
+    "    |-- .claude/      <- agent integration        (class: workspace)",
+    "    |-- AGENTS.md",
+    "    |-- repo-one/     <- independent product Git repository (NOT ours)",
+    "    |-- repo-two/     <- independent product Git repository (NOT ours)",
+    "    `-- repo-three/   <- independent product Git repository (NOT ours)",
+    "",
+    "The install engine derives the payload it may emit FROM THIS FILE. It is a",
+    "positive declaration of surfaces, never a post-hoc cleanup/delete list:",
+    "the reviewed install plan is built only from the selected classes, so a",
+    "product-sample path can never appear as an operation in the first place.",
+    "",
+    "Anti-drift teeth (all fail closed, all in buildInstallPlan):",
+    "  1. TOTALITY  - every file in the payload must match at least one declared",
+    "     surface path prefix. Add a new top-level directory to the template and",
+    "     the installer REFUSES until it is classified here.",
+    "  2. CLASS MAPPING - every declared class must be mapped by every mode.",
+    "     Invent a new class and every install refuses until the modes name it.",
+    "  3. CONFIG CROSS-CHECK - every repo path declared in the payload's own",
+    "     coord/project.config.js `repos` map must classify as product-sample.",
+    "     Mis-filing sample product scaffolding as governance is refused.",
+    "",
+    "Classification is LONGEST-PREFIX-WINS, so a more specific path overrides a",
+    "broader one. Paths are payload-relative and use the payload's SOURCE names",
+    "(the npm channel ships the workspace ignore policy as pack-safe `gitignore`;",
+    "both names are declared)."
+  ],
+  "surfaces": {
+    "governance-engine": {
+      "class": "workspace",
+      "description": "The vendored Concord control plane: engine scripts, board, schemas, product docs, workflow packs.",
+      "paths": ["coord"]
+    },
+    "agent-integration": {
+      "class": "workspace",
+      "description": "Workspace-level agent integration: slash commands, skills, MCP settings and the per-provider workspace guides.",
+      "paths": [
+        ".claude",
+        ".github",
+        ".mcp.json",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "CODEX.md",
+        "GEMINI.md"
+      ]
+    },
+    "workspace-docs": {
+      "class": "workspace",
+      "description": "Adopter-facing workspace documentation and project meta files.",
+      "paths": [
+        "CHANGELOG.md",
+        "CODE_OF_CONDUCT.md",
+        "CONTRIBUTING.md",
+        "DCO",
+        "DEMO.md",
+        "DEVELOPER_NOTE.md",
+        "GOVERNANCE.md",
+        "KNOWN_ISSUES.md",
+        "LICENSE",
+        "MAINTAINERS.md",
+        "QUICKSTART.md",
+        "README.md",
+        "SECURITY.md",
+        "TRADEMARK.md",
+        "USER_MANUAL.md",
+        "docs"
+      ]
+    },
+    "workspace-bootstrap": {
+      "class": "workspace",
+      "description": "Workspace recovery/upgrade bootstrap, runtime ignore policy and cut provenance stamp. Transactional installers are distribution artifacts and are not installed into the workspace payload.",
+      "paths": [
+        ".concord-cut.json",
+        ".gitignore",
+        ".nvmrc",
+        "concord-bootstrap.js",
+        "gitignore",
+        "test/concord-bootstrap.test.js"
+      ]
+    },
+    "retired-donor-entrypoints": {
+      "class": "donor-only",
+      "description": "Retired compatibility shims retained only so source-checkout bookmarks fail with write-free recovery guidance. No install mode may emit them, and the release builder strips them.",
+      "paths": ["init.sh"]
+    },
+    "workspace-config": {
+      "class": "workspace-config",
+      "description": "The WORKSPACE-mode variant of the project-owned config seam. It is emitted AS coord/project.config.js and starts with an empty repos map, because in the sibling model the adopter's repositories are theirs to map with `concord onboard`. Declared as its own class so it and the sample-product variant can never both be selected.",
+      "paths": ["coord/project.config.workspace.js"],
+      "remap": { "coord/project.config.workspace.js": "coord/project.config.js" }
+    },
+    "sample-product": {
+      "class": "product-sample",
+      "description": "TEMPLATE PRODUCT SCAFFOLDING. A demonstration two-repo product layout plus the bundled demo workspace, and the project.config.js that maps them. INSTALLATION NEVER EMITS ANY OF IT — see non_installable_classes.",
+      "paths": ["backend", "examples", "frontend", "packages", "coord/project.config.js"]
+    }
+  },
+  "non_installable_classes": ["donor-only", "product-sample"],
+  "_non_installable_rationale": [
+    "Installation installs GOVERNANCE ONLY and never creates or modifies product",
+    "repositories. A mode that wrote product code during installation would not be",
+    "an exception to that rule with a friendly name — it would mean the rule is",
+    "false. So `product-sample` is reachable by NO install mode, and the installer",
+    "refuses any mode that tries to select it.",
+    "",
+    "Creating the sample/demo project is therefore a separate, explicitly consented",
+    "POST-INSTALL operation, not an install mode. Until that operation ships,",
+    "greenfield demo creation is unavailable — a deliberate, stated gap rather than",
+    "a product-writing install path kept alive to hide it.",
+    "",
+    "The paths stay declared here because the TOTALITY check requires every payload",
+    "path to be classified: they must be named to be excluded, and naming them is",
+    "what makes their exclusion derived rather than hardcoded.",
+    "",
+    "The donor-only class holds retired compatibility entry points. It is also",
+    "reachable by no install mode: keeping a refusal shim for old source-checkout",
+    "bookmarks must never turn it back into a distributed installation channel."
+  ],
+  "modes": {
+    "workspace": {
+      "default": true,
+      "classes": ["workspace", "workspace-config"],
+      "description": "THE — and only — installation model: overlay the governance control plane onto a parent workspace whose product repositories are independent sibling Git repositories. Emits no product scaffolding, and never creates or modifies a product repository."
+    }
+  }
+}

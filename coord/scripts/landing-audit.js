@@ -25,6 +25,15 @@
 // and after the landing-record primitives are available.
 
 const { DEFAULT_INTEGRATION_BRANCH } = require("../paths.js");
+// COORD-635: control-plane landing classification (self-contained module —
+// lifecycle.js is an append-free composition root, so this is required directly).
+const { classifyControlPlaneLandingRecord } = require("./control-plane-landing.js");
+
+// COORD-635 repair: the landing RECORD's provenance_status vocabulary (board
+// schema: landing_index.provenance_status), DISTINCT from the audit REPORT's
+// `provenance` bucket. Single-sourced in landing-audit-vocabulary.js and pinned
+// to the schema by control-plane-landing-schema.test.js.
+const { LANDING_PROVENANCE_STATUSES } = require("./landing-audit-vocabulary.js");
 
 module.exports = function createLandingAudit(deps = {}) {
   const {
@@ -79,9 +88,13 @@ module.exports = function createLandingAudit(deps = {}) {
         .sort()
         .map((repoCode) => [repoNameForCode(repoCode), { merged: 0, not_ancestor: 0, unknown: 0 }])
     );
+    // COORD-635: the control plane gets its own bucket rather than being
+    // dropped on the floor by an unknown repo key.
+    byRepo[repoNameForCode("X")] = { merged: 0, not_ancestor: 0, unknown: 0, local_only: 0 };
     const summary = {
       by_repo: byRepo,
       by_provenance: {
+        control_plane: { merged: 0, not_ancestor: 0, unknown: 0, local_only: 0 },
         explicit: { merged: 0, not_ancestor: 0, unknown: 0 },
         legacy: { merged: 0, not_ancestor: 0, unknown: 0 },
         fulfilled_by: { merged: 0, not_ancestor: 0, unknown: 0 },
@@ -92,13 +105,15 @@ module.exports = function createLandingAudit(deps = {}) {
 
     for (const entry of entries) {
       const repoBucket = repoNameForCode(entry.repo);
-      if (repoBucket && summary.by_repo[repoBucket]) {
+      if (repoBucket && summary.by_repo[repoBucket] && summary.by_repo[repoBucket][entry.status] !== undefined) {
         summary.by_repo[repoBucket][entry.status] += 1;
       }
-      if (summary.by_provenance[entry.provenance]) {
+      if (summary.by_provenance[entry.provenance] && summary.by_provenance[entry.provenance][entry.status] !== undefined) {
         summary.by_provenance[entry.provenance][entry.status] += 1;
       }
-      summary.totals[entry.status] += 1;
+      if (summary.totals[entry.status] !== undefined) {
+        summary.totals[entry.status] += 1;
+      }
     }
     return summary;
   }
@@ -116,13 +131,30 @@ module.exports = function createLandingAudit(deps = {}) {
       if (repoFilter && row.Repo !== repoFilter) {
         continue;
       }
-      if (row.Status !== STATUS.DONE || !isRepoBackedCode(row.Repo)) {
+      if (row.Status !== STATUS.DONE) {
         continue;
       }
-      if (!requiresLandingGovernance(board, row.ID, row)) {
-        continue;
+      // COORD-635: control-plane (X) landings were excluded from the audit
+      // entirely, so a defective X landing record was not "audited clean" —
+      // it was never looked at. X rows are audited whenever a landing record
+      // exists. `requiresLandingGovernance` is deliberately NOT widened to X:
+      // this makes existing evidence visible, it does not newly REQUIRE
+      // evidence and therefore refuses nothing that governance allows today.
+      if (row.Repo === "X") {
+        if (!board.landing_index?.[row.ID]) {
+          continue;
+        }
+      } else {
+        if (!isRepoBackedCode(row.Repo)) {
+          continue;
+        }
+        if (!requiresLandingGovernance(board, row.ID, row)) {
+          continue;
+        }
       }
-      const entry = classifyLandingRecord(row.ID, row, board.landing_index?.[row.ID] || null);
+      const entry = row.Repo === "X"
+        ? classifyControlPlaneLandingRecord(row.ID, row, board.landing_index?.[row.ID] || null)
+        : classifyLandingRecord(row.ID, row, board.landing_index?.[row.ID] || null);
       if (entry) {
         entries.push(entry);
       }
@@ -151,7 +183,13 @@ module.exports = function createLandingAudit(deps = {}) {
         continue;
       }
       let changed = false;
-      if (!entry.landing.provenance_status || entry.landing.provenance_status !== entry.provenance) {
+      // Only write values the landing-record vocabulary actually allows. A
+      // report-only bucket (e.g. "control_plane") must never be copied into the
+      // record — it would write a value the board schema rejects.
+      if (
+        LANDING_PROVENANCE_STATUSES.includes(entry.provenance) &&
+        (!entry.landing.provenance_status || entry.landing.provenance_status !== entry.provenance)
+      ) {
         entry.landing.provenance_status = entry.provenance;
         changed = true;
       }
@@ -402,5 +440,6 @@ module.exports = function createLandingAudit(deps = {}) {
     ensureFeatureProofLandingAudit,
     ensureLandingRecord,
     persistMergedPrLandingSnapshot,
+    LANDING_PROVENANCE_STATUSES,
   };
 };

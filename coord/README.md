@@ -12,7 +12,7 @@ This template provides:
 - ticket prompts and shard notes
 - shared planning and Q&A logs
 - runtime coordination support under `.runtime/`
-- stub templates for product, architecture, and domain specifications
+- product, architecture, domain, and curated knowledge specifications
 
 ## Adoption Stance
 
@@ -28,14 +28,17 @@ Template defaults assume sibling repos:
 - `../backend`
 - `../frontend`
 
-If your repo names differ, update `../project.config.js` or rerun the template init with `--repo ...`.
+If your repo names differ, update `project.config.js` or run
+`coord/scripts/coord onboard .. --dry-run` and apply its reviewed digest. The
+installer does not accept repository mapping as an install-time mutation.
 `product/REPOS.md` and `scripts/preflight.sh` follow that config automatically.
 
-## Specification Stubs
+## Specifications And Knowledge Baseline
 
-The following files start as stubs with purpose descriptions. Populate them with
-project-specific content before major feature implementation, or use them as
-pointers to existing PRD/URS/specification sources:
+The template carries a Concord-specific baseline. Downstream projects should
+replace product-specific content with their own reviewed material or pointers to
+existing PRD/URS/specification sources. Generated discovery output is advisory
+until it is curated into these canonical files.
 
 | Category | File | Purpose |
 |---|---|---|
@@ -44,6 +47,15 @@ pointers to existing PRD/URS/specification sources:
 | Screen index | `product/SCREEN_INDEX_CONTRACT.md` | Derived screen/requirement coverage method |
 | Architecture | `product/ARCHITECTURE.md` | Runtime architecture and stack |
 | Domain | `product/DOMAIN_MODEL.md` | Entity model and constraints |
+| Code review baseline | `product/CODE_REVIEW_BASELINE.md` | Current verified gaps, strengths, and critical path |
+| Business context | `product/BUSINESS_CONTEXT.md` | Product purpose, users, value chain, and trust boundary |
+| Business rules | `product/BUSINESS_RULES.md` | Accepted rules and explicitly proposed hardening |
+| Workflows | `product/WORKFLOW_INVENTORY.md` | Governed end-to-end operating workflows |
+| Downstream contracts | `product/DOWNSTREAM_CONTRACTS.md` | Provider/consumer contracts and compatibility rules |
+| Decisions | `product/DECISION_LOG.md` | Product-facing index of accepted/deferred ADRs |
+| Workarounds | `product/KNOWN_WORKAROUNDS.md` | Temporary guidance for verified open defects |
+| Open questions | `product/OPEN_BUSINESS_QUESTIONS.md` | Curated product and operating decision queue |
+| Preservation harness | `product/PRESERVATION_HARNESS_CANDIDATES.md` | Field-incident and public-boundary regression scenarios |
 | Release scope | `product/MVP_AND_PHASE_MATRIX.md` | Phase definitions and capability matrix |
 | Configuration | `product/CONFIG_INHERITANCE_MODEL.md` | Config hierarchy and inheritance |
 | Forms/Workflow | `product/FORMS_AND_WORKFLOW_CONTRACT.md` | Shared form and workflow contracts |
@@ -57,7 +69,7 @@ pointers to existing PRD/URS/specification sources:
 ## Borrowing Flow
 
 1. Copy this directory into a project as `coord/`
-2. Update repo names in `../project.config.js` (or via `init.sh --repo ...`) and confirm `product/REPOS.md`
+2. Update repo names in `../project.config.js` (or run `coord onboard` from the parent workspace) and confirm `product/REPOS.md`
 3. Link or populate the specification stubs relevant to your project, especially PRD/URS and architecture
 4. Replace the seed backlog in `board/tasks.json`, preserving references to external tickets when useful
 5. Run `node coord/board/board.js sync`

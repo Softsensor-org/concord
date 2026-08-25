@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "sentry": {
+      "command": "node",
+      "args": ["coord/scripts/mcp-optional-launcher.js", "sentry"],
+      "description": "Optional Sentry connector. Copy this server entry into .mcp.json only after reviewing access scope and exporting SENTRY_ACCESS_TOKEN."
+    }
+  }
+}

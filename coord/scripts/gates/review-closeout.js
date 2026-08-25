@@ -273,7 +273,11 @@ function createReviewCloseoutGate(deps) {
     return [{
       code: "subagent_supervision",
       message: `Ticket ${ticketId} cannot close with active or unexplained subagent work (active=${report.active.join(",") || "none"}; unexplained=${report.unexplained.join(",") || "none"}).`,
-      next_steps: ["Finish or stop every child session, record its result and action digest, then rerun gov explain."],
+      next_steps: [
+        "Finish or stop every child session and record its result and action digest.",
+        // COORD-572: "rerun gov explain" is not a command a caller can paste.
+        `coord/scripts/gov explain ${ticketId}`,
+      ],
     }];
   }
 

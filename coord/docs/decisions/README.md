@@ -250,3 +250,8 @@ repeated or permanent, write a new ADR that supersedes the old one.
 | [0004](./0004-precision-first-governed-memory-kernel.md) | Precision-First Governed Memory Kernel | Accepted |
 | [0005](./0005-agent-session-identity-uses-owner-lease-over-directory-locks.md) | Agent session identity uses a trusted-actor owner-lease, not session tokens | Accepted |
 | [0006](./0006-engine-pin-verifies-drift-without-signing-in-community.md) | Engine-pin verifies drift without cryptographic signing in Community | Accepted |
+| [0007](./0007-installer-transactions-use-a-target-local-write-ahead-ledger-with-on-dis.md) | Installer transactions use a target-local write-ahead ledger with on-disk backups, not VCS snapshots | Accepted |
+| [0008](./0008-adopter-workspaces-use-a-non-git-container-and-an-independent-coord-cont.md) | Adopter workspaces use a non-Git container and an independent coord control-plane repository | Accepted |
+| [0009](./0009-control-plane-and-cross-repository-work-use-distinct-ticket-targets.md) | Control-plane and cross-repository work use distinct ticket targets | Proposed |
+| [0010](./0010-install-recovery-treats-its-own-write-ahead-ledger-and-mutex-as-untruste.md) | Install recovery treats its own write-ahead ledger and mutex as untrusted input | Accepted |
+| [0011](./0011-business-discovery-reads-an-adopter-project-config-statically-and-neve.md) | Business discovery reads an adopter project config statically and never executes it | Accepted |

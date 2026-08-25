@@ -5,6 +5,9 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 const { state } = require("./governance-context.js");
 const {
+  recordGovernanceExternalSideEffect: recordSharedGovernanceExternalSideEffect,
+} = require("./governance-side-effects.js");
+const {
   HASH_ALG_SHA1,
   HASH_ALG_SHA256,
   CHAIN_MIGRATION_COMMAND,
@@ -1842,14 +1845,13 @@ module.exports = function createJournal(deps = {}) {
     };
   }
   
+  // COORD-691: defined in coord/scripts/governance-side-effects.js and merely
+  // re-exported here. Modules outside this factory's injection graph
+  // (control-plane-landing.js, reached directly from closeout.js) must be able
+  // to record an irreversible effect, and a second copy of this function would
+  // be a second meaning of "the transaction must preserve this".
   function recordGovernanceExternalSideEffect(effect) {
-    if (!state.activeGovernanceMutationContext || !effect || typeof effect !== "object") {
-      return;
-    }
-    state.activeGovernanceMutationContext.externalSideEffects.push({
-      ...effect,
-      recorded_at: new Date().toISOString(),
-    });
+    return recordSharedGovernanceExternalSideEffect(effect);
   }
   
   // COORD-223: AUDITED collision events.

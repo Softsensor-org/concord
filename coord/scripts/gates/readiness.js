@@ -213,7 +213,11 @@ function createReadinessGate(deps) {
       message:
         `Ticket ${ticketId} has no declared file surface, so plan-waves must schedule it alone as a global coord-state risk.`,
       next_steps: [
-        `Add a \`## Likely Files\` section to coord/prompts/tickets/${ticketId}.md, or set the board \`Declared Files\` field with repo-relative paths.`,
+        // COORD-572: this blocker used to describe a file to edit and a board
+        // field to "set", and named no command for either — an invitation to
+        // hand-edit the board. Declare the surface through the governed writer.
+        `coord/scripts/gov update-plan ${ticketId} --files "<repo-relative path>"`,
+        `Add a \`## Likely Files\` section to coord/prompts/tickets/${ticketId}.md, or register one with coord/scripts/gov register-prompt ${ticketId} --create`,
         "Keep global coordination state paths (coord/.runtime, coord/board, coord/prompts, coord/rendered, coord/locks) out of safe parallel waves unless the ticket truly must serialize.",
       ],
     }];

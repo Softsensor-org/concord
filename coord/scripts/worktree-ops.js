@@ -10,6 +10,20 @@ const fs = require("fs");
 const path = require("path");
 const { GovernanceError, defaultFail, COORD_DIR, DEFAULT_PATHS, state } = require("./governance-context.js");
 const { gitTry, runGit: sharedRunGit, gitOutput: sharedGitOutput } = require("./git-ops.js");
+const {
+  PUSH_STATUS,
+  pushControlPlaneIntegrationBranch,
+} = require("./control-plane-push.js");
+// COORD-635 / ADR-0008: control-plane git resolves to coordRepoRoot, never to
+// path.dirname(COORD_DIR). See control-plane-paths.js for the three roots.
+const { createGovernedWorkspaceRecovery } = require("./governed-workspace-recovery.js");
+const {
+  defaultControlPlaneLayout,
+  requireCoordRepoRoot,
+  coordWorktreeRuntimeDir,
+  significantWorktreeStatusEntries,
+  resolveControlPlaneIntegrationBranch,
+} = require("./control-plane-paths.js");
 
 const { DEFAULT_INTEGRATION_BRANCH } = require("../paths.js");
 const { STATUS } = require("./governance-constants.js");
@@ -50,6 +64,41 @@ module.exports = function createWorktreeOps(deps = {}) {
     // workspace-cleanup functions below.
     resolveTicketGitContext,
   } = deps;
+
+  // COORD-635: injectable so tests can drive a fixture topology; production
+  // resolves the memoized engine layout.
+  const controlPlaneLayout = () => (
+    typeof deps.controlPlaneLayout === "function"
+      ? deps.controlPlaneLayout()
+      : (deps.controlPlaneLayout || defaultControlPlaneLayout())
+  );
+
+  // The ONLY control-plane git root. Fails closed with one actionable message
+  // rather than silently resolving to the workspace container (ADR-0008).
+  function coordRepoRoot(action) {
+    return requireCoordRepoRoot(controlPlaneLayout(), fail, action);
+  }
+
+  function coordIntegrationBranch() {
+    return resolveControlPlaneIntegrationBranch(controlPlaneLayout(), {
+      configuredBranch: DEFAULT_PATHS.controlPlaneIntegrationBranch,
+      gitTry,
+    });
+  }
+
+  // COORD-635: governed workspace RECOVERY is built here because this factory
+  // already owns every dependency it needs (ensureTicketWorkspace,
+  // listGitWorktrees, the repo registry and the control-plane layout). Both
+  // `return-doing` and `resume` consume this one instance, so recovery cannot
+  // fork into two implementations.
+  const { ensureGovernedWorkspaceForTicket } = createGovernedWorkspaceRecovery({
+    ensureTicketWorkspace: (...args) => ensureTicketWorkspace(...args),
+    listGitWorktrees: (...args) => listGitWorktrees(...args),
+    getRepoRoot: (...args) => getRepoRoot(...args),
+    isRepoBackedCode: (...args) => isRepoBackedCode(...args),
+    controlPlaneLayout,
+    fail,
+  });
 
   function resolveCommitishInRepo(repoRoot, commitish) {
     const normalized = String(commitish || "").trim();
@@ -111,6 +160,17 @@ module.exports = function createWorktreeOps(deps = {}) {
   
   function auditCoordWorktrees(ticketsById) {
     const root = coordWorktreesRoot();
+    // COORD-635: report the control-plane repository and each worktree's
+    // REGISTRATION state, so `gov doctor` can say "control-plane state in
+    // coord/" and distinguish a registered worktree (remove it through git)
+    // from orphaned residue (a directory git no longer knows about).
+    const layout = controlPlaneLayout();
+    const registeredByPath = new Map();
+    if (layout && layout.coordRepoRoot) {
+      for (const entry of listGitWorktrees(layout.coordRepoRoot)) {
+        registeredByPath.set(path.resolve(entry.path), entry.branch || null);
+      }
+    }
     const worktrees = [];
     if (fs.existsSync(root)) {
       for (const owner of fs.readdirSync(root)) {
@@ -128,11 +188,14 @@ module.exports = function createWorktreeOps(deps = {}) {
             continue;
           }
           const row = ticketsById.get(ticketId) || null;
+          const resolved = path.resolve(ticketPath);
           worktrees.push({
             owner,
             path: ticketPath,
             ticket: ticketId,
             status: row ? row.Status : null,
+            registered: registeredByPath.has(resolved),
+            branch: registeredByPath.get(resolved) || null,
           });
         }
       }
@@ -140,6 +203,12 @@ module.exports = function createWorktreeOps(deps = {}) {
   
     return {
       repo_root: root,
+      control_plane_repo_root: (layout && layout.coordRepoRoot) || null,
+      control_plane_topology: (layout && layout.topology) || null,
+      // Registered in git but the directory is gone: an orphaned registration,
+      // the residue class that used to require a manual `git worktree prune`.
+      orphaned_registrations: [...registeredByPath.keys()]
+        .filter((entry) => entry.startsWith(`${path.resolve(root)}${path.sep}`) && !fs.existsSync(entry)),
       worktrees,
       stale_worktrees: worktrees.filter((entry) => entry.status && !isDoingStatus(entry.status) && entry.status !== STATUS.REVIEW),
       unknown_ticket_worktrees: worktrees.filter((entry) => !entry.status),
@@ -174,28 +243,64 @@ module.exports = function createWorktreeOps(deps = {}) {
       fail("cleanup-worktree is destructive; rerun with --yes.");
     }
   
-    const repoCode = repoCodeForCliRepoArg(repoArg);
+    // COORD-635: `cleanup-worktree` used to accept ONLY repo-backed codes, so
+    // the single command operators are told to use refused the exact case that
+    // produces residue — leaving the manual `git worktree remove` governance
+    // otherwise forbids as the only remediation. "coord" / "X" now resolve to
+    // the control-plane repository.
+    const isControlPlane = isControlPlaneRepoArg(repoArg);
+    const repoCode = isControlPlane ? "X" : repoCodeForCliRepoArg(repoArg);
     if (!repoCode) {
-      fail(`cleanup-worktree repo must be one of: ${configuredRepoArgDescription()}.`);
+      fail(`cleanup-worktree repo must be one of: ${configuredRepoArgDescription()}, coord.`);
     }
-  
-    const repoRoot = getRepoRoot(repoCode);
+
+    const repoRoot = isControlPlane
+      ? coordRepoRoot("gov cleanup-worktree for a control-plane (coord) worktree")
+      : getRepoRoot(repoCode);
     const worktrees = listGitWorktrees(repoRoot);
-    const target = resolveCleanupTarget(worktrees, ticketOrPath);
+    let target = resolveCleanupTarget(worktrees, ticketOrPath);
+    if (!target && isControlPlane) {
+      // Unregistered control-plane residue (a directory left behind by an
+      // older engine that deleted without deregistering) is still cleanable.
+      const candidate = path.isAbsolute(ticketOrPath)
+        ? path.resolve(ticketOrPath)
+        : path.join(coordWorktreesRoot(), ticketOrPath);
+      const scan = auditCoordWorktrees(new Map()).worktrees
+        .find((entry) => path.resolve(entry.path) === candidate || entry.ticket === ticketOrPath);
+      if (scan) {
+        target = { path: scan.path, branch: null };
+      }
+    }
     if (!target) {
       fail(`Could not resolve worktree target "${ticketOrPath}" in ${repoRoot}.`);
     }
-    if (target.path === repoRoot) {
+    if (path.resolve(target.path) === path.resolve(repoRoot)) {
       fail("Refusing to remove the repo root worktree.");
     }
-  
-    runGit(repoRoot, ["worktree", "remove", "--force", target.path]);
-    console.log(`Removed worktree ${target.path}`);
-  
-    if (options.deleteBranch && target.branch) {
-      runGit(repoRoot, ["branch", "-D", target.branch]);
-      console.log(`Deleted local branch ${target.branch}`);
+
+    // Same governed removal as closeout: refuses a dirty worktree, deregisters
+    // rather than deleting, and prunes orphaned registrations.
+    const removed = removeGovernedWorktree({
+      repoRoot,
+      worktree: target.path,
+      branch: target.branch,
+      deleteBranch: options.deleteBranch,
+      label: isControlPlane ? "Control-plane worktree" : "Worktree",
+    });
+    console.log(`Removed worktree ${removed.worktree}`);
+    if (isControlPlane) {
+      pruneEmptyParents(removed.worktree, coordWorktreesRoot());
     }
+    if (options.deleteBranch && removed.branch) {
+      console.log(`Deleted local branch ${removed.branch}`);
+    }
+  }
+
+  // "coord" and "X" are the control-plane aliases. Kept next to the CLI verb so
+  // the accepted vocabulary and the resolution live together.
+  function isControlPlaneRepoArg(repoArg) {
+    const normalized = String(repoArg || "").trim();
+    return normalized === "X" || normalized.toLowerCase() === "coord";
   }
   
   function cleanupHelperWorktrees(repoArg, options) {
@@ -389,7 +494,10 @@ module.exports = function createWorktreeOps(deps = {}) {
   }
 
   function ensureCoordGitWorktree({ worktree, branch, base }) {
-    const repoRoot = path.dirname(COORD_DIR);
+    // COORD-635 defect (1): this used path.dirname(COORD_DIR) — the workspace
+    // CONTAINER — so control-plane worktrees were cut from whatever repository
+    // happened to own the parent directory. ADR-0008 makes coord/ the owner.
+    const repoRoot = coordRepoRoot("gov start for a control-plane (Repo X) ticket");
     const worktrees = listGitWorktrees(repoRoot);
     const existingByPath = worktrees.find((entry) => entry.path === worktree);
     if (existingByPath) {
@@ -447,7 +555,11 @@ module.exports = function createWorktreeOps(deps = {}) {
   }
 
   function ensureCoordWorktreeRuntime(worktree) {
-    const runtimeDir = path.join(worktree, "coord", ".runtime");
+    // COORD-635 defect (3): a worktree OF the coord repository mirrors
+    // coordRepoRoot, so governance state sits at <worktree>/<coordPathPrefix>/
+    // — "" in an adopter (coord/.git), "coord" in the donor. The old hardcoded
+    // <worktree>/coord/.runtime was only ever right for the donor.
+    const runtimeDir = coordWorktreeRuntimeDir(controlPlaneLayout(), worktree);
     for (const rel of [
       ".",
       "locks",
@@ -493,7 +605,7 @@ module.exports = function createWorktreeOps(deps = {}) {
       return;
     }
     if (prepared.repoCode === "X" && fs.existsSync(prepared.worktree)) {
-      const repoRoot = path.dirname(COORD_DIR);
+      const repoRoot = coordRepoRoot("failed-start cleanup of a control-plane worktree");
       const current = listGitWorktrees(repoRoot).find((entry) => entry.path === prepared.worktree);
       if (current) {
         runGit(repoRoot, ["worktree", "remove", "--force", prepared.worktree]);
@@ -536,9 +648,38 @@ module.exports = function createWorktreeOps(deps = {}) {
   
   function auditRepoWorktrees(repoCode, ticketsById) {
     const repoRoot = getRepoRoot(repoCode);
+    // COORD-635: a configured product-repo directory that is NOT itself a Git
+    // repository makes `git -C <dir> worktree list` walk UP and answer for
+    // whatever repository encloses it. That is how stale CONTROL-PLANE
+    // worktrees were reported as backend/frontend state, sending the operator
+    // to the wrong repository. Answer only for a directory that owns its own
+    // repository; anything else audits as "not a repository", which is the
+    // truthful finding.
+    const toplevelProbe = gitTry(repoRoot, ["rev-parse", "--show-toplevel"]);
+    const toplevel = toplevelProbe.status === 0 ? path.resolve(String(toplevelProbe.stdout || "").trim()) : null;
+    if (toplevel !== path.resolve(repoRoot)) {
+      return {
+        repo_root: repoRoot,
+        is_own_repository: false,
+        enclosing_repository: toplevel,
+        worktrees: [],
+        review_ticket_worktrees: [],
+        stale_ticket_worktrees: [],
+        unknown_ticket_worktrees: [],
+        helper_worktrees: [],
+        missing_doing_worktrees: Array.from(ticketsById.values())
+          .filter((row) => row.Repo === repoCode && row.Status.startsWith("doing"))
+          .map((row) => row.ID),
+      };
+    }
+    const controlPlaneWorktreesRoot = path.resolve(coordWorktreesRoot());
     const worktrees = listGitWorktrees(repoRoot);
     const ticketWorktrees = worktrees
       .filter((entry) => entry.path !== repoRoot)
+      // Defence in depth for the donor layout, where coordRepoRoot and a
+      // product repo can be the same repository: control-plane worktrees are
+      // never product-repo state.
+      .filter((entry) => !path.resolve(entry.path).startsWith(`${controlPlaneWorktreesRoot}${path.sep}`))
       .map((entry) => {
         const ticketId = inferTicketIdFromPath(entry.path);
         const row = ticketId ? ticketsById.get(ticketId) : null;
@@ -570,6 +711,8 @@ module.exports = function createWorktreeOps(deps = {}) {
   
     return {
       repo_root: repoRoot,
+      is_own_repository: true,
+      enclosing_repository: toplevel,
       worktrees: ticketWorktrees,
       review_ticket_worktrees: review,
       stale_ticket_worktrees: stale,
@@ -661,11 +804,29 @@ module.exports = function createWorktreeOps(deps = {}) {
     );
   }
   
-  function pushBranchToOrigin(cwd, branch) {
-    const result = gitTry(cwd, ["push", "-u", "origin", branch], { stdio: "inherit" });
-    if (result.status !== 0) {
-      fail(`git push -u origin ${branch} failed in ${cwd}.`);
+  function pushBranchToOrigin(cwd, branch, options = {}) {
+    const commitSha = resolveCommitishInRepo(cwd, branch);
+    if (!commitSha) {
+      fail(`Could not resolve branch ${branch} before publishing it from ${cwd}.`);
     }
+    const receipt = pushControlPlaneIntegrationBranch({
+      repoRoot: cwd,
+      branch,
+      commitSha,
+      remote: "origin",
+      setUpstream: true,
+      gitFn: options.gitFn,
+    });
+    if (typeof options.onReceipt === "function") {
+      options.onReceipt(receipt);
+    }
+    if (receipt.status === PUSH_STATUS.NO_REMOTE) {
+      fail(`Branch ${branch} cannot be published because ${cwd} has no origin remote.`);
+    }
+    if (receipt.status === PUSH_STATUS.FAILED) {
+      fail(`git push origin ${branch}:${branch} did not publish ${commitSha} from ${cwd}: ${receipt.detail || "unknown failure"}.`);
+    }
+    return receipt;
   }
   
   function preflightPrBranch(repoRoot, branch, baseRef, options = {}) {
@@ -680,7 +841,15 @@ module.exports = function createWorktreeOps(deps = {}) {
       fail(`Branch ${branch} has no commits ahead of ${remoteBaseRef}. Push is unnecessary and PR creation would fail.`);
     }
     if (options.push && localAhead && localAhead > 0) {
-      pushBranchToOrigin(options.pushCwd || repoRoot, branch);
+      // COORD-697: all local comparison/argument checks above complete before
+      // this irreversible action. The shared COORD-691 primitive classifies
+      // remote state first, never forces, post-verifies lost acknowledgements,
+      // and returns already_present on retry instead of pushing twice.
+      const pushReceipt = pushBranchToOrigin(options.pushCwd || repoRoot, branch, {
+        gitFn: options.gitFn,
+        onReceipt: options.onPushReceipt,
+      });
+      return { localAhead, pushReceipt };
     }
     if (!gitRemoteBranchExists(repoRoot, branch)) {
       fail(
@@ -700,6 +869,7 @@ module.exports = function createWorktreeOps(deps = {}) {
         `PR creation would fail with "No commits between" / "Head sha can't be blank".`
       );
     }
+    return { localAhead, pushReceipt: null };
   }
   
   function isInsideGitWorkTree(dir) {
@@ -734,8 +904,94 @@ module.exports = function createWorktreeOps(deps = {}) {
     return null;
   }
 
+  // COORD-635: the ONE governed worktree removal. Every caller (successful
+  // closeout, failed-start cleanup, `gov cleanup-worktree`) goes through it, so
+  // the dirty-worktree refusal and the DEREGISTRATION cannot diverge again.
+  //
+  // Two properties this replaces four inconsistent copies of:
+  //   - never discard uncommitted work: a dirty worktree is refused, never
+  //     force-removed. `git worktree remove` (no --force) would also refuse,
+  //     but with a git-dialect message; we check first so the operator is told
+  //     which ticket and what to do.
+  //   - deregister, do not delete: `fs.rmSync` on a registered worktree leaves
+  //     an orphan registration behind, which is exactly the stale-worktree
+  //     residue that had to be repaired by hand. We remove through git, then
+  //     prune, and only fall back to a directory delete for a path git does
+  //     not know about.
+  function removeGovernedWorktree({ repoRoot, worktree, branch, deleteBranch, label }) {
+    const target = path.resolve(worktree);
+    const registered = listGitWorktrees(repoRoot).find((entry) => path.resolve(entry.path) === target);
+    const describe = label || `worktree ${target}`;
+
+    // The dirty-work refusal applies to a real worktree. A path that is not the
+    // TOPLEVEL of its own worktree is plain residue with no git notion of
+    // "dirty" — and asking `git status` there would answer for whatever
+    // repository encloses it, producing a bogus refusal from unrelated state.
+    const toplevelProbe = fs.existsSync(target) ? gitTry(target, ["rev-parse", "--show-toplevel"]) : null;
+    const isOwnWorktree = Boolean(
+      toplevelProbe &&
+      toplevelProbe.status === 0 &&
+      path.resolve(String(toplevelProbe.stdout || "").trim()) === target
+    );
+
+    if (fs.existsSync(target) && isOwnWorktree) {
+      const statusResult = gitTry(target, ["status", "--porcelain"]);
+      if (statusResult.status !== 0) {
+        fail(`Could not verify worktree cleanliness for ${describe} in ${target}.`);
+      }
+      if (significantWorktreeStatusEntries(controlPlaneLayout(), target, statusResult.stdout).length > 0) {
+        fail(
+          `${describe} is dirty at ${target}. Cleanup refuses to discard uncommitted work. ` +
+          `Commit it (coord/scripts/gov commit-ticket <ticket-id> -m "...") or discard it deliberately ` +
+          `(git -C ${target} checkout -- . && git -C ${target} clean -fd), then retry.`
+        );
+      }
+    }
+
+    if (registered) {
+      // Plain `git worktree remove` first — no --force. Git applies its own
+      // modified/untracked check, which is a second, independent refusal.
+      const removeResult = gitTry(repoRoot, ["worktree", "remove", target]);
+      if (removeResult.status !== 0) {
+        // Git also counts the engine's own ephemeral runtime scaffolding as
+        // "modified or untracked". Escalating to --force is permitted ONLY
+        // here, and only because the cleanliness check above has already
+        // established that nothing outside the runtime directory differs — so
+        // there is provably no work to discard. Any other difference reached
+        // the refusal above and never gets here.
+        const stillDirty = fs.existsSync(target)
+          ? significantWorktreeStatusEntries(controlPlaneLayout(), target, gitTry(target, ["status", "--porcelain"]).stdout)
+          : [];
+        if (stillDirty.length > 0) {
+          fail(
+            `${describe} could not be removed from ${repoRoot}: ` +
+            `${String(removeResult.stderr || "").trim() || "git worktree remove failed"}`
+          );
+        }
+        runGit(repoRoot, ["worktree", "remove", "--force", target]);
+      }
+    } else if (fs.existsSync(target)) {
+      // Unregistered residue: a plain directory git never knew about.
+      fs.rmSync(target, { recursive: true, force: true });
+    }
+    // Prune any registration whose directory is already gone, so a previously
+    // hand-deleted worktree does not keep haunting `git worktree list`.
+    runGit(repoRoot, ["worktree", "prune"]);
+
+    const resolvedBranch = branch || registered?.branch || null;
+    if (deleteBranch && resolvedBranch) {
+      const branchExists = gitTry(repoRoot, ["rev-parse", "--verify", resolvedBranch], { stdio: "ignore" }).status === 0;
+      if (branchExists) {
+        runGit(repoRoot, ["branch", "-D", resolvedBranch]);
+      }
+    }
+    return { worktree: target, branch: resolvedBranch, deregistered: Boolean(registered) };
+  }
+
   function cleanupTicketWorktree(ticketId, row, options = {}) {
-    if (!isRepoBackedCode(row.Repo)) {
+    // COORD-635 defect (4): the old blanket `!isRepoBackedCode -> return null`
+    // meant successful closeout of a control-plane ticket cleaned nothing.
+    if (!isRepoBackedCode(row.Repo) && row.Repo !== "X") {
       return null;
     }
 
@@ -743,33 +999,45 @@ module.exports = function createWorktreeOps(deps = {}) {
     if (!context.worktree || !fs.existsSync(context.worktree) || context.worktree === context.repoRoot) {
       return null;
     }
-
-    const statusResult = gitTry(context.worktree, ["status", "--porcelain"]);
-    if (statusResult.status !== 0) {
-      fail(`Could not verify worktree cleanliness for ${ticketId} in ${context.worktree}.`);
-    }
-    if (String(statusResult.stdout || "").trim()) {
-      fail(`Ticket ${ticketId} worktree ${context.worktree} is dirty. Clean or commit it before closeout; done now requires worktree removal.`);
+    const repoRoot = context.repoRoot
+      || (row.Repo === "X" ? coordRepoRoot(`closeout cleanup for control-plane ticket ${ticketId}`) : null);
+    if (!repoRoot) {
+      return null;
     }
 
-    runGit(context.repoRoot, ["worktree", "remove", context.worktree]);
-    if (options.deleteBranch && context.branch) {
-      runGit(context.repoRoot, ["branch", "-D", context.branch]);
+    const removed = removeGovernedWorktree({
+      repoRoot,
+      worktree: context.worktree,
+      branch: context.branch,
+      deleteBranch: options.deleteBranch,
+      label: `Ticket ${ticketId} worktree`,
+    });
+    if (row.Repo === "X") {
+      pruneEmptyParents(removed.worktree, coordWorktreesRoot());
     }
     return {
-      worktree: context.worktree,
-      branch: context.branch || null,
+      worktree: removed.worktree,
+      branch: removed.branch,
     };
   }
 
   function cleanupCoordTicketWorktrees(ticketId) {
+    const repoRoot = coordRepoRoot(`closeout cleanup for control-plane ticket ${ticketId}`);
     const worktrees = auditCoordWorktrees(new Map([[ticketId, { ID: ticketId, Status: STATUS.SUPERSEDED, Repo: "X" }]])).worktrees
       .filter((entry) => entry.ticket === ticketId);
     if (worktrees.length === 0) {
       return null;
     }
+    const registered = listGitWorktrees(repoRoot);
     for (const entry of worktrees) {
-      fs.rmSync(entry.path, { recursive: true, force: true });
+      const match = registered.find((wt) => path.resolve(wt.path) === path.resolve(entry.path));
+      removeGovernedWorktree({
+        repoRoot,
+        worktree: entry.path,
+        branch: match?.branch || null,
+        deleteBranch: false,
+        label: `Ticket ${ticketId} control-plane worktree`,
+      });
       pruneEmptyParents(entry.path, coordWorktreesRoot());
     }
     return {
@@ -782,7 +1050,14 @@ module.exports = function createWorktreeOps(deps = {}) {
       return cleanupTicketWorktree(ticketId, row, options);
     }
     if (row.Repo === "X") {
-      return cleanupCoordTicketWorktrees(ticketId);
+      // Prefer the lock/context-resolved worktree, then sweep any remaining
+      // registered residue for the same ticket.
+      const viaContext = cleanupTicketWorktree(ticketId, row, options);
+      const viaAudit = cleanupCoordTicketWorktrees(ticketId);
+      if (viaAudit) {
+        return viaAudit;
+      }
+      return viaContext;
     }
     return null;
   }
@@ -795,6 +1070,9 @@ module.exports = function createWorktreeOps(deps = {}) {
     gitRemoteBranchExists, countCommitsAhead, assertCommitAheadCount, pushBranchToOrigin,
     preflightPrBranch, isInsideGitWorkTree, runGit, gitOutput, defaultWorktreePath,
     coordWorktreesRoot, pruneEmptyParents, formatMissingStartBaseRefMessage,
+    removeGovernedWorktree, isControlPlaneRepoArg, coordRepoRoot, coordIntegrationBranch,
+    ensureGovernedWorkspaceForTicket,
+    controlPlaneLayout,
     buildDependencyBootstrapGuidance, repoBootstrapLabel, inferTicketIdFromPath,
     cleanupTicketWorktree, cleanupCoordTicketWorktrees, cleanupClosedTicketWorkspace,
     ensureCoordWorktreeRuntime,

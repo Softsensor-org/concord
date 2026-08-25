@@ -2,8 +2,9 @@
 
 This is a guided tour of the **Concord cockpit** running against a bundled demo
 board: a healthy multi-agent project mid-flight, where five AI agents (Claude,
-Codex, and Gemini) coordinate across a backend and a frontend repo **without
-colliding** — and every move is on a tamper-evident audit trail.
+Codex, and Gemini) coordinate across a backend and a frontend repo through
+**one owner per in-flight ticket** — and every governed lifecycle transition is
+on a hash-chained journal.
 
 Nothing here touches your own repos. The demo runs entirely against a read-only
 fixture under `examples/demo/coord`.
@@ -29,13 +30,16 @@ access automatically — no login.
 
 Visit the views in this order.
 
-### 1. Board — a fleet coordinating, no collisions
+### 1. Board — a fleet coordinating, one owner per ticket
 Open **`/`** (the board). You'll see ~14 tickets spread across **todo → doing →
 review → done**, each owned by a distinct agent (`claudea11/12/13`, `codexa01/02`,
 `geminia21`). Notice that every *in-flight* ticket has exactly one owner: no two
 agents are on the same ticket, and no work is sitting half-finished with nobody's
-name on it. That is the whole point — a shared board the fleet can pull from
-without stepping on each other.
+name on it. That is the point of the board: a shared queue the fleet pulls from,
+where ownership of governed work is explicit instead of assumed. It is a
+coordination surface, not an access control — an agent that edits files outside
+its ticket can still create a conflict, which the journal and the gates are there
+to surface.
 
 ### 2. Dispatch & Runtime — active lanes and live ownership
 Open **`/dispatch`**. This is the scheduler's view: which queued tickets are ready
@@ -44,17 +48,23 @@ precheck already shows them satisfied.
 
 Open **`/runtime`**. Here you can see the live ownership locks for the tickets
 currently in `doing` (account lockout, the audit-log viewer, invoice generation),
-the active session presence, and gate-run health. Locks are how Concord guarantees
-one-owner-per-ticket: the lane is held until the agent finalizes or releases.
+the active session presence, and gate-run health. Locks are how Concord enforces
+one-owner-per-ticket for lifecycle verbs: the lane is held until the agent
+finalizes or releases, and a second session's `gov` mutation on the same ticket
+is refused. Work done outside `gov` is not covered by the lock.
 
 ### 3. Timeline — the audit journal
 Open **`/timeline`**. This is the heart of governance: an append-only,
-hash-chained journal of every lifecycle event — `start`, `commit`, `submit`,
-`open-finding`, `resolve-finding`, `land`, `heartbeat` — stamped with the agent,
-the ticket, and the time. Scroll it and filter by command or owner. This is the
-honest answer to *"which agent changed this, and when?"*
+hash-chained journal of the supported Concord lifecycle operations — `start`,
+`commit`, `submit`, `open-finding`, `resolve-finding`, `land`, `heartbeat` —
+stamped with the agent, the ticket, and the time. Scroll it and filter by command
+or owner. This answers *"which agent took which governed step, and when?"*
 
-### 4. Evidence & Gates — signed proofs
+It is deliberately not a record of everything an agent did: provider tool calls,
+ad-hoc shell commands, file reads and network requests happen outside `gov` and
+do not appear here.
+
+### 4. Evidence & Gates — recorded proofs
 Open **`/evidence`**. For each landed ticket you get a dossier: the requirement
 closure, the feature-proof anchors, the recorded repo-gate results, and the
 self-review cycles the agent ran before submitting. Open **`/gates`** to see the

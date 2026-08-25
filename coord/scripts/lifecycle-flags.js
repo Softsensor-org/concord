@@ -7,6 +7,7 @@
 // lifecycle-module coupling.
 
 const { defaultFail } = require("./governance-context.js");
+const { buildInvalidStatusMessage } = require("./governance-constants.js");
 
 // COORD-094: parseLifecycleFlags was a ~650-line / ~130-case switch identical
 // in structure to cli.js's parseFlags — the largest single duplication cluster
@@ -43,6 +44,9 @@ const LIFECYCLE_VALUE_FLAGS = Object.freeze({
   "--traceability": "traceability", "--closeout-method": "closeoutMethod",
   "--closeout-base-ref": "closeoutBaseRef", "--provenance-note": "provenanceNote",
   "--review-profile": "reviewProfile", "--context-pack-ack": "contextPackAck",
+  // COORD-572: parity with cli.js for the JSON-object plan fields whose writer
+  // was previously unreachable from any flag token.
+  "--bootstrap-risk": "bootstrapRisk", "--decision-required": "decisionRequired",
   "--source-commit": "sourceCommit",
   "--fulfilled-by-ticket": "fulfilledByTicket",
   "--fulfilled-by-commit": "fulfilledByCommit", "--prompt": "prompt",
@@ -65,6 +69,8 @@ const LIFECYCLE_APPEND_FLAGS = Object.freeze({
 const LIFECYCLE_BOOL_FLAGS = Object.freeze({
   "--assign": "assign", "--no-pr": "noPr", "--not-required": "notRequired",
   "--already-landed": "alreadyLanded", "--delete-branch": "deleteBranch",
+  // COORD-667: parity with cli.js — Repo-X closeout's in-process workspace merge.
+  "--merge-workspace": "mergeWorkspace",
   "--draft": "draft", "--closeout-blocker": "closeoutBlocker", "--fill": "fill",
   "--push": "push", "--autofill-startup": "autofillStartup", "--seed": "seed",
   "--all": "all", "--admin": "admin", "--handoff": "handoff",
@@ -88,7 +94,7 @@ module.exports = function createLifecycleFlags(deps = {}) {
     "--status": (parsed, arg, next) => {
       requireValue(arg, next);
       if (!isLegalStatus(next) && !LEGAL_FINDING_STATUSES.has(next)) {
-        fail(`Invalid status "${next}".`);
+        fail(buildInvalidStatusMessage(next, LEGAL_FINDING_STATUSES));
       }
       parsed.status = next;
       return true;
@@ -103,13 +109,13 @@ module.exports = function createLifecycleFlags(deps = {}) {
     "--note": (parsed, arg, next) => { requireValue(arg, next); parsed.note = next; return true; },
     "--result": (parsed, arg, next) => {
       requireValue(arg, next);
-      if (next !== "pass" && next !== "fail") fail(`--result must be "pass" or "fail".`);
+      if (next !== "pass" && next !== "fail") fail(`--result must be one of: pass | fail.`);
       parsed.gateResult = next;
       return true;
     },
     "--base-result": (parsed, arg, next) => {
       requireValue(arg, next);
-      if (next !== "pass" && next !== "fail") fail(`--base-result must be "pass" or "fail".`);
+      if (next !== "pass" && next !== "fail") fail(`--base-result must be one of: pass | fail.`);
       parsed.gateBaseResult = next;
       return true;
     },

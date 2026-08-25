@@ -25,8 +25,85 @@
 // owner-lease, two-thread isolation) deliberately stay with governance-session.
 
 const path = require("path");
+const { assertFactoryDependencies } = require("./factory-deps.js");
+// COORD-680 round 5: GovernanceError is IMPORTED, never injected. It was a
+// classified "callable" dependency, but `typeof === "function"` does not mean
+// usable as an `instanceof` right-hand side: an arrow function passes that
+// check and has `prototype === undefined`, so construction succeeded and the
+// instanceof site then threw
+//   TypeError: Function has non-object prototype 'undefined' in instanceof check
+// Tightening the classification to "constructor" would work, but removing the
+// INJECTION POINT removes the whole class -- there is no wiring left to get
+// wrong. (The test had also masked this by filling every callable with arrow
+// noops.)
+const { GovernanceError } = require("./governance-context.js");
+
+// COORD-680: a required helper that is omitted from the deps object (or passed
+// as a bare shorthand that resolved to `undefined`) used to survive wiring and
+// only explode later, at the call site of whichever verb reached it first --
+// `gov resume` threw `TypeError: ensureGovernedWorkspaceForTicket is not a
+// function` AFTER it had already rebound the ticket lock. Validate at
+// construction instead, so a wiring defect can never present as a partially
+// applied governed mutation.
+const REQUIRED_AGENT_COMMAND_DEPS = {
+  callable: [
+    "fail",
+    "withGovernanceMutation",
+    "withAgentStateLock",
+    "withCoordStateLock",
+    "appendGovernanceEvent",
+    "readBoard",
+    "writeBoard",
+    "getTicketRef",
+    "inferTicketStatus",
+    "runBoardSync",
+    "findLockForTicket",
+    "ensureGovernedWorkspaceForTicket",
+    "getLockFiles",
+    "rebindTicketLock",
+    "detectActiveSameOwnerOtherThread",
+    "buildActiveSameOwnerOtherThreadMessage",
+    "detectColocatedForeignSessions",
+    "buildColocatedForeignSessionMessage",
+    "recordGovernanceCollision",
+    "normalizeLockIdentityReferences",
+    "readAgentsRegistry",
+    "readAgentSessions",
+    "writeAgentRegistryFile",
+    "writeJsonFile",
+    "resolveAgentIdentifier",
+    "allocateAgentSimpleId",
+    "buildDefaultAgentHandle",
+    "buildSessionId",
+    "ensureCurrentAgentIdentity",
+    "canonicalizeOwnerOrFail",
+    "detectRuntimeProvider",
+    "providerConfig",
+    "assertRuntimeProviderMatchesAgent",
+    "runtimeHasStableSessionIdentity",
+    "findActiveProviderSessions",
+    "defaultHostLabel",
+    "currentRuntimeThreadId",
+    "resolveEffectiveThreadId",
+    "resolveOrCreateEffectiveThreadId",
+    "summarizeBusyActiveAgents",
+    "listIdleActiveAgentSessions",
+    "buildReleaseCandidates",
+    "safeReadJson",
+    "parseLifecycleFlags",
+  ],
+  value: [
+    "state",
+    "COORD_DIR",
+    "identityV2",
+    "PROVIDER_REGISTRY",
+    "STATUS",
+  ],
+};
+
 
 module.exports = function createAgentCommands(deps = {}) {
+  assertFactoryDependencies("createAgentCommands", deps, REQUIRED_AGENT_COMMAND_DEPS);
   const {
     // process/runtime constants + objects
     fail,
@@ -34,7 +111,6 @@ module.exports = function createAgentCommands(deps = {}) {
     COORD_DIR,
     identityV2,
     PROVIDER_REGISTRY,
-    GovernanceError,
     STATUS,
     // mutation + lock wrappers
     withGovernanceMutation,
@@ -50,6 +126,7 @@ module.exports = function createAgentCommands(deps = {}) {
     runBoardSync,
     // lock helpers (defined later in lifecycle; injected deferred)
     findLockForTicket,
+    ensureGovernedWorkspaceForTicket,
     getLockFiles,
     rebindTicketLock,
     detectActiveSameOwnerOtherThread,
@@ -306,9 +383,81 @@ module.exports = function createAgentCommands(deps = {}) {
       );
     }
   
-    return claimTicket(ticketId, {
-      ...options,
-      force: true,
+    // COORD-680: resume must have ONE commit boundary across BOTH steps.
+    //
+    // The rebind (`claimTicket`) and the workspace post-condition
+    // (`ensureGovernedWorkspaceForTicket`) were separate transactions, so a
+    // workspace failure could only be COMPENSATED: the rebind was already
+    // journalled successful, and rewriting the lock bytes afterwards left the
+    // journal asserting a rebind the filesystem no longer showed -- trading a
+    // partial mutation for governance drift.
+    //
+    // TWO ORDERINGS WERE TRIED. Hoisting the workspace check ABOVE the claim
+    // (so nothing is mutated when it fails) is REFUTED: the same-owner
+    // other-thread ownership guard lives INSIDE `claimTicket`, so hoisting
+    // inverts guard precedence -- a resume that must fail closed on a fresh
+    // same-owner lock instead performs workspace reconstruction first and
+    // throws a workspace error. See the regression at
+    // `agent-commands.test.js` ("resume must refuse to displace a fresh
+    // same-owner other-thread lock"), which fails with a GovernanceError from
+    // `ensureGovernedWorkspaceForTicket` instead of
+    // `active_same_owner_other_thread`. Ownership refusal must precede any
+    // workspace side effect.
+    //
+    // So the ORDER is unchanged -- claim first, guards first -- and the
+    // TRANSACTION BOUNDARY moves outward instead. `withGovernanceMutation` is
+    // re-entrant: a nested call joins the active context by depth rather than
+    // opening its own (journal.js), so `claimTicket`'s inner mutation becomes
+    // part of THIS one and no longer commits independently.
+    //
+    // That yields real atomicity from existing machinery rather than
+    // compensation. On any throw, `withGovernanceMutation` restores its
+    // captured restore point -- which covers the lock files
+    // (`existingLockDirs()`, `*.lock`), the board, the agent + session
+    // registries, plan records and rendered views -- and raises a rollback
+    // failure as a typed compound GovernanceError instead of swallowing it. No
+    // hand-rolled lock snapshot is needed or wanted.
+    //
+    // On the journal: a clean rollback writes NO event at all -- not a failure
+    // event. `withGovernanceMutation` appends `result: "failed"` ONLY when the
+    // rolled-back mutation had already produced EXTERNAL side effects that
+    // rollback cannot undo. With governed state fully restored and nothing
+    // external done, the transaction did not happen, so there is nothing to
+    // record. That is the observable difference from the compensating model
+    // this replaced: compensation left a SUCCESSFUL rebind event plus a
+    // correction; atomicity leaves nothing.
+    //
+    // COORD-635 still holds: resume never returns while the isolation
+    // post-condition is unmet.
+    const mutation = {
+      command: "resume",
+      ticket: ticketId,
+      beforeStatus: inferTicketStatus(ticketId),
+      // Resume is a recovery/handoff path, exactly like the `claim-ticket`
+      // mutation it now encloses -- which has always carried this intent. Now
+      // that the OUTER mutation owns the commit boundary, it is the one the
+      // COORD-273 journal-lost seal evaluates, so the recovery intent must be
+      // declared here or resume would refuse on precisely the stale-journal
+      // state it exists to repair.
+      allowProvenanceDrift: true,
+    };
+    return withGovernanceMutation(mutation, () => {
+      const claimed = claimTicket(ticketId, {
+        ...options,
+        force: true,
+      });
+
+      const lock = findLockForTicket(ticketId);
+      if (lock && lock.worktree) {
+        ensureGovernedWorkspaceForTicket({
+          ticketId,
+          row: ref.row,
+          worktree: lock.worktree,
+          branch: lock.branch,
+          stage: "resume",
+        });
+      }
+      return claimed;
     });
   }
   
@@ -437,7 +586,14 @@ module.exports = function createAgentCommands(deps = {}) {
           fail(
             `Ticket ${ticketId} is owned by ${previousOwner}. ` +
             `Current session is ${identity.agent.handle} (${identity.agent.id}) and cannot resume or claim it. ` +
-            "Use an explicit human-admin transfer path if this is an intentional takeover."
+            // COORD-572 (instance 3): this refusal used to say "use an explicit
+            // human-admin transfer path" and NAME NOTHING, while resolving that
+            // very path from --transfer-to twenty lines above. An unnamed
+            // mechanism reads as a missing mechanism, which is how the same
+            // class of gap produced four other wrongly-filed tickets. Name it.
+            "If this is an intentional takeover, the explicit human-admin transfer path is: " +
+            `coord/scripts/gov claim ${ticketId} --transfer-to ${identity.agent.handle} ` +
+            '--human-admin-override "<why the transfer is authorized>"'
           );
         }
         payload = claimPayloadFromCurrentIdentity(identity);
@@ -501,12 +657,22 @@ module.exports = function createAgentCommands(deps = {}) {
           nextRef.row.Owner = payload.canonical_owner;
           writeBoard(nextBoard);
           if (lock) {
-            reboundLock = rebindTicketLock(lock, payload.agent, payload.session);
+            // COORD-663: record the transfer on the lock so the preserved
+            // worktree/branch namespace is ATTESTED rather than merely
+            // tolerated for the duration of this one mutation.
+            reboundLock = rebindTicketLock(lock, payload.agent, payload.session, {
+              transfer: {
+                from: previousOwner,
+                reason: override?.reason || null,
+                previousSessionId,
+              },
+            });
           }
-          runBoardSync({
-            ignoreActiveTicketLockErrors: true,
-            skipCanonicalLockLocationForTicket: ticketId,
-          });
+          // COORD-663: no longer suppresses the canonical-location checks. The
+          // transferred lock is now VALID under them, because they resolve the
+          // namespace from workspace_owner. Suppressing them here is what let
+          // the wedge ship: the mutation passed and every later one failed.
+          runBoardSync({ ignoreActiveTicketLockErrors: true });
         }
       }
   
@@ -995,3 +1161,5 @@ module.exports = function createAgentCommands(deps = {}) {
     buildAgentStatusPayload,
   };
 };
+
+module.exports.DEP_CONTRACT = REQUIRED_AGENT_COMMAND_DEPS;

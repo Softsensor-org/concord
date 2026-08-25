@@ -39,23 +39,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo \"$TOOL_INPUT\" | grep -q 'gov commit' && coord/scripts/gov heartbeat $(echo \"$TOOL_INPUT\" | grep -oP '[A-Z]+-\\d+' | head -1) 2>/dev/null || true",
-            "description": "Auto-sync lock HEAD after every gov commit"
-          },
-          {
-            "type": "command",
-            "command": "echo \"$TOOL_INPUT\" | grep -qE 'gov start|coord/scripts/agent do' && WT=$(echo \"$TOOL_OUTPUT\" | grep -oP 'worktree=\\K[^ ]+' 2>/dev/null | head -1) && [ -z \"$WT\" ] && WT=$(echo \"$TOOL_OUTPUT\" | grep -oP '\"worktree\":\\s*\"\\K[^\"]+' 2>/dev/null | head -1) || true; [ -n \"${WT:-}\" ] && cd \"$WT\" 2>/dev/null && git fetch origin dev && git rebase origin/dev 2>/dev/null || true",
-            "description": "Auto-rebase governed worktree after gov start or agent do"
-          },
-          {
-            "type": "command",
-            "command": "echo \"$TOOL_INPUT\" | grep -qE 'gov land|coord/scripts/agent land' && echo \"$TOOL_OUTPUT\" | grep -q '\"status\": \"merged\"' && node -e \"const fs=require('fs'); const m=fs.existsSync('coord/TEST_MATURITY.md')?fs.readFileSync('coord/TEST_MATURITY.md','utf8'):''; const last=m.match(/Last updated: (.*)/); if(!last||last[1]==='not yet run'){console.log('ADVISORY: Test maturity has never been audited. Consider running /test-strategy after this epic.')}else{const d=new Date(last[1]); const age=Math.floor((Date.now()-d.getTime())/86400000); if(age>7)console.log('ADVISORY: Test maturity last audited '+age+' days ago. Consider running /test-strategy.')}\" 2>/dev/null || true",
-            "description": "Advise test-strategy run after governed landing if maturity is stale"
-          },
-          {
-            "type": "command",
-            "command": "( echo \"$TOOL_INPUT\" | grep -qE 'gov land|coord/scripts/agent land' || exit 0; echo \"$TOOL_OUTPUT\" | grep -q '\"status\": \"merged\"' || exit 0; TICKET=$(echo \"$TOOL_INPUT\" | grep -oP '[A-Z]+-\\d+' | head -1); [ -n \"$TICKET\" ] || exit 0; REPO_ROOT=$(node -e \"const p=require('./coord/paths.js').createCoordPaths(); const t=JSON.parse(require('fs').readFileSync(p.boardPath,'utf8')); const rows=t.sections.flatMap(s=>s.rows||[]); const r=rows.find(r=>r.ID==='$TICKET'); if(r&&r.Repo!=='X'){const root=p.repoRoots[r.Repo]; if(root)console.log(root)}\" 2>/dev/null); [ -n \"$REPO_ROOT\" ] || exit 0; git -C \"$REPO_ROOT\" diff origin/dev~1..origin/dev --name-only 2>/dev/null | grep -qE '\\.test\\.' && exit 0; echo \"ADVISORY: Last landed ticket ($TICKET) diff has no test files. Consider checking /test-strategy $TICKET for coverage gaps.\" ) 2>/dev/null || true",
-            "description": "Advise when a landed ticket has no test files in its diff"
+            "command": "node coord/scripts/hooks/post-bash.js || echo \"ADVISORY skipped (post-bash): helper exited nonzero; see coord/scripts/hooks/post-bash.js\"",
+            "description": "Advisory (COORD-476): heartbeat after gov commit + post-land test-strategy advisories. Parsing lives in the tested portable helper (no GNU-only grep flags, no Bash 4 features); integration branches resolve from coord/project.config.js; skips are printed, never blocking. gov start's own base selection makes a post-start rebase hook redundant, so none exists."
           }
         ]
       },
@@ -64,8 +49,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node coord/scripts/gov code-index --git 2>/dev/null || true",
-            "description": "Auto-refresh code symbol index after every file edit (git-mode: only changed files, <100ms)"
+            "command": "node coord/scripts/governance.js code-index --git 2>/dev/null || echo \"ADVISORY skipped (code-index): governance.js code-index --git exited nonzero\"",
+            "description": "Advisory: auto-refresh code symbol index after every file edit (git-mode: only changed files, <100ms). Invokes governance.js directly — coord/scripts/gov is a Bash shim and must not be run through node."
           }
         ]
       },
@@ -74,8 +59,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node coord/scripts/gov code-index --git 2>/dev/null || true",
-            "description": "Auto-refresh code symbol index after every file write (git-mode: only changed files, <100ms)"
+            "command": "node coord/scripts/governance.js code-index --git 2>/dev/null || echo \"ADVISORY skipped (code-index): governance.js code-index --git exited nonzero\"",
+            "description": "Advisory: auto-refresh code symbol index after every file write (git-mode: only changed files, <100ms). Invokes governance.js directly — coord/scripts/gov is a Bash shim and must not be run through node."
           }
         ]
       }
@@ -86,13 +71,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo \"$TOOL_INPUT\" | grep -qE 'git (merge|cherry-pick|push).*dev' && echo 'BLOCKED: Never merge to dev manually. Use gov land or gov finalize.' && exit 1 || true",
-            "description": "Block direct merges to dev — must use governed landing"
+            "command": "node coord/scripts/hooks/pre-bash-guard.js",
+            "description": "REQUIRED safety hook (COORD-476): blocks manual git merge/cherry-pick/push of the CONFIGURED integration branches (coord/project.config.js integrationBranch per repo + the coord workspace base) — not a hardcoded literal. Fail-closed: helper crash or unresolvable config is a nonzero exit, which blocks."
           },
           {
             "type": "command",
-            "command": "printf '%s' \"$TOOL_INPUT\" | node coord/scripts/runtime-authority-hook.js",
-            "description": "Deny permanent deletion, destructive Git, and writes outside the active ticket worktree"
+            "command": "node coord/scripts/runtime-authority-hook.js",
+            "description": "Runtime authority barrier for shell (COORD-645, WIRING REPAIRED COORD-663). WIRING: bare `node …`, so the harness's own PreToolUse envelope reaches fd 0 UNCHANGED. It must stay that way. The shipped wiring was `printf '%s' \"$TOOL_INPUT\" | node …`; TOOL_INPUT is unset in this harness, so the pipe REPLACED the real envelope with an empty string, `decide()` saw no command and no write target, and the barrier returned allow(\"no_write_target\") on EVERY call — inert for its whole life while reading like a check that passed (COORD-480). Never reintroduce a `printf`/`echo`/`cat`/`$TOOL_INPUT` prefix or any other stdin producer: reconstructing the payload from the environment is how this control was severed. PAYLOAD ABSENCE IS A REFUSAL, NOT A PERMIT (COORD-663, the COORD-635/642/656/626/660 class): with a lock active and no payload obtainable, the hook exits 2 with `payload_unavailable` rather than waving the call through. ENFORCED while ANY governed lock is active: denies permanent deletion and destructive Git; denies any shell command that names a CANONICAL governance path as a write target (redirect / tee / sed -i), parsed with a quote-aware lexer so neither `> \"quoted/path\"` nor a `>` inside an argument is misread. NO command is exempt — including coord/scripts/gov: gov performs its canonical mutations in-process, transactionally, under lock and journaled, and never by shell redirect, so scanning it costs nothing, while an exemption keyed on a gov invocation appearing somewhere in a compound command was itself a bypass (COORD-645-F1). With NO active lock the barrier deliberately does not engage (bootstrap/adoption/read-only stay unblocked). NOT ENFORCED: writes made INSIDE a program the shell launches (a script, `node -e`, an editor) are invisible to a PreToolUse hook — only the command text is inspected."
           }
         ]
       },
@@ -101,8 +86,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "printf '%s' \"$TOOL_INPUT\" | node coord/scripts/runtime-authority-hook.js",
-            "description": "Enforce the active ticket's immutable filesystem authority"
+            "command": "node coord/scripts/runtime-authority-hook.js",
+            "description": "Runtime authority barrier for file writes (COORD-645, WIRING REPAIRED COORD-663). WIRING: bare `node …`, so the harness's own PreToolUse envelope reaches fd 0 UNCHANGED — no `printf`, no `echo`, no `$TOOL_INPUT` reconstruction, ever (see the Bash matcher above for the full account of how that prefix made this barrier inert). PAYLOAD ABSENCE IS A REFUSAL, NOT A PERMIT (COORD-663): with a lock active and no payload obtainable the hook exits 2 with `payload_unavailable`. WHAT IS ENFORCED, while ANY governed lock is active: (1) every Write/Edit/MultiEdit/apply_patch that lands in the CANONICAL tree is refused — uncommitted canonical changes get swept into whatever the lock holder commits next, which is the 2026-08-04 false-authorship incident — with symlinks, `..` traversal and case aliases resolved before classifying, and WITHOUT consulting actor identity, so an unresolvable or forged actor gains nothing; (2) an actor the trusted owner-lease registry POSITIVELY DISOWNS is refused inside a ticket worktree too; (3) worktree confinement is preserved — a session acting inside one worktree may not write outside it. TRUST MODEL: every GRANT derives from trusted runtime state (the lock/identity files only gov writes, under lock and journaled) and from the filesystem read through realpath. The tool payload and the process environment are actor-controlled — the agent exports its own COORD_SESSION_ID/COORD_PROVIDER — so self-asserted identity may only ADD refusals and can never widen authority. With NO active lock the barrier does not engage. NOT ENFORCED — IN-WORKTREE OWNERSHIP (COORD-645-F2; accepted limitation by human-admin scope decision, tracked by COORD-648): a write INSIDE an active ticket worktree by an actor whose identity cannot be resolved is PERMITTED. Treat this as an unenforced surface, never as a check that passed. A PreToolUse hook has no trustworthy authentication channel — the harness gives every sub-agent of a conversation the same session id, hides the per-sub-agent COORD_SESSION_ID override from hooks, and every other visible signal is shared or actor-settable — so there is nothing to enforce with, and denying would deny the legitimate owner's own work."
           }
         ]
       }

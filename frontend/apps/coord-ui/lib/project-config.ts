@@ -1,7 +1,14 @@
 import 'server-only';
 import path from 'node:path';
 import fs from 'node:fs';
-import { COORD_DIR, PROJECT_ROOT, isPathWithinWorkspace, sanitizeProjectConfig } from './coord-paths';
+import {
+  COORD_DIR,
+  PROJECT_ROOT,
+  WORKSPACE_ROOT,
+  resolveRepoScope,
+  sanitizeProjectConfig,
+  type RepoScopeStatus
+} from './coord-paths';
 import { requireExternal, uncacheExternal } from './external-require';
 
 /**
@@ -23,10 +30,13 @@ import { requireExternal, uncacheExternal } from './external-require';
  *   2. The fields coord-ui actually consumes are VALIDATED to a known shape
  *      after load (sanitizeConfig) — a malformed/unexpected config degrades to
  *      empty rather than propagating untyped values into the UI.
- *   3. Every resolved repo `dir` is CONFINED to PROJECT_ROOT (or an explicit
- *      allowlist) via the SEC-002 path boundary, so even a trusted-but-wrong
- *      config edit cannot point the git/dirty-repo views at files outside the
- *      workspace.
+ *   3. Every resolved repo `dir` is CONFINED by the SEC-002 repo boundary to the
+ *      explicitly CONFIGURED repository roots — canonicalized through realpath,
+ *      bounded by the coord workspace, and opt-in-extendable only via an
+ *      explicit operator allowlist — so even a trusted-but-wrong config edit
+ *      cannot point the git/dirty-repo views at arbitrary paths. A repo that
+ *      fails that test is REPORTED as unavailable/out-of-scope (COORD-543); it
+ *      is never silently replaced with a different tree.
  *   4. This module performs NO writes and NO process spawning — load is a pure
  *      read + validate.
  */
@@ -37,9 +47,20 @@ import { requireExternal, uncacheExternal } from './external-require';
 export interface RepoModel {
   code: string; // single-letter repo code (e.g. "B", "F"); "X" for coord
   path: string; // path relative to the project root
-  dir: string; // absolute path on disk
+  /**
+   * Absolute, realpath-canonicalized directory to inspect — or `null` when the
+   * repo is unavailable/out-of-scope. COORD-543: `null` is load-bearing. Callers
+   * MUST branch on it and surface the status; there is deliberately no fallback
+   * directory, because substituting one is what made the cockpit report
+   * confident numbers about a tree it was not looking at.
+   */
+  dir: string | null;
   name: string; // display name (directory basename)
   integrationBranch: string;
+  /** 'ok' | 'unavailable' | 'out-of-scope' (COORD-543). */
+  status: RepoScopeStatus;
+  /** Operator-facing explanation when `status !== 'ok'`. */
+  statusReason: string | null;
 }
 
 interface RawRepoConfig {
@@ -71,39 +92,40 @@ function loadRawConfig(): RawProjectConfig {
   }
 }
 
-function resolveRepoDir(relOrAbs: string): string {
-  return path.isAbsolute(relOrAbs) ? relOrAbs : path.resolve(PROJECT_ROOT, relOrAbs);
-}
-
-/**
- * SEC-002 — confine a resolved repo dir to the workspace. A trusted-but-wrong
- * config edit pointing a repo outside PROJECT_ROOT (and not allowlisted) is
- * clamped back to PROJECT_ROOT so the git / dirty-repo views cannot be aimed at
- * files outside the workspace. Read-only: no fs side effects.
- */
-function confineRepoDir(dir: string): string {
-  return isPathWithinWorkspace(dir) ? dir : PROJECT_ROOT;
-}
+// Re-export the workspace bound for diagnostics/config views (COORD-543).
+export { WORKSPACE_ROOT };
 
 // Product repos declared in project.config.js. "X" is reserved for cross-repo /
 // coord-only work and is excluded here.
+//
+// COORD-543: each declared repo is resolved through the shared SEC-002 repo
+// boundary (allowlist of the configured roots, realpath-canonicalized, bounded
+// by the coord workspace). A repo that cannot be resolved comes back with
+// `dir: null` and an explicit status — NEVER clamped to PROJECT_ROOT.
 export function productRepos(): RepoModel[] {
   const repos = loadRawConfig().repos ?? {};
-  return Object.entries(repos)
-    .filter(([code]) => code.toUpperCase() !== 'X')
-    .map(([code, cfg]) => {
-      const relPath = typeof cfg?.path === 'string' && cfg.path ? cfg.path : code;
-      return {
-        code,
-        path: relPath,
-        dir: confineRepoDir(resolveRepoDir(relPath)),
-        name: path.basename(relPath),
-        integrationBranch:
-          typeof cfg?.integrationBranch === 'string' && cfg.integrationBranch
-            ? cfg.integrationBranch
-            : DEFAULT_INTEGRATION_BRANCH
-      };
-    });
+  const productOnly: Record<string, RawRepoConfig> = {};
+  for (const [code, cfg] of Object.entries(repos)) {
+    if (code.toUpperCase() === 'X') continue;
+    productOnly[code] = cfg ?? {};
+  }
+
+  const scope = resolveRepoScope(productOnly);
+  return scope.entries.map((entry) => {
+    const cfg = productOnly[entry.code] ?? {};
+    return {
+      code: entry.code,
+      path: entry.declaredPath,
+      dir: entry.dir,
+      name: path.basename(entry.declaredPath),
+      integrationBranch:
+        typeof cfg?.integrationBranch === 'string' && cfg.integrationBranch
+          ? cfg.integrationBranch
+          : DEFAULT_INTEGRATION_BRANCH,
+      status: entry.status,
+      statusReason: entry.status === 'ok' ? null : entry.reason
+    };
+  });
 }
 
 // The coord governance repo is not listed in `repos` (X is reserved) but is a
@@ -115,8 +137,19 @@ export function coordRepo(): RepoModel {
     path: rel,
     dir: COORD_DIR,
     name: path.basename(COORD_DIR),
-    integrationBranch: DEFAULT_INTEGRATION_BRANCH
+    integrationBranch: DEFAULT_INTEGRATION_BRANCH,
+    status: 'ok',
+    statusReason: null
   };
+}
+
+/**
+ * COORD-543 — repos the cockpit could NOT resolve. Views render these
+ * explicitly so an operator sees "not inspected, and here is why" instead of a
+ * confident number computed from the wrong tree.
+ */
+export function unresolvedRepos(): RepoModel[] {
+  return productRepos().filter((r) => r.status !== 'ok');
 }
 
 // Product repos plus the coord governance repo — the full set inspected for

@@ -12,6 +12,14 @@ export interface GitFileChange {
 export interface GitRepoStatus {
   name: string;
   exists: boolean;
+  /**
+   * COORD-543 — 'ok' | 'unavailable' | 'out-of-scope'. Anything but 'ok' means
+   * this repo's working tree was NOT inspected. It must never be counted as
+   * clean: a governance dashboard reporting "clean" about a repo it is not
+   * looking at is the defect this field exists to prevent.
+   */
+  status: RepoModel['status'];
+  statusReason: string | null;
   branch?: string;
   head?: string;
   ahead?: number;
@@ -54,8 +62,29 @@ function listWorktrees(repoDir: string): string[] {
 
 function statusForRepo(repo: RepoModel): GitRepoStatus {
   const { name, dir: repoDir } = repo;
+  // COORD-543 — an unresolved repo is REPORTED, never inspected via a
+  // substituted tree. Before this fix a sibling-layout repo was clamped to the
+  // engine root, so the git view inspected the engine once per product repo and
+  // rendered "working tree clean" for repos it had never looked at.
+  if (repo.status !== 'ok' || !repoDir) {
+    return {
+      name,
+      exists: false,
+      status: repo.status,
+      statusReason: repo.statusReason,
+      changes: [],
+      worktrees: []
+    };
+  }
   if (!fs.existsSync(path.join(repoDir, '.git'))) {
-    return { name, exists: false, changes: [], worktrees: [] };
+    return {
+      name,
+      exists: false,
+      status: 'unavailable',
+      statusReason: `${repo.path} is not a git repository (no .git found).`,
+      changes: [],
+      worktrees: []
+    };
   }
   try {
     const branch = git(repoDir, ['rev-parse', '--abbrev-ref', 'HEAD']);
@@ -71,6 +100,8 @@ function statusForRepo(repo: RepoModel): GitRepoStatus {
     return {
       name,
       exists: true,
+      status: 'ok',
+      statusReason: null,
       branch,
       head,
       ahead,
@@ -82,6 +113,8 @@ function statusForRepo(repo: RepoModel): GitRepoStatus {
     return {
       name,
       exists: true,
+      status: 'ok',
+      statusReason: null,
       changes: [],
       worktrees: [],
       error: err instanceof Error ? err.message : String(err)
@@ -91,4 +124,30 @@ function statusForRepo(repo: RepoModel): GitRepoStatus {
 
 export function loadGitStatus(): GitRepoStatus[] {
   return allRepos().map(statusForRepo);
+}
+
+export interface GitStatusSummary {
+  repos: GitRepoStatus[];
+  /** Repos whose working tree was actually read. */
+  inspected: number;
+  /** Repos that could not be resolved and were NOT inspected (COORD-543). */
+  unresolved: number;
+  /** Dirty repos, counted only among the inspected ones. */
+  dirty: number;
+}
+
+/**
+ * COORD-543 — the dirty-repo denominator must be the number of repos actually
+ * INSPECTED, and unresolved repos must be surfaced separately. "0 dirty / 3"
+ * while inspecting the engine three times is precisely the failure this ticket
+ * exists to remove.
+ */
+export function summarizeGitStatus(repos: GitRepoStatus[] = loadGitStatus()): GitStatusSummary {
+  const inspected = repos.filter((r) => r.exists);
+  return {
+    repos,
+    inspected: inspected.length,
+    unresolved: repos.filter((r) => r.status !== 'ok').length,
+    dirty: inspected.filter((r) => r.changes.length > 0).length
+  };
 }

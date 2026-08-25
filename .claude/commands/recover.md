@@ -59,7 +59,7 @@ coord/scripts/gov agent-rebind --fresh
 ```
 If human-admin has explicitly authorized rebinding the foreign doing/review ticket to this session:
 ```bash
-coord/scripts/gov takeover $ARGUMENTS --human-admin-override "<reason>"
+coord/scripts/gov claim $ARGUMENTS --transfer-to <current-agent-handle> --human-admin-override "<reason>"
 ```
 If human-admin has explicitly authorized returning a stale foreign doing ticket to `todo`:
 ```bash

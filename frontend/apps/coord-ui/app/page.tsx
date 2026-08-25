@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { loadBoard } from '../lib/board';
 import { loadAgents } from '../lib/agents';
 import { loadFindings } from '../lib/findings';
-import { loadGitStatus } from '../lib/git';
+import { summarizeGitStatus } from '../lib/git';
 import { loadGates } from '../lib/gates';
 import { loadHealth } from '../lib/health';
 import { loadTests } from '../lib/tests';
@@ -93,8 +93,10 @@ export default function BoardPage() {
   const board = loadBoard();
   const agents = loadAgents();
   const findings = loadFindings();
-  const git = loadGitStatus();
-  const dirtyRepos = git.filter((r) => r.exists && r.changes.length > 0).length;
+  const git = summarizeGitStatus();
+  // COORD-543: dirty count is over the repos actually INSPECTED; repos that
+  // could not be resolved are reported separately, never counted as clean.
+  const dirtyRepos = git.dirty;
   const gates = loadGates();
   const health = loadHealth();
   const tests = loadTests();
@@ -114,6 +116,12 @@ export default function BoardPage() {
   if (findings.open) attention.push({ label: `${plural(findings.open, 'open issue')}`, href: '/issues', tone: 'warn' });
   if (agents.stale) attention.push({ label: `${plural(agents.stale, 'stale agent')}`, href: '/runtime', tone: 'warn' });
   if (dirtyRepos) attention.push({ label: `${plural(dirtyRepos, 'dirty repo')}`, href: '/git', tone: 'warn' });
+  if (git.unresolved)
+    attention.push({
+      label: `${plural(git.unresolved, 'repo')} not inspected (unresolved)`,
+      href: '/git',
+      tone: 'crit'
+    });
   if (health.overall !== 'ok') attention.push({ label: `health: ${health.overall}`, href: '/health', tone: 'warn' });
 
   return (
@@ -228,7 +236,8 @@ export default function BoardPage() {
           {findings.total > 0 ? ` / ${findings.total}` : ''}
         </span>
         <span>
-          dirty repos: <strong>{dirtyRepos}</strong>/{git.length}
+          dirty repos: <strong>{dirtyRepos}</strong>/{git.inspected}
+          {git.unresolved > 0 ? ` · ${git.unresolved} not inspected` : ''}
         </span>
         <span>
           gates: <strong>{gates.passing}</strong> pass
@@ -240,6 +249,7 @@ export default function BoardPage() {
         <span>
           test files: <strong>{tests.totalTestFiles}</strong>
           {tests.failingLaneSteps > 0 ? ` · ${tests.failingLaneSteps} lane fails` : ''}
+          {tests.unresolvedRepos > 0 ? ` · ${tests.unresolvedRepos} repo not inspected` : ''}
         </span>
       </div>
       <div className="board">

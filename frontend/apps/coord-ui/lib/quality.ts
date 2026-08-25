@@ -86,6 +86,10 @@ function safeIsDir(p: string): boolean {
 export function qualityScopes(): QualityScope[] {
   const scopes: QualityScope[] = [makeScope(DEFAULT_SCOPE_ID, 'coord governance', COORD_DIR)];
   for (const repo of productRepos()) {
+    // COORD-543 — an unresolved repo offers NO scan scope. Offering one would
+    // mean scanning a substituted tree and labelling the result with this
+    // repo's name.
+    if (repo.status !== 'ok' || !repo.dir) continue;
     // selector id is the repo's directory name (e.g. "backend"/"frontend") for
     // a readable URL; resolveScope also accepts the single-letter code as alias.
     scopes.push(makeScope(repo.name.toLowerCase(), `${repo.name} (repo ${repo.code})`, repo.dir));
@@ -108,8 +112,10 @@ export function resolveScope(requested?: string): QualityScope {
   const byId = scopes.find((s) => s.id === want);
   if (byId) return byId;
   // product-repo single-letter code alias (e.g. "f" -> repo F / frontend).
-  const repo = productRepos().find((r) => r.code.toLowerCase() === want);
-  if (repo) return makeScope(repo.name.toLowerCase(), `${repo.name} (repo ${repo.code})`, repo.dir);
+  const repo = productRepos().find(
+    (r) => r.code.toLowerCase() === want && r.status === 'ok' && r.dir
+  );
+  if (repo?.dir) return makeScope(repo.name.toLowerCase(), `${repo.name} (repo ${repo.code})`, repo.dir);
   return scopes[0];
 }
 

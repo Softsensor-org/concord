@@ -1269,7 +1269,15 @@ function collectReviewPlanReadinessIssues(ticketId, row) {
   if (planRound !== requiredRound) {
     issues.push({
       code: "review_round",
-      message: `Plan state for ${ticketId} must record "- Review round:" as ${requiredRound} before move-review. Fresh review evidence is required for the current repair round.`,
+      // COORD-649: when the REQUIRED round is ABOVE the plan round, no writer an
+      // agent can reach produces it — `review_round` is written only by the
+      // return-doing transition, which this very check blocks. That state means
+      // a finding is filed under a round the ticket never reached, so the
+      // message names the governed repair instead of leaving the caller in a
+      // closed loop. (Appended to the existing string rather than added as a
+      // next_step: this file is a composition root under a shrink-only LOC
+      // budget that admits no bump.)
+      message: `Plan state for ${ticketId} must record "- Review round:" as ${requiredRound} before move-review. Fresh review evidence is required for the current repair round.${requiredRound > planRound ? " A required round ABOVE the plan round means a finding is classified under a round " + ticketId + " never reached, and only return-doing writes review_round. Repair the classification with: coord/scripts/gov correct-finding-round " + ticketId + " --id <finding-id> --round " + (planRound || 1) + ' --human-admin-override "<why the finding was misclassified>"' : ""}`,
       next_steps: [`coord/scripts/gov explain ${ticketId}`],
     });
   }
@@ -1365,7 +1373,9 @@ function collectContinuityWriteSafetyIssues(input = {}) {
         code: "continuity_append_only_conflict",
         message: error.message,
         next_steps: [
-          "Re-read the current journal, decision, or promotion-candidate source.",
+          // COORD-572: an issue that blocks a write must name a command the
+          // caller can run; "re-read the source" names no source and no reader.
+          "coord/scripts/gov recent --limit 20 --full",
           "Append a new superseding record instead of rewriting an existing record id.",
           "Retry through the governed single-writer mutation path.",
         ],
@@ -1392,8 +1402,9 @@ function collectContinuityWriteSafetyIssues(input = {}) {
         code: "continuity_derived_view_stale",
         message: `Derived continuity view was generated from ${expected}, but current inputs hash to ${current}.`,
         next_steps: [
-          "Re-read the canonical continuity sources.",
-          "Regenerate the derived view from current inputs.",
+          // COORD-572: name the regeneration command instead of describing it.
+          "coord/scripts/gov sync",
+          "coord/scripts/gov conform --json",
           "Do not append derived readout output to the governance journal as authority.",
         ],
       });

@@ -41,6 +41,12 @@
 module.exports = function createTicketCommands(deps = {}) {
   const fs = require("fs");
   const path = require("path");
+  // COORD-635 / ADR-0008: control-plane root resolution (see control-plane-paths.js).
+  const {
+    defaultControlPlaneLayout,
+    controlPlaneRepoUnavailableMessage,
+    significantWorktreeStatusEntries,
+  } = require("./control-plane-paths.js");
   const {
     // transaction primitives + board IO
     withBoardTransaction,
@@ -150,16 +156,49 @@ function collectUnstartEvidenceBlockers(ticketId, row, board) {
         }
       }
     } else if (row.Repo === "X") {
-      // Repo X worktrees are plain scratch directories with no git history;
-      // treat any non-empty residue as workspace evidence.
-      let entries = [];
-      try {
-        entries = fs.readdirSync(context.worktree);
-      } catch {
-        entries = [];
-      }
-      if (entries.length > 0) {
-        blockers.push(`coord worktree ${context.worktree} is not empty`);
+      // COORD-635 defect (4): this said "Repo X worktrees are plain scratch
+      // directories with no git history" — one of the four contradictory
+      // descriptions. A control-plane worktree IS a git worktree of
+      // coordRepoRoot, so it is measured exactly like a product worktree:
+      // uncommitted changes or commits ahead of the base. The old readdir test
+      // called an untouched fresh checkout "evidence of work" because a
+      // checkout is never empty.
+      const statusResult = gitTry(context.worktree, ["status", "--porcelain"]);
+      if (statusResult.status === 0) {
+        // The engine's own ephemeral runtime scaffolding is created BY start and
+        // is not evidence of work — counting it would make `gov unstart` refuse
+        // every untouched wrong start. Single-sourced with the cleanup guard.
+        const worked = significantWorktreeStatusEntries(
+          defaultControlPlaneLayout(),
+          context.worktree,
+          statusResult.stdout
+        );
+        if (worked.length > 0) {
+          blockers.push(`control-plane worktree ${context.worktree} has uncommitted changes`);
+        }
+        const base = resolveTicketBaseRef(ticketId, row, {});
+        if (base) {
+          const compareRef = resolveWorktreeBaseCompareRef(context.worktree, base);
+          const aheadResult = gitTry(context.worktree, ["rev-list", "--count", `${compareRef}..HEAD`]);
+          const ahead = aheadResult.status === 0
+            ? Number.parseInt(String(aheadResult.stdout || "").trim(), 10)
+            : 0;
+          if (Number.isInteger(ahead) && ahead > 0) {
+            blockers.push(`control-plane worktree ${context.worktree} has ${ahead} commit(s) ahead of ${compareRef}`);
+          }
+        }
+      } else {
+        // No git context at all (no control-plane repository): fall back to
+        // the historical residue test rather than silently reporting nothing.
+        let entries = [];
+        try {
+          entries = fs.readdirSync(context.worktree);
+        } catch {
+          entries = [];
+        }
+        if (entries.length > 0) {
+          blockers.push(`coord worktree ${context.worktree} is not empty`);
+        }
       }
     }
   }
@@ -364,8 +403,24 @@ function commitTicket(ticketId, options) {
     if (ref.row.Status !== STATUS.DOING) {
       fail(`Ticket ${ticketId} must be doing before commit; current status is "${ref.row.Status}".`);
     }
+    // COORD-635 defect (4): commit-ticket refused EVERY non-repo-backed code,
+    // including X — while `gov start` was creating a real git worktree for X
+    // and the README was telling operators to `git add` / `git commit` by
+    // hand. One truthful lifecycle: a control-plane ticket commits through the
+    // same governed verb whenever a control-plane repository exists. Where it
+    // does not (no coord/.git, no owning repository) the refusal is still
+    // correct — and now says so, instead of blaming the repo code.
     if (!isRepoBackedCode(ref.row.Repo)) {
-      fail(`Ticket ${ticketId} is repo ${ref.row.Repo}; commit-ticket is only supported for repo-backed git worktrees.`);
+      if (ref.row.Repo !== "X") {
+        fail(`Ticket ${ticketId} is repo ${ref.row.Repo}; commit-ticket is only supported for governed git worktrees.`);
+      }
+      const layout = defaultControlPlaneLayout();
+      if (!layout.coordRepoRoot) {
+        fail(
+          `Ticket ${ticketId} is a control-plane (Repo X) ticket, but ` +
+          controlPlaneRepoUnavailableMessage(layout, "commit-ticket")
+        );
+      }
     }
 
     const lock = findLockForTicket(ticketId);

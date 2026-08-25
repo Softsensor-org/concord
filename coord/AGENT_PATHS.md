@@ -53,6 +53,7 @@ Use this when the primary agent is Codex.
 Typical flow:
 
 ```bash
+coord/scripts/agent bootstrap
 coord/scripts/agent next
 coord/scripts/agent do <ticket-id>
 ```
@@ -88,6 +89,7 @@ Use this when the primary agent is Gemini.
 Typical flow:
 
 ```bash
+coord/scripts/agent bootstrap
 coord/scripts/agent next
 coord/scripts/agent do <ticket-id>
 ```

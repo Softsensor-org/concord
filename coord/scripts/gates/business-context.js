@@ -8,8 +8,24 @@ const BUSINESS_CONTEXT_PATH_PATTERN =
   /\b(?:coord\/)?\.runtime\/context-packs\/[A-Za-z0-9_.-]+\.json\b/g;
 const BUSINESS_CONTEXT_APPROVAL_PATTERN =
   /\bbusiness-context\s+(?:approval|approved|waiver|waived)\s*:/i;
-const BUSINESS_CONTEXT_INVESTIGATION_PATTERN =
-  /\bbusiness-context\s+(?:investigation|status)\s*:\s*(?:investigating|investigated|not-required|unknown|blocked|pending)/i;
+// COORD-569: the investigation status is a CLOSED enum. Keep the literal list
+// as the single source of truth — the recognizer pattern, the gate's printed
+// remediation, and the update-plan write-time check (plan-records.js) all
+// derive from it, so the advice can never name a format the parser rejects.
+const BUSINESS_CONTEXT_INVESTIGATION_STATUSES = Object.freeze([
+  "investigating",
+  "investigated",
+  "not-required",
+  "unknown",
+  "blocked",
+  "pending",
+]);
+const BUSINESS_CONTEXT_INVESTIGATION_PREFIX_PATTERN =
+  /\bbusiness-context\s+(?:investigation|status)\s*:/i;
+const BUSINESS_CONTEXT_INVESTIGATION_PATTERN = new RegExp(
+  `\\bbusiness-context\\s+(?:investigation|status)\\s*:\\s*(?:${BUSINESS_CONTEXT_INVESTIGATION_STATUSES.join("|")})`,
+  "i"
+);
 
 function createBusinessContextGate(deps) {
   const {
@@ -33,9 +49,14 @@ function createBusinessContextGate(deps) {
         message:
           `Ticket ${ticketId} changes behavior in a business-context-sensitive area but has no business-context ref, approval/waiver, or investigation status.`,
         next_steps: [
-          `coord/scripts/coord business-context-pack --ticket ${ticketId} --write-default`,
+          // COORD-569: every suggested command must be executable verbatim and
+          // satisfy the recognizer that emitted it. `<owner/status>` was a trap:
+          // the status is a closed enum, and free text (e.g. "claudea11/complete")
+          // silently failed to register as a disposition.
+          `coord/scripts/gov update-plan ${ticketId} --invariant "business-context investigation: not-required"`,
+          `Accepted investigation statuses (closed enum): ${BUSINESS_CONTEXT_INVESTIGATION_STATUSES.join(" | ")}.`,
+          `Or investigate first: coord/scripts/coord business-context-pack --ticket ${ticketId} --write-default`,
           `coord/scripts/gov update-plan ${ticketId} --invariant "business-context: coord/.runtime/context-packs/${ticketId}.json"`,
-          `coord/scripts/gov update-plan ${ticketId} --invariant "business-context investigation: <owner/status>"`,
         ],
       }];
     }
@@ -166,4 +187,9 @@ function createBusinessContextGate(deps) {
 
 module.exports = {
   createBusinessContextGate,
+  // COORD-569: shared with plan-records.js so the update-plan write path can
+  // refuse an investigation invariant the recognizer would silently ignore.
+  BUSINESS_CONTEXT_INVESTIGATION_PATTERN,
+  BUSINESS_CONTEXT_INVESTIGATION_PREFIX_PATTERN,
+  BUSINESS_CONTEXT_INVESTIGATION_STATUSES,
 };

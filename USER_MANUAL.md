@@ -2,9 +2,19 @@
 
 **Concord** is the coordination and governance layer for multi-agent software
 development. It gives every unit of work a governed lifecycle — claim → plan →
-implement → gate → review → land — with a tamper-evident journal of who did what
-and why. This manual is the end-to-end reference for installing, configuring,
-operating, upgrading, and (for enterprises) rolling Concord up across an org.
+implement → gate → review → land — with a hash-chained journal of each supported
+lifecycle operation. This manual is the end-to-end reference for installing,
+configuring, operating, upgrading, and (for enterprises) rolling Concord up
+across an org.
+
+> **Scope.** Concord coordinates actions taken through `gov`. It reduces
+> collisions for governed actions rather than eliminating them, its journal
+> covers lifecycle operations rather than all agent activity, and its worktrees
+> provide repository separation rather than process, filesystem, network,
+> provider, or secret isolation. The full statement of what is implemented,
+> what is planned, and where the Apache-2.0 boundary lies is in
+> [README — What Concord Does and Does Not Do](README.md#what-concord-does-and-does-not-do)
+> and [coord/product/PUBLIC_CLAIMS_POLICY.md](coord/product/PUBLIC_CLAIMS_POLICY.md).
 
 > **Naming.** The product is **Concord**. It installs as the `coord/` directory
 > in your repo and is driven by the `gov` CLI. This repository is the
@@ -39,22 +49,27 @@ Internalize four things before you start.
 
 **1. The board is the source of truth.** `coord/board/tasks.json` holds every
 ticket as a row (`ID`, `Repo`, `Type`, `Pri`, `Status`, `Owner`, `Description`,
-`Depends On`). You author *new* rows by hand; after that, lifecycle fields
-(`Status`, `Owner`, locks) are owned by `gov` — never hand-edit them.
+`Depends On`). You author *new* rows with `gov file-ticket` (atomic, journaled);
+lifecycle fields (`Status`, `Owner`, locks) are owned by `gov` — never
+hand-edit the board.
 
 **2. `gov` drives every transition.** `coord/scripts/gov` (and its product-facing
 twin `coord/scripts/coord`) is the CLI. Every lifecycle move — claim, start,
 submit, land — goes through it and is journaled.
 
 **3. The journal is tamper-evident.** `coord/.runtime/governance-events.ndjson`
-is a hash-chained, append-only record of every governed event. It is committed to
-git; a fresh clone can verify the entire history with `gov conform` and nothing
-else. This is what makes governed history auditable and portable.
+is a hash-chained, append-only record of the governed lifecycle operations `gov`
+performs. It is committed to git; a fresh clone can verify that chain with
+`gov conform` and nothing else, which is what makes governed history auditable
+and portable. Its scope is the lifecycle: provider tool calls, ad-hoc shell
+commands, file reads and network requests happen outside `gov` and are not in it.
 
 **4. The engine is vendored, not a dependency.** Concord installs its engine
 *into your repo* under `coord/` (the "GCV-4" model). You get offline, in-tree,
-auditable operation; you upgrade explicitly with `gov upgrade`, pinned by
-`coord/.coord-engine.json`. There is no hidden `node_modules` engine to drift.
+auditable operation; you upgrade explicitly with `npm run concord -- upgrade`
+(a *product* operation, routed through the `concord` CLI — not a lifecycle
+`gov` verb), pinned by `coord/.coord-engine.json`. There is no hidden
+`node_modules` engine to drift.
 
 ```
 Board (tasks.json)  ←→   gov CLI   ←→   Agent skills (/slash commands)
@@ -98,8 +113,15 @@ npx create-concord my-site --workflow-pack site-seo --apply-plan <digest-from-pl
 
 `create-concord` vendors `coord/` in-tree, pins the engine version in
 `coord/.coord-engine.json`, writes the commit-vs-gitignore split and the
-`coord/WORKSPACE.md` runtime guide, and wires `npm run gov` / `npm run concord`
-scripts into your `package.json`.
+`coord/WORKSPACE.md` runtime guide, and wires four operator scripts into your
+`package.json` with distinct ownership boundaries:
+
+| Script | Owns |
+|--------|------|
+| `npm run concord` | Product operations: onboard, upgrade, conformance, governance tier. |
+| `npm run gov` | Governance lifecycle + admin/break-glass: file-ticket, start, submit, land, doctor. |
+| `npm run agent` | The thin provider-neutral operator facade (`bootstrap`, `next`, `do`, `check`, …); orchestrates `gov`, never duplicates lifecycle logic. |
+| `npm run coord-ui` | The read-only cockpit; never writes governed state. |
 
 Flags:
 
@@ -116,12 +138,20 @@ Workflow packs add files such as `00-ops/seo`, `00-ops/data`,
 contracts first, not engine-enforced validators by default. See
 `coord/product/workflow-packs/README.md` after install.
 
-### Channel B — standalone Linux binary (no Node required)
+### Channel B — standalone Linux binary (no Node required *to install*)
 
 Best for the environments where agents actually run and Node isn't guaranteed:
 devcontainers, WSL2, remote/SSH boxes, CI runners, minimal images. The binary is
 a single self-contained executable (Node SEA) that carries the engine bundle
-inside it — it scaffolds with **zero Node on `PATH`**.
+inside it — it **installs** with **zero Node on `PATH`**.
+
+Scope of the claim (COORD-481): the binary hosts only the install-time commands
+`init` / `create` / `recover`. It does **not** host the operational surface. The
+workspace it lays down is the vendored Node engine, so everything you run
+afterwards — `npm run gov` (lifecycle), `npm run concord` (product ops),
+`npm run agent`, `npm run coord-ui` — requires **Node >= 22.8** on the box. Use
+the binary to bootstrap a Node-less image; install Node before operating
+governance there.
 
 ```bash
 # Download concord-linux-<arch> from the GitHub Release, then:
@@ -132,9 +162,14 @@ chmod +x concord-linux-x86_64
 
 The result is byte-identical to the `npx` scaffold (same vendored bundle).
 
-### Fallback — manual copy
+### Manual recovery copy (not an installer)
 
-If you have neither npm nor the binary, copy the template tree directly:
+If you have neither npm nor the binary, you can recover a minimal command
+surface by copying selected files from a trusted source checkout. This is **not**
+the transactional installer: it has no reviewed plan, consent digest, collision
+inventory, backup/rollback ledger, receipt, mode verification, or artifact
+integrity proof, and it may omit root-level assets or future files. Prefer npm or
+the SEA binary for every normal installation.
 
 ```bash
 cp -R /path/to/coord-template/coord   ./coord
@@ -221,18 +256,17 @@ a completed review cycle. Every event is journaled.
 
 ### 1. Create a ticket
 
-Authoring a new backlog row is the one allowed hand-edit of `tasks.json`. Add a
-row with `Status: todo` / `Owner: unassigned` to the right section, then sync — or
-use the safe one-liner:
+File tickets through governance — atomic, journaled, validated, and it reserves
+the next free ID under a lock. Do not hand-edit `coord/board/tasks.json`; `gov`
+owns board state:
 
 ```bash
-# Safe, atomic, journaled (recommended):
 npm run gov -- file-ticket --repo B --type feature --pri P1 \
   --description "Add user authentication endpoint."
-
-# Or hand-add the row, then:
-node coord/board/board.js sync
 ```
+
+Add `--with-prompt` to create and register the start-ready ticket prompt at
+`coord/prompts/tickets/<ID>.md` in the same journaled mutation.
 
 ### 2. Start it
 
@@ -281,7 +315,9 @@ npm run gov -- publishability-check MYAPP-001
 
 Skills are slash commands (in `.claude/commands/`) that run multi-step governed
 workflows. They call `gov` internally — they're the ergonomic layer, not a
-bypass. The essentials:
+bypass. Codex, Gemini, and shell-only operators get the same cold-start via the
+provider-neutral facade: `npm run agent -- bootstrap` (see `CODEX.md` /
+`GEMINI.md`). The essentials:
 
 | Skill | When |
 |-------|------|
@@ -317,15 +353,16 @@ contract that makes a fresh clone verifiable.
 - `coord/.runtime/locks/`, `snapshots/`, `sessions/`, `*.lock`.
 - `coord/.worktrees/`.
 
-**The fresh-clone guarantee.** A clone carrying only the committed artifacts
-passes `board.js validate` + `gov conform` with no ephemeral state. If you ever
-suspect the split has regressed, this proves it:
+**The fresh-clone check.** The tested invariant is that a clone carrying only the
+committed artifacts passes `board.js validate` + `gov conform` with no ephemeral
+state present. It is a check you run, not a promise the software makes; if you
+suspect the commit-vs-gitignore split has regressed, run it: 
 
 ```bash
 bash release/verify-fresh-clone.sh    # donor repos; validates the committed tree
 ```
 
-Adopters get the same guarantee — validate any clean clone of your own repo.
+Adopters run the same check — validate any clean clone of your own repo.
 
 ---
 
@@ -478,7 +515,7 @@ COORD_DIR=/abs/path/to/your/coord npm run dev
 | `gov` refuses a mutation from a worktree | You're in a linked worktree. Run governed writes from the **repo root** (canonical tree). |
 | "cannot start without prompt coverage or a recorded waiver" | Record a waiver (`gov set-waiver <ticket> --reason "…"`) or add prompt coverage, then `gov start`. |
 | Ambiguous session identity / churned claims | Multiple sub-agents share one Anthropic session id. Export a distinct `COORD_SESSION_ID` per sub-agent (not `CLAUDE_SESSION_ID`). |
-| `upgrade --check` reports engine drift | A vendored (manifest-tracked) file was hand-edited. Revert it, or re-apply the engine with `gov upgrade`. |
+| `upgrade --check` reports engine drift | A vendored (manifest-tracked) file was hand-edited. Revert it, or re-apply the engine with `npm run concord -- upgrade`. |
 | Fresh clone fails `validate`/`conform` | An ephemeral file was committed, or a durable one was gitignored. Re-check the [commit split](#part-6--what-to-commit-vs-gitignore); run `verify-fresh-clone.sh`. |
 | Stale lock after a crash | `gov doctor` diagnoses; `gov unstart <ticket>` (same owner, no committed work) or `/recover <ticket>` repairs. |
 | `--channel enterprise` refused | Enterprise is licensed. Pass `--entitlement <token>` or set `CONCORD_ENTITLEMENT`. |
@@ -490,8 +527,19 @@ stale locks, drift, and missing gates with next-step commands.
 
 ## Part 12 — Command reference
 
-`gov` and `coord` are the two entry points (`npm run gov -- <cmd>` /
-`npm run concord -- <cmd>` after install). Most-used verbs:
+Four entry points, four ownership boundaries: `npm run gov -- <cmd>`
+(governance lifecycle + admin), `npm run concord -- <cmd>` (product ops),
+`npm run agent -- <verb>` (provider-neutral operator facade), and
+`npm run coord-ui` (read-only cockpit). Most-used verbs:
+
+### Operator facade (provider-neutral)
+
+| Command | What it does |
+|---------|--------------|
+| `agent bootstrap` | Cold start: bind identity, run the health check, recommend the next governed action. |
+| `agent next` | Next recommended ready ticket. |
+| `agent do <ticket>` | Create/refresh the governed execution context and return the explain payload. |
+| `agent check [<ticket>]` | Governance health (`gov doctor`), optionally ticket-scoped. |
 
 ### Board & session
 
@@ -518,9 +566,9 @@ stale locks, drift, and missing gates with next-step commands.
 
 | Command | What it does |
 |---------|--------------|
-| `coord upgrade --check` | Report engine drift vs the pin (READ-ONLY). |
-| `coord upgrade --from <src>` | Apply a new engine version; re-pin + verify; rollback on failure. |
-| `coord upgrade --from <src> --channel enterprise --entitlement <tok>` | In-place Community → Enterprise. |
+| `concord upgrade --check` | Report engine drift vs the pin (READ-ONLY). |
+| `concord upgrade --from <src>` | Apply a new engine version; re-pin + verify; rollback on failure. |
+| `concord upgrade --from <src> --channel enterprise --entitlement <tok>` | In-place Community → Enterprise. |
 
 ### Enterprise org rollup (Enterprise cut)
 

@@ -2222,3 +2222,69 @@ test("COORD-159: the sample plan fixture carries a valid populated bootstrap ris
   assert.equal(fixture.bootstrap_risk.startup_work_class, "server_bootstrap_job");
   assert.doesNotThrow(() => coord159AssertValid(fixture));
 });
+
+// COORD-569: an investigation-shaped --invariant whose status is outside the
+// gate's closed enum must be REFUSED at write time (it would be recorded
+// successfully and then silently ignored by the business-context gate — the
+// operator believes a disposition exists and discovers otherwise at closeout).
+// The enum literals are shared from gates/business-context.js so the writer,
+// the recognizer, and the gate's printed remediation cannot drift.
+test("update-plan invariant guard refuses an investigation status outside the closed enum (COORD-569)", () => {
+  const records = createReadonlyPlanRecordHarness();
+  const record = { critical_invariants: [] };
+  assert.throws(
+    () => records.applyPlanUpdateOptionsToRecord(record, {
+      invariant: "business-context investigation: claudea11/complete — no product rules touched",
+    }),
+    (error) => {
+      assert.match(error.message, /silently ignored \(COORD-569\)/);
+      assert.match(error.message, /investigating \| investigated \| not-required \| unknown \| blocked \| pending/);
+      assert.match(error.message, /business-context investigation: not-required/);
+      return true;
+    }
+  );
+});
+
+test("update-plan invariant guard accepts every enum literal, including literal-then-free-text (COORD-569)", () => {
+  const { BUSINESS_CONTEXT_INVESTIGATION_STATUSES } = require("./gates/business-context.js");
+  const records = createReadonlyPlanRecordHarness();
+  for (const status of BUSINESS_CONTEXT_INVESTIGATION_STATUSES) {
+    const next = records.applyPlanUpdateOptionsToRecord(coord159BaseRecord("COORD-569"), {
+      invariant: `business-context investigation: ${status} by claudea11 — rationale text`,
+    });
+    assert.ok(
+      next.critical_invariants.some((line) => line.includes(status)),
+      `status "${status}" must be accepted`
+    );
+  }
+});
+
+test("update-plan invariant guard leaves non-investigation invariants untouched (COORD-569)", () => {
+  const records = createReadonlyPlanRecordHarness();
+  const base = coord159BaseRecord("COORD-569");
+  const baselineCount = base.critical_invariants.length;
+  const next = records.applyPlanUpdateOptionsToRecord(base, {
+    invariant: "business-context: coord/.runtime/context-packs/COORD-542.json",
+  });
+  assert.equal(next.critical_invariants.length, baselineCount + 1);
+});
+
+test("gate remediation names only executable commands and the real enum (COORD-569)", () => {
+  const { createBusinessContextGate, BUSINESS_CONTEXT_INVESTIGATION_PATTERN } =
+    require("./gates/business-context.js");
+  const gate = createBusinessContextGate({});
+  const issues = gate.collectBusinessContextGateIssues(
+    "COORD-999",
+    { ID: "COORD-999", Repo: "X", Type: "bug", Description: "adjusts the billing workflow" },
+    {},
+    { sections: [] }
+  );
+  assert.equal(issues.length, 1);
+  const steps = issues[0].next_steps.join("\n");
+  // The suggested literal must satisfy the recognizer that emitted it.
+  assert.match(steps, /business-context investigation: not-required/);
+  assert.ok(BUSINESS_CONTEXT_INVESTIGATION_PATTERN.test('business-context investigation: not-required'));
+  // The old trap placeholder must be gone.
+  assert.ok(!steps.includes("<owner/status>"), "placeholder <owner/status> must not be suggested");
+  assert.match(steps, /closed enum/);
+});
