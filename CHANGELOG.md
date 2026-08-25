@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.12 — 2026-08-25
+
+- Makes the governed lifecycle release fixtures hermetic across current Git
+  versions and runners without a global author identity.
+- Supersedes the source-only `v0.1.11` snapshot, whose release workflow stopped
+  before publishing npm or GitHub Release assets.
+
 ## v0.1.11 — 2026-08-25
 
 - Makes the release hygiene suite portable to the supported Node 22 runtime:

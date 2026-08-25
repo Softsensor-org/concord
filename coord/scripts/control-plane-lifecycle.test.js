@@ -1207,7 +1207,10 @@ test("COORD-635 RED: a STALE refs/remotes/origin ref with no configured remote i
     assert.equal(assessment.commit_sha, landed);
 
     // Restore a real `origin` and the ancestry bar applies again — the guard is
-    // suppressed by the ABSENCE of a remote, never disabled.
+    // suppressed by the ABSENCE of a remote, never disabled. Remove the stale
+    // destination ref first: current Git refuses to rename a remote over an
+    // existing destination ref instead of silently replacing it.
+    git(coordDir, "update-ref", "-d", "refs/remotes/origin/main");
     git(coordDir, "remote", "rename", "concord-pub", "origin");
     assert.throws(
       () => evaluateControlPlaneLanding("COORD-912", { evidence: [`landed ${landed}`] }, { layout }),

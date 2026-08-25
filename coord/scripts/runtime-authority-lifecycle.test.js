@@ -261,6 +261,13 @@ test("COORD-645-F3: a REAL governed lifecycle runs end to end with the barrier a
     `assigned handle ${owner} must be registered in the fixture's agent registry`
   );
 
+  // The governed commits below run in linked worktrees and cannot inherit the
+  // per-invocation -c identity used by this fixture's setup helper. Configure
+  // the isolated repository only after provider-neutral identity assignment,
+  // keeping both concerns hermetic on runners with no global Git identity.
+  git(ws.root, ["config", "user.email", "fixture@example.com"]);
+  git(ws.root, ["config", "user.name", "Fixture"]);
+
   // --- todo -> doing ------------------------------------------------------
   assert.equal(boardRow(ws).row.Status, "todo");
   assert.equal(fs.existsSync(lockPath(ws)), false);

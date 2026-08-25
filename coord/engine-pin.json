@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "pinned_at": "2026-08-25T22:53:46Z",
+  "pinned_at": "2026-08-25T23:26:52Z",
   "manifest_version": "2026-08-12-coord-669-prodloc-ratchet",
   "manifest_fingerprint": {
-    "sha256": "b34ca5d9a1a89e69c5b48cc0715847d14ecc25a24e793654afebc82700a68569",
+    "sha256": "9d203395a5887c47fdd098346d47c33361e14b0110597f76f40084a9a4842094",
     "bytes": 392626
   },
   "files": {
@@ -663,8 +663,8 @@
       "mode": 420
     },
     "coord/scripts/control-plane-lifecycle.test.js": {
-      "sha256": "5d91d28342bdd6c8fbd6e6633d74d376603bb65a7e2dfaf3342b8d8bf70aeaaf",
-      "bytes": 62986,
+      "sha256": "7b0563469ea2a24051ac8a8919aa38bc9cbb2cf0333f0f7fc5bf47dada088699",
+      "bytes": 63213,
       "mode": 420
     },
     "coord/scripts/control-plane-paths.js": {
@@ -2118,8 +2118,8 @@
       "mode": 493
     },
     "coord/scripts/runtime-authority-lifecycle.test.js": {
-      "sha256": "3f7fac6031acf65ff69cf535f8dde141fecc84a9992df56e9480ed40e9243efe",
-      "bytes": 15256,
+      "sha256": "5b2eb64ce2633e71c0c68456eccd36956f05db7d58e6012734000be07e999740",
+      "bytes": 15686,
       "mode": 420
     },
     "coord/scripts/runtime-authority-wiring.test.js": {
