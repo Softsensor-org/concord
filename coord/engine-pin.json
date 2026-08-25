@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "pinned_at": "2026-08-25T23:26:52Z",
+  "pinned_at": "2026-08-25T23:45:18Z",
   "manifest_version": "2026-08-12-coord-669-prodloc-ratchet",
   "manifest_fingerprint": {
-    "sha256": "9d203395a5887c47fdd098346d47c33361e14b0110597f76f40084a9a4842094",
+    "sha256": "62aa5df11acd9228092c3d8b1c153bb73dfc629fe0bf8525943ebe585a05c5d9",
     "bytes": 392626
   },
   "files": {

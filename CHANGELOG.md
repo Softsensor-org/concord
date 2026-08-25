@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.13 — 2026-08-25
+
+- Builds the standalone Linux payload from an explicit link-free inventory,
+  records omitted source-demo symlinks, and expands hardlinks as regular files.
+- Removes a `pipefail` race that made link detection depend on tar output timing
+  and architecture; supersedes the source-only `v0.1.12` snapshot.
+
 ## v0.1.12 — 2026-08-25
 
 - Makes the governed lifecycle release fixtures hermetic across current Git

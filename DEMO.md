@@ -9,6 +9,11 @@ on a hash-chained journal.
 Nothing here touches your own repos. The demo runs entirely against a read-only
 fixture under `examples/demo/coord`.
 
+The demo is a **source-checkout experience**. The npm and standalone-binary
+installers deliberately install governance only and exclude the sample-product
+`examples/` surface; use the public Concord repository checkout to run this
+bundled scenario.
+
 ## Prerequisites
 
 - Node.js 18+ and npm.
