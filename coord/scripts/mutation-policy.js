@@ -378,7 +378,6 @@ function runStrykerBounded(
       // test-runner grandchildren, releasing the inherited pipes so we never block.
       try { killImpl(-child.pid, "SIGKILL"); } catch { /* already gone */ }
     }, bound);
-    if (timer.unref) timer.unref();
     child.on("close", (status) => {
       clearTimeout(timer);
       resolve({ status, timedOut, bound, stdout, stderr, reportPath });

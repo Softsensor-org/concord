@@ -46,15 +46,16 @@ function clampPct(value) {
 // Parse Node's `--experimental-test-coverage` textual report. We read the
 // "all files" summary row, whose pipe-separated columns are:
 //   all files | <line %> | <branch %> | <funcs %> | <uncovered lines>
-// Leading "ℹ " info markers and surrounding whitespace are tolerated. Returns
-// { lines, branches, functions } as numbers (or nulls if a column is absent),
-// or null when no summary row is present (no coverage emitted).
+// Leading "ℹ " info markers, Node 22 TAP comment markers ("# "), and
+// surrounding whitespace are tolerated. Returns { lines, branches, functions }
+// as numbers (or nulls if a column is absent), or null when no summary row is
+// present (no coverage emitted).
 function parseCoverageReport(text) {
   if (!text || typeof text !== "string") return null;
   const lines = text.split(/\r?\n/);
   // Prefer the canonical "all files" aggregate row; fall back to none.
   for (const raw of lines) {
-    const stripped = raw.replace(/^\s*[ℹℹ]\s?/, "").trim();
+    const stripped = raw.replace(/^\s*(?:ℹ|#)\s?/, "").trim();
     if (!/^all files\b/i.test(stripped)) continue;
     const cols = stripped.split("|").map((c) => c.trim());
     // cols[0] = "all files", cols[1..3] = line/branch/funcs %.

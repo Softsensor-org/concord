@@ -486,6 +486,8 @@ test("validateBoard allows a transfer-scoped canonical lock-location bypass for 
   const fakeLockPath = path.join(runtimeLocksDir, `${ticketId}.lock`);
   const worktreePath = tempRepo;
   const branch = "agent/claudea0000-msrv-003-transfer-test";
+  const namespaceOwner = "claudea0000";
+  const namespaceWorktree = path.join(repoRoots.B, ".worktrees", namespaceOwner, ticketId);
 
   runGit(tempRepo, ["init", "-b", "dev"]);
   runGit(tempRepo, ["config", "user.email", "board-tests@example.com"]);
@@ -514,6 +516,13 @@ test("validateBoard allows a transfer-scoped canonical lock-location bypass for 
     fs.symlinkSync(targetPath, repoRoot, "dir");
     createdRepoRootLinks.push(repoRoot);
   }
+
+  // Remove a prior interrupted fixture before filesystem readers are mocked.
+  // Node 22's recursive remover requests Buffer directory entries, which the
+  // deliberately string-only lock-directory test double below cannot provide.
+  fs.mkdirSync(path.join(namespaceWorktree, ".git"), { recursive: true });
+  fs.writeFileSync(path.join(namespaceWorktree, ".git", "interrupted"), "fixture\n", "utf8");
+  fs.rmSync(namespaceWorktree, { recursive: true, force: true });
 
   const board = {
     version: 1,
@@ -626,8 +635,6 @@ test("validateBoard allows a transfer-scoped canonical lock-location bypass for 
     // so the physical namespace must be carried as its own field rather than
     // derived from the (new) logical owner.
     // ---------------------------------------------------------------------
-    const namespaceOwner = "claudea0000";
-    const namespaceWorktree = path.join(repoRoots.B, ".worktrees", namespaceOwner, ticketId);
     // A real checkout: the validator resolves the worktree's git HEAD, so the
     // namespace path has to exist for these proofs to exercise the namespace
     // rules rather than the existence rules. repoRoots.B is only symlinked to a
@@ -635,7 +642,6 @@ test("validateBoard allows a transfer-scoped canonical lock-location bypass for 
     // real backend repo this lands inside it — create it clean and remove it in
     // the finally block. A leftover from a previous run makes the seed commit
     // find nothing to commit, which fails the whole test during setup.
-    fs.rmSync(namespaceWorktree, { recursive: true, force: true });
     fs.mkdirSync(namespaceWorktree, { recursive: true });
     createdNamespaceWorktrees.push(namespaceWorktree);
     runGit(namespaceWorktree, ["init", "-b", "dev"]);
@@ -728,12 +734,15 @@ test("validateBoard allows a transfer-scoped canonical lock-location bypass for 
     assert.throws(validateNow, /no recorded transfer provenance/);
 
   } finally {
-    for (const namespaceDir of createdNamespaceWorktrees) {
-      fs.rmSync(namespaceDir, { recursive: true, force: true });
-    }
+    // Restore the real filesystem readers before recursive cleanup. Node 22's
+    // rimraf implementation requests Buffer directory entries; the string-only
+    // test double above cannot satisfy that cleanup contract.
     fs.existsSync = originalExistsSync;
     fs.readdirSync = originalReaddirSync;
     fs.readFileSync = originalReadFileSync;
+    for (const namespaceDir of createdNamespaceWorktrees) {
+      fs.rmSync(namespaceDir, { recursive: true, force: true });
+    }
     for (const repoRoot of createdRepoRootLinks) {
       fs.rmSync(repoRoot, { force: true });
     }

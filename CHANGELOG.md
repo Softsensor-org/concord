@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.11 — 2026-08-25
+
+- Makes the release hygiene suite portable to the supported Node 22 runtime:
+  bounded external-tool checks retain their timeout handle until settlement,
+  coverage parsing accepts Node 22 TAP-comment reports, and mocked filesystem
+  readers are restored before recursive cleanup.
+- Supersedes the source-only `v0.1.10` snapshot, whose release workflow stopped
+  before publishing npm or GitHub Release assets.
+
 ## v0.1.10 — 2026-08-25
 
 - Publishes `create-concord` and the Linux SEA assets from one verified release

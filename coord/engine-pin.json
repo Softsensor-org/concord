@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "pinned_at": "2026-08-25T17:08:25Z",
+  "pinned_at": "2026-08-25T22:53:46Z",
   "manifest_version": "2026-08-12-coord-669-prodloc-ratchet",
   "manifest_fingerprint": {
-    "sha256": "2b0b9c100d281a6326b3c0440da66c4cd8c109d517714f31e3fb930a36136800",
+    "sha256": "b34ca5d9a1a89e69c5b48cc0715847d14ecc25a24e793654afebc82700a68569",
     "bytes": 392626
   },
   "files": {
@@ -43,8 +43,8 @@
       "mode": 420
     },
     "coord/board/board.test.js": {
-      "sha256": "3d1f42b6ccee2189bc6484c1785b10bd1f2b738b829e6eb6bd11cd22b9f15437",
-      "bytes": 41509,
+      "sha256": "68f2a8062d0826a8eb6a3c0034309f47ed3d09b0caf7ae8b79663a2ee0050435",
+      "bytes": 42130,
       "mode": 420
     },
     "coord/board/plan.schema.json": {
@@ -268,8 +268,8 @@
       "mode": 420
     },
     "coord/scripts/a11y-policy.js": {
-      "sha256": "7d73027346863fdc73aaf4cefbcf32b000b2ce54fdb2d97d655b65cf80a024fb",
-      "bytes": 35341,
+      "sha256": "7e1b36a513d733353f3eddf3c688f34e996853fec5d6b7578c0bff150461321e",
+      "bytes": 35305,
       "mode": 420
     },
     "coord/scripts/a11y-policy.test.js": {
@@ -848,13 +848,13 @@
       "mode": 420
     },
     "coord/scripts/coverage-policy.js": {
-      "sha256": "0b8265a212d6df31f756d23ea9928197d616070206da92b29f2c64b954bc06cc",
-      "bytes": 6994,
+      "sha256": "48e000afd281a84fdb547d16c482809a1a8829b455cdf32640694343e3f13ed0",
+      "bytes": 7035,
       "mode": 420
     },
     "coord/scripts/coverage-policy.test.js": {
-      "sha256": "ea182214815cc6d2b60c28c9b0470fda0b2669c70582d2b891fd5cf62a330626",
-      "bytes": 16270,
+      "sha256": "1bd9e67264a20fd6744defe029ef3ba56866edc8e743fe2c632077942999509e",
+      "bytes": 16500,
       "mode": 420
     },
     "coord/scripts/coverage-rollup-cron.js": {
@@ -1678,8 +1678,8 @@
       "mode": 420
     },
     "coord/scripts/mutation-policy.js": {
-      "sha256": "4502702fcf07c490694cdcd4755c2a10dd703ba1aa873708b123e3e416664db7",
-      "bytes": 22829,
+      "sha256": "6d5ff7a154c7564d23343ae294e0241e84cd2983204a848772c401fe83747405",
+      "bytes": 22793,
       "mode": 420
     },
     "coord/scripts/mutation-policy.test.js": {
@@ -1718,8 +1718,8 @@
       "mode": 420
     },
     "coord/scripts/perf-budget-policy.js": {
-      "sha256": "3248f2a1a4317452f2ca9f7246dd73180a3d7327c4e5180b04dff4563de4943d",
-      "bytes": 34774,
+      "sha256": "ae943c72265f7dfc68edeac411f546683310c220b48b84002958a08cd27a17c2",
+      "bytes": 34738,
       "mode": 420
     },
     "coord/scripts/perf-budget-policy.test.js": {
@@ -2158,8 +2158,8 @@
       "mode": 420
     },
     "coord/scripts/sast-policy.js": {
-      "sha256": "0aebda6dc4c96f6b267606a1def3371a972941bf6a8b7d75b862fce3ced07389",
-      "bytes": 25239,
+      "sha256": "c9b5d80decb3816ab6c66bc1bbbc2a8d7cb14ed3c3d8269666bbbee0a8bdf53e",
+      "bytes": 25203,
       "mode": 420
     },
     "coord/scripts/sast-policy.test.js": {
@@ -2198,8 +2198,8 @@
       "mode": 420
     },
     "coord/scripts/supply-chain-policy.js": {
-      "sha256": "1d07c353b67283f7d321e5e153eb269ac129d5e93e721b6faea056ef1191103a",
-      "bytes": 30841,
+      "sha256": "5d41c1be1c01078781206e8dc6d5e0368e961557d833a5fd2913a1b2f9c29575",
+      "bytes": 30805,
       "mode": 420
     },
     "coord/scripts/supply-chain-policy.test.js": {

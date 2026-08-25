@@ -67,6 +67,11 @@ test("parseCoverageReport tolerates rows without the info marker and clamps rang
   assert.equal(m.functions, 50);
 });
 
+test("parseCoverageReport reads Node 22 TAP-comment coverage rows", () => {
+  const m = parseCoverageReport("# all files | 97.67 | 93.02 | 100.00 |");
+  assert.deepEqual(m, { lines: 97.67, branches: 93.02, functions: 100 });
+});
+
 test("classifyCoverage: all metrics at/above min => pass", () => {
   const c = classifyCoverage({ metrics: { lines: 90, branches: 85, functions: 100 }, threshold: 80 });
   assert.equal(c.result, "pass");
