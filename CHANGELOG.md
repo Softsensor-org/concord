@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.14 — 2026-08-25
+
+- Makes npm tarball inventory verification consume a completed listing instead
+  of an early-exit `grep` pipeline whose SIGPIPE status varied by runner timing.
+- Supersedes the source-only `v0.1.13` snapshot; no npm or binary assets were
+  published from the failed run.
+
 ## v0.1.13 — 2026-08-25
 
 - Builds the standalone Linux payload from an explicit link-free inventory,

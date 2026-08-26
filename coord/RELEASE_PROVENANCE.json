@@ -2,19 +2,19 @@
   "schema_version": 1,
   "artifact": "softsensor-concord",
   "cut": "Community",
-  "donor_commit": "3592d7576fd4e93e80b1a6f01e749abb75bd9af2",
-  "donor_commit_short": "3592d757",
+  "donor_commit": "ef7aabdfeb657fd9ddb1ee4c616acf02cc141281",
+  "donor_commit_short": "ef7aabdf",
   "donor_branch": "agent/codexa682-coord-617-primary-install-path-does-not-exist-publ",
   "donor_tree_state": "clean",
-  "build_timestamp": "2026-08-25T23:45:18Z",
+  "build_timestamp": "2026-08-26T00:00:28Z",
   "builder": "release/build-public-release.sh",
   "builder_version": "2",
   "release_identity": {
     "schema_version": 1,
-    "engine_version": "0.1.13",
+    "engine_version": "0.1.14",
     "manifest_version": "2026-08-12-coord-669-prodloc-ratchet",
     "manifest_fingerprint": {
-      "sha256": "62aa5df11acd9228092c3d8b1c153bb73dfc629fe0bf8525943ebe585a05c5d9",
+      "sha256": "d60588aab638475481c4192f038dde59ee374e2f8b9e8fe89cb1858ca55a3917",
       "bytes": 392626
     }
   }
