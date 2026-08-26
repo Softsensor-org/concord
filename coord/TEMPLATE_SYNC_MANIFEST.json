@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "manifest_version": "2026-08-12-coord-669-prodloc-ratchet",
-  "generated_at": "2026-08-26T00:21:59Z",
+  "generated_at": "2026-08-26T00:37:59Z",
   "purpose": "Post-sync drift detection for reusable template-canonical governance surfaces.",
   "discovery": {
     "mode": "rule-based",

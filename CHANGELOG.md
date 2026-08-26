@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.16 — 2026-08-25
+
+- Granted GitHub OIDC authority only to the publish job so npm can generate the required provenance attestation; staging jobs remain unprivileged.
+
 ## v0.1.15 — 2026-08-25
 
 - Made release-cut manifest regeneration consume the pinned build timestamp, so x64 and ARM64 produce one byte-identical release identity.
