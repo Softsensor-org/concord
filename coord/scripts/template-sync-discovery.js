@@ -396,6 +396,7 @@ if (require.main === module) {
         "  --no-git            Enumerate by filesystem walk instead of `git ls-files`.",
         "  --json              Machine-readable output.",
         "  --manifest-version  Set manifest_version when writing.",
+        "  --generated-at      Set generated_at when writing (release reproducibility).",
         "",
         "Exit 1 when the audit finds untracked engine-managed files.",
         "",
@@ -407,7 +408,16 @@ if (require.main === module) {
   if (wants("--write")) {
     const previous = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, "utf8")) : null;
     const manifestVersion = valueOf("--manifest-version");
-    const { manifest, dropped } = buildManifest(repoRoot, previous, { manifestVersion, useGit });
+    const generatedAt = valueOf("--generated-at");
+    if (generatedAt && !Number.isFinite(Date.parse(generatedAt))) {
+      process.stderr.write(`Invalid --generated-at timestamp: ${generatedAt}\n`);
+      process.exit(2);
+    }
+    const { manifest, dropped } = buildManifest(repoRoot, previous, {
+      manifestVersion,
+      useGit,
+      now: generatedAt,
+    });
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     process.stdout.write(
       `Wrote ${manifestPath}: ${manifest.items.length} item(s) (${dropped.length} dropped: ${dropped.join(", ") || "none"}).\n`

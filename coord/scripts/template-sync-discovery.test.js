@@ -395,3 +395,28 @@ test("COORD-607: regenerating the manifest is idempotent and preserves curated r
     assert.equal(item.checksum.hex, before.checksum.hex);
   }
 });
+
+test("release regeneration pins generated_at instead of reading each builder's wall clock", (t) => {
+  const root = makeFixtureRepo(t);
+  writeFixtureManifest(root);
+  const fixedTimestamp = "2026-08-25T23:56:26Z";
+
+  execFileSync(
+    process.execPath,
+    [
+      path.join(__dirname, "template-sync-discovery.js"),
+      "--write",
+      "--repo-root",
+      root,
+      "--no-git",
+      "--generated-at",
+      fixedTimestamp,
+    ],
+    { encoding: "utf8" }
+  );
+
+  const regenerated = JSON.parse(
+    fs.readFileSync(path.join(root, "coord", "TEMPLATE_SYNC_MANIFEST.json"), "utf8")
+  );
+  assert.equal(regenerated.generated_at, fixedTimestamp);
+});

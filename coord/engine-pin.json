@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "pinned_at": "2026-08-26T00:00:28Z",
+  "pinned_at": "2026-08-26T00:21:59Z",
   "manifest_version": "2026-08-12-coord-669-prodloc-ratchet",
   "manifest_fingerprint": {
-    "sha256": "d60588aab638475481c4192f038dde59ee374e2f8b9e8fe89cb1858ca55a3917",
-    "bytes": 392626
+    "sha256": "c5f8cef7bbe86b80a112301a42311327e9d9c0c94c5d0344b331b9fed50294c8",
+    "bytes": 392622
   },
   "files": {
     ".claude/settings.json": {
@@ -2228,13 +2228,13 @@
       "mode": 420
     },
     "coord/scripts/template-sync-discovery.js": {
-      "sha256": "1fd422c57b548b4860a94a12b77e1d7497bc8e65aa777ac1ec27b3203ebe579d",
-      "bytes": 18049,
+      "sha256": "563c5e8e6b23d7bb91e179ea1c347f4f787001bc6d61f63191ed2c06db4b0301",
+      "bytes": 18410,
       "mode": 420
     },
     "coord/scripts/template-sync-discovery.test.js": {
-      "sha256": "dea15f84e7c7ddd8e9226933f469bfc80f96b8af727fef627051d95e8a493ede",
-      "bytes": 18394,
+      "sha256": "1a947b2cd4d8cc00b039ce5a2e77b68351bc4390fdc7c0f3715bb5088d79086b",
+      "bytes": 19051,
       "mode": 420
     },
     "coord/scripts/test-isolation-guard.js": {

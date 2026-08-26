@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "manifest_version": "2026-08-12-coord-669-prodloc-ratchet",
-  "generated_at": "2026-08-26T00:00:29.893Z",
+  "generated_at": "2026-08-26T00:21:59Z",
   "purpose": "Post-sync drift detection for reusable template-canonical governance surfaces.",
   "discovery": {
     "mode": "rule-based",
@@ -8044,11 +8044,11 @@
     {
       "path": "coord/scripts/template-sync-discovery.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:1fd422c57b54",
+      "version_stamp": "sha256:563c5e8e6b23",
       "checksum": {
         "algo": "sha256",
-        "hex": "1fd422c57b548b4860a94a12b77e1d7497bc8e65aa777ac1ec27b3203ebe579d",
-        "bytes": 18049
+        "hex": "563c5e8e6b23d7bb91e179ea1c347f4f787001bc6d61f63191ed2c06db4b0301",
+        "bytes": 18410
       },
       "rationale": "Engine-managed surface under an engine-managed root (coord/docs/GCV4_ENGINE_CONFIG_SEAM.md). Tracked by the COORD-607 discovery rule, not by hand curation.",
       "discovery": "rule",
@@ -8062,11 +8062,11 @@
     {
       "path": "coord/scripts/template-sync-discovery.test.js",
       "match_policy": "exact",
-      "version_stamp": "sha256:dea15f84e7c7",
+      "version_stamp": "sha256:1a947b2cd4d8",
       "checksum": {
         "algo": "sha256",
-        "hex": "dea15f84e7c7ddd8e9226933f469bfc80f96b8af727fef627051d95e8a493ede",
-        "bytes": 18394
+        "hex": "1a947b2cd4d8cc00b039ce5a2e77b68351bc4390fdc7c0f3715bb5088d79086b",
+        "bytes": 19051
       },
       "rationale": "Engine-managed surface under an engine-managed root (coord/docs/GCV4_ENGINE_CONFIG_SEAM.md). Tracked by the COORD-607 discovery rule, not by hand curation.",
       "discovery": "rule",

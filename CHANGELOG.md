@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.15 — 2026-08-25
+
+- Made release-cut manifest regeneration consume the pinned build timestamp, so x64 and ARM64 produce one byte-identical release identity.
+- Replaced the npm tar inventory pipe race with a completed-listing check and retained the link-free SEA payload verification introduced during the v0.1.14 release qualification.
+
 ## v0.1.14 — 2026-08-25
 
 - Makes npm tarball inventory verification consume a completed listing instead
