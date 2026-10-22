@@ -648,6 +648,25 @@ test("governance-mcp handleRequest tools/call argument validation returns invali
   assert.match(response.structuredContent.error.message, /Missing required argument.*ticket/);
 });
 
+test("governance-mcp handleRequest rejects an option-shaped ticket before it reaches argv", () => {
+  // A ticket is forwarded to governance.js as a POSITIONAL argv element; a
+  // value like "--all" must be rejected at the dispatch chokepoint so it can
+  // never be re-read by the CLI as an option. gov_ticket is read-only, so this
+  // exercises the ticket guard independently of the mutation gate.
+  for (const bad of ["--all", "-x", "COORD 1", "../../etc"]) {
+    const response = mcpTesting.handleRequest({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "gov_ticket", arguments: { ticket: bad } },
+    });
+    assert.equal(response.isError, true, `expected ${bad} to be rejected`);
+    assert.equal(response.structuredContent.error.code, "invalid_arguments");
+    assert.equal(response.structuredContent.error.details.tool, "gov_ticket");
+    assert.match(response.structuredContent.error.message, /Invalid ticket ID/);
+  }
+});
+
 test("governance-mcp handleRequest tools/list exposes outputSchema for every tool", () => {
   const response = mcpTesting.handleRequest({
     jsonrpc: "2.0",

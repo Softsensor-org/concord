@@ -1170,6 +1170,24 @@ function handleRequest(request) {
         });
       }
 
+      // A `ticket` argument is forwarded to governance.js as a POSITIONAL argv
+      // element by most handlers (e.g. `["recent", ticket]`). Validate its
+      // shape centrally so a value like "--all" or "-x" can never reach the CLI
+      // as an option instead of a ticket id. Several handlers already did this
+      // inline (commit/start/move-review); doing it here closes the gap for the
+      // rest in one place. Handlers that accept an optional ticket omit it when
+      // blank, so an absent ticket is left untouched.
+      if (typeof toolArgs.ticket === "string" && toolArgs.ticket !== "") {
+        const ticketError = validateTicketId(toolArgs.ticket);
+        if (ticketError) {
+          return buildErrorResponse({
+            code: ERROR_CODES.INVALID_ARGUMENTS,
+            message: ticketError.error,
+            details: { tool: toolName },
+          });
+        }
+      }
+
       // GCV-1 O3 (SETTLED): the MCP server is long-lived and captures env
       // at spawn, so it cannot prove the calling conversation's live
       // COORD_INSTANCE_ID per call. Interim decision: the MCP WRITE
