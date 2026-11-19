@@ -1,0 +1,74 @@
+# Deploy separately as .github/workflows/concord-npm-publication.yml in the
+# public Concord repository. Install the two helpers from release/ as
+# .github/scripts/download-public-npm-draft.sh and publish-npm-package.cjs.
+# Keep this reviewed operational deployment outside generated cuts. Configure
+# the concord-publication environment with independent required reviewers and
+# bind npm trusted publishing to this public workflow and environment.
+# Transfer only the approved tarball to the public release draft. Reviewers
+# compare its dispatch SHA-256 to the verified staging handoff before approving.
+name: Concord npm publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: ID of the public Concord release draft
+        required: true
+        type: string
+      npm_asset_id:
+        description: ID of the reviewed npm tarball attached to that draft
+        required: true
+        type: string
+      release_tag:
+        description: Public release tag matching the tarball version
+        required: true
+        type: string
+      tarball_sha256:
+        description: SHA-256 from the approved public-channel handoff
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  npm:
+    if: github.repository == 'Softsensor-org/concord' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: concord-publication
+    concurrency:
+      group: concord-npm-publication
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.22.1"
+      - name: Fetch the approved public draft tarball
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          ASSET_ID: ${{ inputs.npm_asset_id }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          TARBALL_SHA256: ${{ inputs.tarball_sha256 }}
+        run: |
+          bash .github/scripts/download-public-npm-draft.sh \
+            "$RELEASE_ID" "$ASSET_ID" "$RELEASE_TAG" "$TARBALL_SHA256" \
+            "$RUNNER_TEMP/approved-create-concord.tgz"
+      - name: Publish with public Concord provenance
+        env:
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          node .github/scripts/publish-npm-package.cjs "$RUNNER_TEMP/approved-create-concord.tgz" \
+            --release-tag "$RELEASE_TAG" > "$RUNNER_TEMP/npm-publication-receipt.json"
+      - name: Preserve the public npm publication receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: npm-publication-receipt
+          path: ${{ runner.temp }}/npm-publication-receipt.json
+          if-no-files-found: error
