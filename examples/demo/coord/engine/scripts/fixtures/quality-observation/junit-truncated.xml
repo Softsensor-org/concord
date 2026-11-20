@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="unit" tests="2">
+  <testsuite name="com.example.CartTest" tests="2">
+    <testcase classname="com.example.CartTest" name="adds items" time="0.125"/>
+    <testcase classname="com.example.CartTest" name="totals" time="0.07

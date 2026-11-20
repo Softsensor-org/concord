@@ -1,0 +1,14 @@
+# dependencies & build output
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# typescript / next artifacts
+*.tsbuildinfo
+next-env.d.ts
+
+# env & local
+.env*.local
+.DS_Store

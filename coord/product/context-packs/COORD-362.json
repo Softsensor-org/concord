@@ -1,0 +1,40 @@
+{
+  "kind": "concord.business_context_pack",
+  "ticket": "COORD-362",
+  "scope": "repo-X governance tree-wide mutation safety latch",
+  "summary": "Ticket-specific context pack for a governance-tooling safety latch. No business-domain rules govern the implementation; the active constraints are the COORD-362 prompt and governance single-writer safety policy.",
+  "sections": {
+    "active_constraints": {
+      "items": [
+        {
+          "id": "COORD-362-PROMPT",
+          "statement": "Tree-wide governance mutations must fail closed when a live foreign doing lock and dirty non-derived paths coexist.",
+          "source": "coord/prompts/tickets/COORD-362.md",
+          "authority": "requirement"
+        },
+        {
+          "id": "GOV-SAFETY",
+          "statement": "Governed writers must preserve single-writer safety and avoid destructive shared-checkout mutations.",
+          "source": "coord/GOVERNANCE.md",
+          "authority": "approved_policy"
+        }
+      ]
+    },
+    "adrs": {
+      "items": []
+    },
+    "business_rules": {
+      "items": []
+    },
+    "conflicts": {
+      "items": []
+    },
+    "stale_sources": {
+      "items": []
+    },
+    "open_questions": {
+      "items": []
+    }
+  },
+  "proposed_ticket_recommendations": []
+}

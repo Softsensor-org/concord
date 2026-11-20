@@ -1,0 +1,16 @@
+{
+  "numTotalTestSuites": 2,
+  "numTotalTests": 1,
+  "startTime": 1760954400000,
+  "success": false,
+  "wasInterrupted": true,
+  "testResults": [
+    {
+      "name": "/work/repo/src/cart.test.js",
+      "status": "passed",
+      "assertionResults": [
+        { "ancestorTitles": ["Cart"], "title": "sums lines", "status": "passed", "duration": 12 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,256 @@
+# COORD-1049 fixture: real diff captured from git history for coord/engine/scripts/landing-decision-classifier.test.js.
+# Source commit(s): 0b57a9f2 (COORD-1024 acceptance; parent 0b57a9f2^)
+# Source path: coord/docs/decisions/0024-cross-domain-collaboration-runs-as-a-separate-service-that-never-mutates.md
+# Format: unified diff with full context (-U100000), so each side is the whole file.
+# Re-derive: the optional history test in landing-decision-classifier.test.js rebuilds both sides from git and compares them.
+# Captured with: git -C <repo> diff -U100000 --no-color --no-renames <parent> <commit> -- <path>
+diff --git a/coord/docs/decisions/0024-cross-domain-collaboration-runs-as-a-separate-service-that-never-mutates.md b/coord/docs/decisions/0024-cross-domain-collaboration-runs-as-a-separate-service-that-never-mutates.md
+index 4c070b56..8610070b 100644
+--- a/coord/docs/decisions/0024-cross-domain-collaboration-runs-as-a-separate-service-that-never-mutates.md
++++ b/coord/docs/decisions/0024-cross-domain-collaboration-runs-as-a-separate-service-that-never-mutates.md
+@@ -1,243 +1,243 @@
+ # ADR 0024: Cross-domain collaboration runs as a separate service that never mutates local governance
+ 
+-- **Status:** Proposed
++- **Status:** Accepted
+ - **Ticket:** COORD-918
+ - **Date:** 2026-11
+ - **Linked scope:** Enterprise pilot E2 (COORD-918); the E1 read-only baseline and its capability matrix (COORD-917, which this ticket depends on); attempt-aware coordination (COORD-899), publishing board state while work is active (COORD-911) and integration authority (COORD-915), all of which stay out of this service; ADR 0003 (governed human writes use trusted actors); ADR 0012 (open-core boundary); the Enterprise broker core, edge runner, broker contract, RBAC policy, org collector and rollup, and deployment assets; the Enterprise broker contract document.
+ 
+ ## Context
+ 
+ Independent coordination domains (separate boards, clones or teams) need to ask one another for help, review or a handoff, and to get answers. Today no Concord component can carry such a request between domains.
+ 
+ The COORD-917 capability matrix (2026-11-06, dev code 61bf80c0) and the code show where things stand:
+ 
+ - **No component opens a network socket.** Every runnable piece is a one-shot CLI, a demo or a library.
+   - the Enterprise edge runner reaches the broker only through `localTransport`, an in-process call. Its remote transport is described in comments and not built.
+   - Compose and Helm declare a broker port 8090 that nothing listens on.
+ - **the Enterprise broker core is test-evidence deduplication, not messaging.** Its `Broker` class stores content-hashed test evidence in `SqliteEvidenceStore` (node:sqlite) or `MemoryEvidenceStore`.
+   - A `PostgresEvidenceStore` exists only as a comment ("documented, NOT built here"). So does the Enterprise org collector's `PostgresSink`.
+   - the Enterprise org rollup `runCli` accepts only a SQLite `--warehouse` file, and the matrix records that the rollup rejects `postgres://` with exit 2.
+ - **There is authorization, but no authentication.**
+   - the Enterprise RBAC policy module supplies the role, scope and action matrix (`can()`).
+   - the Enterprise broker contract module `evaluateIntent` is a pure, deny-by-default validator for edge commands. Its intent types include `lifecycle-request`, which covers start, move, finalize and land.
+   - Nothing verifies who a caller is: the role and scope arrive in the claim.
+ - **There is no message broker, outbox or durable queue anywhere.**
+ - **The existing idempotency model is replay rejection.** the Enterprise broker contract document ("Idempotency / replay model") says the edge rejects any key it has already seen (`REPLAY`). That is the opposite of what COORD-918 requires: a resent request must get its original receipt.
+ - **The trust boundary is settled.** ENT-012, ENT-013 and ADR 0003 set it: the center may only request, the edge re-validates, and the center never writes governed files. ADR 0003 adds that identity comes from trusted edge claims, never from a request body.
+ - **The core coordination work belongs to other tickets.** Cross-domain integration (attempts, canonical ownership, fencing, reservations) is COORD-899. Publishing board state is COORD-911. Integration authority is COORD-915. None of it may move into a messaging service.
+ 
+ ## Linked Scope
+ 
+ - Governing ticket: COORD-918 (depends on COORD-917).
+ - Explicitly excluded from this service: COORD-899, COORD-911 and COORD-915, and any land, finalize or recovery execution (COORD-918 acceptance item 4).
+ - Pilot artifact contract: the same as COORD-917 (an image or bundle pinned by digest, a manifest, a placeholder-only env example, synthetic fixtures only, no public ports, no persistent state in `/tmp`).
+ - Enterprise-only code under the open-core boundary (ADR 0012). Core must not import it.
+ 
+ ## Decision Criteria
+ 
+ - Local governance files are never mutated remotely. The service is a mailbox, not a writer.
+ - Posting a request depends only on the service and its store. It does not depend on the receiving domain's board, the broker, or a busy or unhealthy test board.
+ - No acknowledged request is lost across a restart of the API, worker, database or broker, or across a backup restore.
+ - A resend is safe: the same key and payload return the same receipt, and the same key with a different payload is rejected.
+ - Every caller is authenticated, and every action is authorized per domain. Identity never comes from the request body.
+ - The service is private: no public ingress, and a deployment shape the maintainers' gate host can qualify with disposable domains and identities.
+ - It reuses existing Enterprise pieces where they fit, and does not force them into roles they were not built for.
+ 
+ ## Options Evaluated
+ 
+ **Overall shape**
+ 
+ 1. **Extend the Enterprise broker core and the ENT-013 intent pipeline to carry collaboration messages.** This reuses the code, but couples messaging to edge command authorization. It inherits replay rejection, which conflicts with the receipt semantics, and puts help and handoff next to `lifecycle-request`, a land and finalize path this ticket must exclude.
+ 2. **A separate collaboration service: a private API and a worker over a durable store, with a broker adapter fed by a transactional outbox.** It reuses only the ENT-012 role and scope model and the canonical hashing.
+ 3. **Git-hosted mailboxes (request refs or files on a shared remote).** No new infrastructure, but there is no authenticated per-domain inbox, no delivery or acknowledgment semantics, and it competes with the COORD-899 ref namespace that is reserved for core coordination.
+ 
+ **Durable store**
+ 
+ - **(a) Postgres.** Already named in Helm and compose as the production store. It suits several processes (API and worker), has standard backup and point-in-time restore, and its transactions cover the outbox. It is a new runtime dependency, and has no implementation in the repository yet.
+ - **(b) SQLite (node:sqlite), as used by `SqliteEvidenceStore`.** It needs no external dependency, but a single writer file shared by two processes is weak under restart and backup drills. The matrix also notes that Node 22.8 needs `--experimental-sqlite`.
+ - **(c) The broker as the store (durable queues only).** It cannot answer inbox or receipt queries, and it loses idempotency history when queues are purged.
+ 
+ **Delivery**
+ 
+ - **(i) RabbitMQ with a transactional outbox, as the ticket requires.**
+ - **(ii) A direct publish to RabbitMQ from the request handler.** This is a dual write: the database can commit and the publish fail, or the reverse.
+ - **(iii) No broker, with clients polling the database.** Simpler, but it does not meet the ticket's required broker adapter.
+ 
+ ## Decision
+ 
+ Adopt overall shape 2, store (a), and delivery (i). Items marked **[decision requested]** are left open for the human admin (see the last section). Items marked **[gate host]** are proven only by the qualification run on the maintainers' gate host.
+ 
+ ### 1. Boundary statements (binding)
+ 
+ 1. **The service never mutates local governance files.** It never writes a board, journal, plan record, lock, session, prompt or ADR in any domain, directly or through an edge command.
+    - The local client writes only to its own client state directory outside the governed paths.
+    - Acting on a request (filing a ticket, logging a question, starting work) is done locally, by an identified local actor, through the existing governed verbs, and is attributed to that actor.
+ 2. **Core integration reservations stay in the core design work.** Attempts, canonical ownership and status, fencing and reservations stay in COORD-899, 911 and 915.
+    - The service neither stores nor mirrors them, and it never decides ownership.
+    - A handoff request may reference a ticket, a commit or an attempt id as opaque text. Accepting a handoff is a message, not a transfer of ownership.
+ 3. **No land, finalize, recovery or other lifecycle execution goes through the service.** It does not register the ENT-013 `lifecycle-request` intent type or any other edge command intent.
+ 
+ ### 2. Request model and protocol schema version
+ 
+ Every envelope carries `protocol: "concord.collab/v1"`. A server receiving an unknown major version rejects it with a typed error. A minor addition is a new optional field. Changing what an existing field means requires a new major version.
+ 
+ **Kinds**
+ 
+ - `help`
+ - `review`
+ - `handoff`
+ 
+ **Fields**
+ 
+ | Field | Set by | Purpose |
+ | --- | --- | --- |
+ | `request_id` | server | Assigned when the request is first committed. |
+ | `idempotency_key` | client | Scoped to the sender's domain. |
+ | `from_domain`, `from_principal` | server | Taken from the authenticated credential, never from the body. |
+ | `to_domain` | client | The receiving domain. |
+ | `kind` | client | One of the kinds above. |
+ | `subject` | client | Bounded length. |
+ | `body` | client | Plain text, bounded length. |
+ | `refs[]` | client | Optional. Opaque references: ticket ids, commit SHAs, attempt ids, URLs. |
+ | `payload_hash` | server | sha256 over the canonical JSON of the client-supplied fields, using the same stable key ordering as the Enterprise broker core `canonicalString` and `computeContentHash`. |
+ | `created_at` | server | Server clock. |
+ 
+ **Lifecycle**
+ 
+ `posted -> delivered -> acknowledged -> replied* -> closed`. Requests can also end as `declined` or `expired`.
+ 
+ - A reply is a child message with its own idempotency key.
+ - Acknowledgment and reply are allowed only to principals of `to_domain`.
+ - Closing is allowed to the sender, or to the receiver after a reply.
+ 
+ Expiry and escalation rules are **[decision requested]**.
+ 
+ ### 3. Durable store
+ 
+ - Postgres is the system of record. It holds requests, messages, state transitions, idempotency keys, receipts, the outbox, and an append-only audit table.
+ - A store interface keeps SQLite for unit tests only.
+ - Schema migrations are versioned and applied by a one-shot job, not at service start.
+ - Backups use `pg_dump` plus WAL-based point-in-time restore. A restore drill is part of qualification **[gate host]**.
+ 
+ ### 4. Broker adapter with a transactional outbox
+ 
+ 1. **Committing a request.** The API writes the request (or message) row, its idempotency row, its receipt and an outbox row in one database transaction, then returns the receipt.
+ 2. **Relaying the outbox.** The worker reads unsent outbox rows (`FOR UPDATE SKIP LOCKED`) and publishes them to RabbitMQ:
+    - persistent messages on durable queues;
+    - publisher confirms;
+    - `message_id` set to the outbox id.
+ 3. **Marking rows sent.** A row is marked sent only after the confirm arrives.
+ 4. **Delivery semantics.** Delivery is at least once. A crash between the confirm and the mark resends the message, and consumers deduplicate by `message_id`.
+ 5. **What the broker is for.** The broker notifies and fans out. Inboxes are read from the database, so losing the broker, or purging a queue, delays notification but loses nothing. Queues can be rebuilt from the outbox.
+ 6. **Adapter scope.** The adapter is an interface: RabbitMQ in production, an in-memory fake in tests.
+ 
+ ### 5. Idempotency and receipt semantics
+ 
+ - **Key scope.** The idempotency scope is `(from_domain, idempotency_key)`. The ENT-013 replay rejection does not apply to this protocol.
+ - **Same key, same `payload_hash`.** The server returns the original receipt byte for byte. The HTTP status says it was replayed, and nothing new is stored. This holds across a client restart and a server restart.
+ - **Same key, different `payload_hash`.** The server rejects the request with a typed conflict error, stores nothing, and records the attempt in the audit table.
+ - **Receipt contents:** `protocol`, `request_id`, `idempotency_key`, `payload_hash`, `from_domain`, `to_domain`, `accepted_at`, a store sequence number, and `receipt_hash` over those fields.
+ - **What a receipt proves.** It proves a durable commit to the store. It does not prove delivery or acknowledgment.
+ - **Acknowledgments.** An acknowledgment is a separate idempotent message from the receiver. If an acknowledgment is lost, the request stays `delivered` and is redelivered, and the receiver deduplicates by `request_id`.
+ - **Retention.** The idempotency retention period is **[decision requested]** (proposed minimum: 30 days). So is whether receipts are signed rather than hash-only.
+ 
+ ### 6. Authentication and per-domain authorization
+ 
+ **Authentication**
+ 
+ - Every endpoint requires authentication. There is no anonymous read.
+ - Each credential is bound to exactly one domain and one principal. The service derives `from_domain` and `from_principal` only from the verified credential (ADR 0003).
+ - Credentials are short-lived and revocable.
+ - The mechanism is **[decision requested]**. Candidates: OIDC client credentials from the organization's IdP, or mTLS client certificates issued per domain. The contract above holds for either.
+ 
+ **Authorization**
+ 
+ Authorization is per domain and deny by default, reusing the ENT-012 role and scope model in the Enterprise RBAC policy module with new collaboration actions:
+ 
+ - A principal may post only from its own domain, and only to domains its domain may address.
+ - It may read only its own domain's inbox and outbox.
+ - It may acknowledge, reply to or decline only requests addressed to its domain.
+ - Only the domain registry administrator can register a domain, its credentials and its peer relations.
+ - Every out-of-scope access is rejected and audited.
+ 
+ Whether the default is all-to-all within an organization, or explicit pairs, is **[decision requested]**.
+ 
+ ### 7. Private deployment shape
+ 
+ - **Image.** One image, pinned by digest, under the COORD-917 artifact contract: a supported Node 22.8+ or 24 runtime with the SQLite flag handled, a `.dockerignore`, and only the needed files.
+ - **Processes.**
+   - an `api` process, the only listener, on a private interface and a configured port;
+   - a `worker` process, with no listener;
+   - a one-shot `migrate` job, with restart policy `no`.
+ - **Backing services.** Postgres and RabbitMQ on the same private network, with no published ports. TLS on the client-to-API hop and the service-to-backing hops.
+ - **Configuration.** Secrets come from a secret store. The env example contains placeholders only.
+ - **Health.** Health and readiness endpoints exist only on the private network.
+ - **Packaging.** Compose for the gate-host pilot. Helm follows once compose qualifies.
+ - **Corrections to the existing declarations.** Jobs are declared as jobs, and nothing declares a port that no process listens on (the 917 finding about the 8090 port and `restart: unless-stopped`).
+ - **The local client** is a minimal CLI. It posts, lists its inbox, acknowledges, replies and closes. It keeps its state outside the governed paths, and never calls `gov`.
+ 
+ ### 8. Qualification
+ 
+ Proven on any host by unit, contract and service tests (with fakes and disposable containers):
+ 
+ - envelope and schema-version validation;
+ - idempotency replay and conflict;
+ - the authorization matrix;
+ - outbox relay with a simulated crash between confirm and mark;
+ - deduplication by `message_id`;
+ - the requirement that no governed path is ever written, checked by a test that compares the hashes of a fixture board before and after a full message exchange.
+ 
+ Proven only by the qualification run on the maintainers' gate host **[gate host]**, with disposable domains and identities and the results recorded on COORD-918:
+ 
+ - two clients post help, review and handoff requests, acknowledge and reply;
+ - a restart and resend of the same request returns the same receipt;
+ - the same key with a different payload is rejected;
+ - out-of-scope access is rejected;
+ - a busy or unhealthy test board does not prevent posting;
+ - a database restart, a broker restart, a lost acknowledgment and a backup restore are each demonstrated, with receipts and queue state recorded;
+ - no public ports, and no persistent state in `/tmp`.
+ 
+ The gate host's access contract is still pending with the human admin, per the COORD-917 correction.
+ 
+ ## Alternatives Rejected
+ 
+ - **Extending the Enterprise broker core and the ENT-013 intent pipeline (shape 1):** it mixes messages with edge commands, inherits replay rejection, and sits next to `lifecycle-request`, a land and finalize path this ticket must exclude.
+ - **Git-hosted mailboxes (shape 3):** no authenticated per-domain inbox, no delivery or acknowledgment semantics, and they would compete with the COORD-899 namespace.
+ - **SQLite as the production store (b):** too weak for the multi-process restart and backup drills the qualification requires. It is kept for tests.
+ - **The broker as the store (c):** it cannot serve inbox or receipt queries, and a purged queue would lose data.
+ - **A direct publish from the request handler (ii):** a dual write that loses or duplicates messages on a partial failure.
+ - **No broker (iii):** it does not meet the ticket's required broker adapter.
+ - **Carrying reservations or canonical state in the service:** excluded by the ticket. Those belong to COORD-899, 911 and 915.
+ 
+ ## Consequences
+ 
+ - Domains can exchange help, review and handoff requests without either side's board being reachable or healthy, and without any remote write to governance state.
+ - This is new implementation, not a configuration switch. It adds an API, a worker, a store schema, an outbox, a RabbitMQ adapter, authentication, a domain registry and a client.
+ - Enterprise gains its first network listener, and with it an operational surface: secrets, TLS, backups and upgrades. It stays private and Enterprise-only (ADR 0012).
+ - The ENT-013 replay model and the collaboration receipt model coexist, and are documented as applying to different protocols.
+ - Acting on a request remains a local, governed and attributable act. The service cannot widen anyone's authority on a board.
+ - Implementation cannot start before this ADR is accepted, and the gate-host run depends on COORD-917's E1 artifact and access contract.
+ 
+ ## Revisit Trigger
+ 
+ - The gate-host qualification fails any item in decision 8.
+ - A need arises for the service to trigger governed actions in a domain. That would be a new decision, and would need its own ADR.
+ - COORD-899 lands a design that needs cross-domain notification. It would be added here only as a notification of already-published refs, never as authority.
+ - The store, broker or authentication choice is changed by an organization's platform constraints.
+ 
+ ## Decisions Requested At Acceptance
+ 
+ The tickets leave these open. The human admin decides them; this ADR does not.
+ 
+ 1. **Authentication mechanism and issuer.** OIDC client credentials, per-domain mTLS, or both.
+ 2. **Domain registry policy.** Who registers domains, and whether peer relations default to all-to-all within an organization or explicit pairs.
+ 3. **Idempotency retention.** The retention period (proposed minimum 30 days), and whether receipts are signed rather than hash-only.
+ 4. **Payloads.** Size limits, references only versus attachments, and retention and classification of message bodies.
+ 5. **Expiry and escalation.** The rules for unanswered requests.
+ 6. **Human principals.** Whether humans post through the same API in the MVP (under SSO, per ADR 0003), or only agents and their domains.
+ 7. **Gate host.** The maintainers' gate host access contract and the result-directory format (pending from COORD-917).
+ 8. **Postgres.** Confirm Postgres as the production store. This is a new runtime dependency for the Enterprise pilot.
+ 
+ ## Approval State
+ 
+-Proposed only. No part of this record is accepted, and no implementation may start until the human admin accepts it through the governed ADR packet. Review by agents is not human approval.
++Accepted by the human admin on 2026-11-15 (human-admin decision, given directly in the orchestrator session and recorded under COORD-1024). The Decision section is accepted as written: cross-domain collaboration runs as a separate service that never mutates local governance. The eight questions under Decisions Requested At Acceptance are not answered by this record and stay open for the human admin. Review by agents is not human approval.

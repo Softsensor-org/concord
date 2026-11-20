@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "ticket_id": "REQSKEL-001",
+  "feature_proof": [
+    "path:fixture/evidence.js"
+  ],
+  "repo_gates": [
+    "node --test fixture"
+  ],
+  "self_review_cycles": [
+    {
+      "verdict": "pass"
+    }
+  ],
+  "requirement_closure": [
+    "Ticket ask: Link requirement evidence to delivery ticket.",
+    "Implemented: Fixture ticket links URS-001 to evidence.",
+    "Closeout verdict: complete"
+  ]
+}

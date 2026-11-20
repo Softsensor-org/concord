@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "ticket_id": "GR-003",
+  "requirement_closure": [
+    "Ticket ask: deferred-to chore",
+    "Implemented: also touched coord/scripts/shared-target.js",
+    "Not implemented: none",
+    "Deferred to: none",
+    "Closeout verdict: complete"
+  ],
+  "critical_invariants": [],
+  "self_review_cycles": []
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "ticket_id": "INS-002",
+  "requirement_closure": [
+    "Ticket ask: extend the memory chain feature",
+    "Implemented: the extension",
+    "Not implemented: the batch-signing path was carved out as out of scope",
+    "Deferred to: INS-003 for the deferred batch-signing work",
+    "Closeout verdict: complete"
+  ],
+  "critical_invariants": [
+    "prev_event_hash linkage stays intact across the extension."
+  ],
+  "self_review_cycles": [
+    {
+      "cycle": 1,
+      "total": 1,
+      "lens": "Security and failure modes",
+      "diff": "extended the chain path",
+      "risks": ["the prev_event_hash chain could break again on concurrent journal append"],
+      "findings": "none",
+      "verification": "node --test",
+      "verdict": "pass",
+      "raw": "lens=Security and failure modes; risks=the prev_event_hash chain could break again on concurrent journal append; findings=none; verdict=pass"
+    }
+  ]
+}

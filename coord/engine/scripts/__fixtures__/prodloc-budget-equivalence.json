@@ -1,0 +1,329 @@
+{
+  "ticket": "COORD-957",
+  "captured_on": "pre-merge origin/dev 5fe838d8",
+  "cases": [
+    {
+      "name": "arch: new module over 1200 fails",
+      "outcome": {
+        "findings": [
+          {
+            "check": "prodloc",
+            "file": "coord/scripts/new-monolith.js",
+            "value": 1201,
+            "threshold": 1200,
+            "severity": "fail",
+            "message": "coord/scripts/new-monolith.js grew past its production-module high-water LOC budget 1200 (now 1201) — attribute the growth to the ticket and split before adding more engine surface"
+          }
+        ]
+      }
+    },
+    {
+      "name": "arch: new module at 1200 passes",
+      "outcome": {
+        "findings": []
+      }
+    },
+    {
+      "name": "arch: test file ignored at 5000",
+      "outcome": {
+        "findings": []
+      }
+    },
+    {
+      "name": "arch: out of scope path ignored",
+      "outcome": {
+        "findings": []
+      }
+    },
+    {
+      "name": "arch: fixture path ignored",
+      "outcome": {
+        "findings": []
+      }
+    },
+    {
+      "name": "arch: unbudgeted engine module over cap fails",
+      "outcome": {
+        "findings": [
+          {
+            "check": "prodloc",
+            "file": "coord/engine/scripts/new-engine-module.js",
+            "value": 1201,
+            "threshold": 1200,
+            "severity": "fail",
+            "message": "coord/engine/scripts/new-engine-module.js grew past its production-module high-water LOC budget 1200 (now 1201) — attribute the growth to the ticket and split before adding more engine surface"
+          }
+        ]
+      }
+    },
+    {
+      "name": "arch: unbudgeted engine test ignored",
+      "outcome": {
+        "findings": []
+      }
+    },
+    {
+      "name": "arch: normalized ./ path keyed by budget",
+      "outcome": {
+        "findings": [
+          {
+            "check": "prodloc",
+            "file": "./coord/scripts/legacy.js",
+            "value": 11,
+            "threshold": 10,
+            "severity": "fail",
+            "message": "coord/scripts/legacy.js grew past its production-module high-water LOC budget 10 (now 11) — attribute the growth to the ticket and split before adding more engine surface"
+          }
+        ]
+      }
+    },
+    {
+      "name": "arch: tracked module at high-water passes",
+      "outcome": {
+        "findings": []
+      }
+    },
+    {
+      "name": "arch: tracked module grown past high-water fails",
+      "outcome": {
+        "findings": [
+          {
+            "check": "prodloc",
+            "file": "coord/scripts/legacy.js",
+            "value": 11,
+            "threshold": 10,
+            "severity": "fail",
+            "message": "coord/scripts/legacy.js grew past its production-module high-water LOC budget 10 (now 11) — attribute the growth to the ticket and split before adding more engine surface"
+          }
+        ]
+      }
+    },
+    {
+      "name": "arch: backslash path keyed by budget",
+      "outcome": {
+        "findings": [
+          {
+            "check": "prodloc",
+            "file": "coord\\scripts\\legacy.js",
+            "value": 11,
+            "threshold": 10,
+            "severity": "fail",
+            "message": "coord/scripts/legacy.js grew past its production-module high-water LOC budget 10 (now 11) — attribute the growth to the ticket and split before adding more engine surface"
+          }
+        ]
+      }
+    },
+    {
+      "name": "arch: engine budgeted module at cap passes",
+      "outcome": {
+        "findings": []
+      }
+    },
+    {
+      "name": "arch: engine budgeted module over cap fails",
+      "outcome": {
+        "findings": [
+          {
+            "check": "prodloc",
+            "file": "coord/engine/scripts/lifecycle.js",
+            "value": 2131,
+            "threshold": 2130,
+            "severity": "fail",
+            "message": "coord/engine/scripts/lifecycle.js grew past its production-module high-water LOC budget 2130 (now 2131) — attribute the growth to the ticket and split before adding more engine surface"
+          }
+        ]
+      }
+    },
+    {
+      "name": "arch: severity warn propagates",
+      "outcome": {
+        "findings": [
+          {
+            "check": "prodloc",
+            "file": "coord/scripts/new-monolith.js",
+            "value": 1201,
+            "threshold": 1200,
+            "severity": "warn",
+            "message": "coord/scripts/new-monolith.js grew past its production-module high-water LOC budget 1200 (now 1201) — attribute the growth to the ticket and split before adding more engine surface"
+          }
+        ]
+      }
+    },
+    {
+      "name": "closeout: exact budget 1199 admitted",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 1
+      }
+    },
+    {
+      "name": "closeout: exact budget 1200 admitted",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 1
+      }
+    },
+    {
+      "name": "closeout: integrated breach 1201 refused",
+      "outcome": {
+        "refused": "Ticket TEST-957 prodloc closeout refused: coord/scripts/budget-fixture.js: measured 1201 LOC, declared budget 1200. Split the module or land a shrink repair; do not raise its budget."
+      }
+    },
+    {
+      "name": "closeout: incoming breach refused on branch",
+      "outcome": {
+        "refused": "Ticket TEST-957 prodloc closeout refused: coord/scripts/budget-fixture.js: measured 1201 LOC, declared budget 1200. Split the module or land a shrink repair; do not raise its budget."
+      }
+    },
+    {
+      "name": "closeout: combined addition over budget refused",
+      "outcome": {
+        "refused": "Ticket TEST-957 prodloc closeout refused: coord/scripts/budget-fixture.js: measured 1203 LOC, declared budget 1200. Split the module or land a shrink repair; do not raise its budget."
+      }
+    },
+    {
+      "name": "closeout: engine-scripts module 1201 refused (COORD-871)",
+      "outcome": {
+        "refused": "Ticket TEST-957 prodloc closeout refused: coord/engine/scripts/budget-engine-fixture.js: measured 1201 LOC, declared budget 1200. Split the module or land a shrink repair; do not raise its budget."
+      }
+    },
+    {
+      "name": "closeout: engine-scripts module 1200 admitted",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 1
+      }
+    },
+    {
+      "name": "closeout: test file not measured",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 0
+      }
+    },
+    {
+      "name": "closeout: fixture file not measured",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 0
+      }
+    },
+    {
+      "name": "closeout: production source symlink refused",
+      "outcome": {
+        "refused": "Ticket TEST-957 prodloc closeout refused: coord/scripts/budget-fixture.js must be a regular production source file, not a link."
+      }
+    },
+    {
+      "name": "closeout: every breach named",
+      "outcome": {
+        "refused": "Ticket TEST-957 prodloc closeout refused: coord/scripts/budget-fixture.js: measured 1201 LOC, declared budget 1200; coord/scripts/second-fixture.js: measured 1202 LOC, declared budget 1200. Split the module or land a shrink repair; do not raise its budget."
+      }
+    },
+    {
+      "name": "closeout: shrink repair admitted over existing breach",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 1
+      }
+    },
+    {
+      "name": "closeout: uncommitted shrink does not hide committed breach",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 1
+      }
+    },
+    {
+      "name": "closeout: candidate code never executed",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 1
+      }
+    },
+    {
+      "name": "closeout: carried shim move at unchanged budget admitted (COORD-913)",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 3
+      }
+    },
+    {
+      "name": "closeout: carried git rename at unchanged budget admitted (COORD-913)",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 1
+      }
+    },
+    {
+      "name": "closeout: carried move raising re-keyed number refused as budget raised (COORD-913)",
+      "outcome": {
+        "refused": "Ticket TEST-957 prodloc closeout refused: budget raised: coord/engine/scripts/lifecycle.js declares 1600 but the trusted budget is 1500 (carried from coord/scripts/lifecycle.js by a registered shim); a candidate may not raise a budget. Split the module or land a shrink repair; do not raise its budget."
+      }
+    },
+    {
+      "name": "closeout: carried move declaring under-budget number admitted (COORD-913)",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 3
+      }
+    },
+    {
+      "name": "closeout: carried git rename over its budget refused (COORD-913)",
+      "outcome": {
+        "refused": "Ticket TEST-957 prodloc closeout refused: coord/engine/scripts/renamed-over.js: measured 1501 LOC, declared budget 1500: budget carried by a move from coord/scripts/carry-legacy.js (git rename). Split the module or land a shrink repair; do not raise its budget."
+      }
+    },
+    {
+      "name": "closeout: carried move onHead over budget refused (COORD-913)",
+      "outcome": {
+        "refused": "Ticket TEST-957 prodloc closeout refused: coord/engine/scripts/lifecycle.js: measured 1501 LOC, declared budget 1500: budget carried by a move from coord/scripts/lifecycle.js (registered shim). Split the module or land a shrink repair; do not raise its budget."
+      }
+    },
+    {
+      "name": "closeout: unregistered copy at default budget refused (COORD-913)",
+      "outcome": {
+        "refused": "Ticket TEST-957 prodloc closeout refused: coord/engine/scripts/unregistered-copy.js: measured 1201 LOC, declared budget 1200. Split the module or land a shrink repair; do not raise its budget."
+      }
+    },
+    {
+      "name": "closeout: unregistered copy at default budget admitted (COORD-913)",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 2
+      }
+    },
+    {
+      "name": "closeout: candidate-invented budget refused (COORD-913)",
+      "outcome": {
+        "refused": "Ticket TEST-957 prodloc closeout refused: coord/engine/scripts/invented.js: measured 1201 LOC, declared budget 1200; budget invented for unregistered path coord/engine/scripts/invented.js: candidate declares 1500 with no trusted budget and no registered move or git rename; register the move in coord/engine/shim-registry.json or remove the declaration. Split the module or land a shrink repair; do not raise its budget."
+      }
+    },
+    {
+      "name": "closeout: candidate-declared number for trusted path raised refused",
+      "outcome": {
+        "refused": "Ticket TEST-957 prodloc closeout refused: budget raised: coord/scripts/budget-fixture.js declares 1300 but the trusted budget is 1200; a candidate may not raise a budget. Split the module or land a shrink repair; do not raise its budget."
+      }
+    },
+    {
+      "name": "closeout: candidate-declared number for trusted path lowered admitted",
+      "outcome": {
+        "admitted": true,
+        "result": "pass",
+        "checked": 2
+      }
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "framework": "NIST AI RMF",
+  "version": "1.1",
+  "note": "Indicative mapping of Concord governed evidence to AI RMF functions. Not a conformity claim.",
+  "controls": [
+    {
+      "id": "GOVERN 1.x",
+      "title": "Policies, accountability, and risk acceptance",
+      "evidence": ["requirement_closure", "waivers"]
+    },
+    {
+      "id": "MAP 2.x / 4.x",
+      "title": "Context establishment and traceability",
+      "evidence": ["requirement_closure", "landing_provenance"]
+    },
+    {
+      "id": "MEASURE 2.x",
+      "title": "Evaluation, testing, and evidence",
+      "evidence": ["repo_gates", "feature_proof"]
+    },
+    {
+      "id": "MANAGE 2.x / 4.x",
+      "title": "Oversight, response, and logging",
+      "evidence": ["review_cycles", "journal_log"]
+    }
+  ]
+}

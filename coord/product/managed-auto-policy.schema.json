@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coord.auto-mode.policy/v1",
+  "title": "Concord managed-auto execution policy and action event",
+  "description": "Provider-neutral description and evidence contract. It does not enforce provider or operating-system boundaries.",
+  "type": "object",
+  "required": ["schema", "ticket", "session", "owner", "provider", "adapter_version", "worktree", "base_sha", "read_roots", "write_roots", "denied_paths", "command_classes", "child_process_egress", "provider_control_plane", "secret_reference_policy", "git_remote_actions", "approval_boundaries", "limits", "evidence_coverage"],
+  "properties": {
+    "schema": {"enum": ["coord.auto-mode.policy/v1", "coord.auto-mode.action/v1"]},
+    "ticket": {"type": "string", "minLength": 1}, "session": {"type": "string", "minLength": 1},
+    "owner": {"type": "string", "minLength": 1}, "provider": {"type": "string", "minLength": 1},
+    "adapter_version": {"type": "string", "minLength": 1}, "worktree": {"type": "string", "pattern": "^/"},
+    "base_sha": {"type": "string", "minLength": 1}, "read_roots": {"type": "array", "minItems": 1},
+    "write_roots": {"type": "array", "minItems": 1}, "denied_paths": {"type": "array", "minItems": 1},
+    "command_classes": {"type": "array", "minItems": 1},
+    "child_process_egress": {"enum": ["deny", "allowlisted"]},
+    "provider_control_plane": {"type": "object"}, "secret_reference_policy": {"type": "object"},
+    "git_remote_actions": {"type": "object"}, "approval_boundaries": {"type": "object"}, "limits": {"type": "object"},
+    "evidence_coverage": {"enum": ["complete", "partial", "interrupted", "bypassed", "unmanaged"]},
+    "label": {"enum": ["managed-auto"]}
+  },
+  "additionalProperties": true
+}

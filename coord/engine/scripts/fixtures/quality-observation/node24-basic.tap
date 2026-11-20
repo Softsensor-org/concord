@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: outer suite
+    # Subtest: passes
+    ok 1 - passes
+      ---
+      duration_ms: 0.732994
+      type: 'test'
+      ...
+    # Subtest: skips
+    ok 2 - skips # SKIP nope
+      ---
+      duration_ms: 0.244201
+      type: 'test'
+      ...
+    # Subtest: todo one
+    ok 3 - todo one # TODO
+      ---
+      duration_ms: 0.275297
+      type: 'test'
+      ...
+    # Subtest: fails \# hash
+    not ok 4 - fails \# hash
+      ---
+      duration_ms: 0.332074
+      type: 'test'
+      location: '/work/repo/sample.test.js:6:8'
+      failureType: 'testCodeFailure'
+      error: 'boom'
+      code: 'ERR_TEST_FAILURE'
+      stack: |-
+        TestContext.<anonymous> (/work/repo/sample.test.js:6:34)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+      ...
+    1..4
+not ok 1 - outer suite
+  ---
+  duration_ms: 1.958335
+  type: 'suite'
+  location: '/work/repo/sample.test.js:2:6'
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: top café
+ok 2 - top café
+  ---
+  duration_ms: 0.097435
+  type: 'test'
+  ...
+1..2
+# tests 5
+# suites 1
+# pass 2
+# fail 1
+# cancelled 0
+# skipped 1
+# todo 1
+# duration_ms 67.912733

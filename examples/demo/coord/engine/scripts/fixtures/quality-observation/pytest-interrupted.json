@@ -1,0 +1,11 @@
+{
+  "created": 1760954400.5,
+  "duration": 0.1,
+  "exitcode": 2,
+  "root": "/work/repo",
+  "summary": { "passed": 1, "total": 1, "collected": 3 },
+  "tests": [
+    { "nodeid": "tests/test_cart.py::TestCart::test_adds", "outcome": "passed",
+      "setup": { "duration": 0.0001, "outcome": "passed" }, "call": { "duration": 0.002, "outcome": "passed" }, "teardown": { "duration": 0.00005, "outcome": "passed" } }
+  ]
+}

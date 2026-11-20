@@ -1,0 +1,51 @@
+{
+  "name": "concord",
+  "version": "0.2.0-rc.1",
+  "description": "Softsensor Concord — governed multi-agent coordination engine (the coord/ scaffold, driven by the gov CLI). Includes a vendored Babel parser runtime for bounded, non-executing source discovery.",
+  "license": "Apache-2.0",
+  "private": false,
+  "type": "commonjs",
+  "bin": {
+    "concord": "scripts/coord-cli.js",
+    "gov": "scripts/governance.js"
+  },
+  "files": [
+    "scripts/",
+    "engine/",
+    "board/",
+    "paths.js",
+    "project.config.js",
+    "engine-pin.json",
+    "TEMPLATE_SYNC_MANIFEST.json",
+    "GOVERNANCE.md",
+    "GOVERNANCE_ARCHITECTURE.md",
+    "AGENTS.md",
+    "AGENT_STARTUP_CHECKLIST.md",
+    "product/",
+    "prompts/",
+    "docs/"
+  ],
+  "engines": {
+    "node": ">=22.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Softsensor-org/concord"
+  },
+  "// scripts.test": "COORD-480: `test` is the ONE authoritative entrypoint (coord/scripts/test-runner.js) — root-normalizing, recursive, serial, session-identity-stripping, isolation-guarded. It works identically from the repo root, from coord/, and from a packed artifact. The test:* entries are focused local-iteration subsets that run through the SAME contract.",
+  "scripts": {
+    "test": "node scripts/test-runner.js",
+    "test:coverage": "node scripts/test-runner.js --engine-coverage",
+    "test:list": "node scripts/test-runner.js --list",
+    "test:core": "node scripts/test-runner.js --module core",
+    "test:board": "node scripts/test-runner.js --module board",
+    "test:hooks": "node scripts/test-runner.js --module hooks",
+    "test:gates": "node scripts/test-runner.js --module gates",
+    "test:enterprise": "node scripts/test-runner.js --module enterprise",
+    "test:packaging": "node scripts/test-runner.js --module packaging,release",
+    "mutation": "stryker run && node engine/scripts/mutation-policy.js classify --root . --report reports/mutation/mutation.json"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "^9.6.1"
+  }
+}

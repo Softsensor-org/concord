@@ -1,0 +1,5 @@
+{
+  "_comment": "COORD-284 arch-debt PREVENTION gate. Ratchets the monolith/size budgets: existing over-budget files are GRANDFATHERED (pre-existing findings never fail), but any change that grows a file PAST its budget vs the baseline (default origin/main) fails the full/ci submit gate. monolith/size keep their warn severity for plain (absolute) classify and the no-baseline fallback; the escalation to a hard fail happens ONLY for NEW findings under ratchet mode (ratchetFailOnNew). Point GATE_ARCH_CONFIG at this file to enable it; override the baseline with GATE_ARCH_BASELINE.",
+  "archGate": "ratchet",
+  "ratchetFailOnNew": ["monolith", "size"]
+}

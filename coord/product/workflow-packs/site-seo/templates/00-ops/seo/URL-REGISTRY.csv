@@ -1,0 +1,2 @@
+url,final_url,canonical_url,site_object_type,site_object_id,handle,template_or_admin_surface,indexability_status,robots_meta,http_status,sitemap_present,primary_intent,commercial_priority,last_live_checked,owner_ticket,notes
+https://www.example.com/products/sample-product,https://www.example.com/products/sample-product,https://www.example.com/products/sample-product,product,sample-product-id,sample-product,commerce-admin,indexable,index,200,true,commercial product page,P1,2026-01-15T14:00:00Z,SEO-001,synthetic example row

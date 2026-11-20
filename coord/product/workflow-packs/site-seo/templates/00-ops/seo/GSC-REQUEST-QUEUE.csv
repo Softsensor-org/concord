@@ -1,0 +1,2 @@
+priority,url,reason,source_ticket,evidence_path,ready_for_request,requested_at,requested_by,request_method,next_check_at,gsc_result,status,notes
+P1,https://www.example.com/products/sample-product,live indexable page after content/link update,SEO-001,data/reports/2026-01-15-sample-product-live-check.md,true,2026-01-15T14:15:00Z,operator,browser,2026-01-29,,monitoring,synthetic example row

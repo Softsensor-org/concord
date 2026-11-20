@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "ticket_id": "FIX-003",
+  "requirement_closure": [
+    "Ticket ask: re-closure fixture — a ticket whose requirement_closure was re-set from partial to complete (COORD-198 recency).",
+    "Implemented: first-pass implementation that fell short of the acceptance bar.",
+    "Not implemented: ACCEPTANCE-cut NOT met — the dual gate stayed red on the first closure.",
+    "Deferred to: FIX-009 (follow-up to finish the cut)",
+    "Closeout verdict: partial",
+    "Ticket ask: re-closure fixture — finish the cut so the acceptance bar is met.",
+    "Implemented: second-pass implementation that landed the full acceptance bar.",
+    "Not implemented: none — full acceptance bar met",
+    "Deferred to: none",
+    "Closeout verdict: complete"
+  ],
+  "critical_invariants": [
+    "requirement_closure is append-only, so a re-closure leaves both the superseded and the latest block in the ordered array.",
+    "Derived verdict/debt signals must read the LATEST labelled line (recency), keeping older lines only as history."
+  ],
+  "self_review_cycles": [
+    {
+      "cycle": 1,
+      "total": 1,
+      "lens": "Recency of derived closure signals",
+      "diff": "fixture carries a partial block superseded by a later complete block",
+      "risks": ["a first-block read mis-reports partial", "a none-class value is mis-flagged as a carve-out"],
+      "findings": "none",
+      "verification": "node --test coord/scripts/decision-extractor.test.js",
+      "verdict": "pass",
+      "raw": "lens=Recency of derived closure signals; diff=fixture carries a partial block superseded by a later complete block; risks=a first-block read mis-reports partial, a none-class value is mis-flagged as a carve-out; findings=none; verification=node --test coord/scripts/decision-extractor.test.js; verdict=pass"
+    }
+  ]
+}

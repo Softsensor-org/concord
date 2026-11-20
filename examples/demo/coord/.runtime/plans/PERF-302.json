@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "ticket_id": "PERF-302",
+  "markdown_heading": "PERF-302 — Code-split the settings bundle",
+  "review_round": 1,
+  "traceability_gate": "closing-gap",
+  "intended_files": [
+    "frontend/src/screens/Settings/index.tsx",
+    "frontend/src/routes/settings.lazy.tsx"
+  ],
+  "change_summary": [
+    "Lazy-load the settings screens so the initial account bundle ships less JavaScript."
+  ],
+  "verification_commands": ["cd frontend && yarn build", "cd frontend && yarn analyze"],
+  "critical_invariants": [
+    "Settings routes still render with no functional regression after lazy-loading.",
+    "Initial bundle no longer includes the settings chunk."
+  ],
+  "requirement_closure": [
+    "Ticket ask: Cut initial load on the account screens (NFR performance).",
+    "Implemented: React.lazy + Suspense boundaries around settings routes; bundle analyzer confirms the chunk split.",
+    "Not implemented: prefetch-on-hover still pending review feedback",
+    "Deferred to: none",
+    "Closeout verdict: in review"
+  ],
+  "feature_proof": [
+    "route:/settings",
+    "symbol:frontend/src/routes/settings.lazy.tsx#SettingsRoute",
+    "text:initial bundle"
+  ],
+  "repo_gates": [
+    "cd frontend && yarn build [result=pass; attribution=clean] - build ok, settings chunk split"
+  ],
+  "prior_findings": [],
+  "self_review_cycles": [
+    { "cycle": 1, "total": 4, "lens": "contract/state invariants", "risks": ["broken route", "loading flash"], "findings": "routes render with Suspense fallback; no functional regression", "verification": "yarn test settings", "verdict": "pass" },
+    { "cycle": 2, "total": 4, "lens": "auth/security/failure modes", "risks": ["chunk load failure"], "findings": "chunk-load error boundary retries; graceful fallback", "verification": "manual offline test", "verdict": "pass" },
+    { "cycle": 3, "total": 4, "lens": "tests/operability/performance", "risks": ["no measured win"], "findings": "initial bundle -38KB gzip; verified via analyzer", "verification": "yarn analyze", "verdict": "pass" },
+    { "cycle": 4, "total": 4, "lens": "requirement closure", "risks": ["prefetch deferred"], "findings": "core split complete; prefetch is a review nice-to-have", "verification": "review against perf budget", "verdict": "pass" }
+  ],
+  "synced_from_markdown_at": "2026-06-11T10:00:00Z"
+}

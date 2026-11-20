@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "ticket_id": "AUTH-103",
+  "markdown_heading": "AUTH-103 — Append-only auth audit log",
+  "review_round": 1,
+  "traceability_gate": "verified",
+  "intended_files": [
+    "backend/src/services/auditLog.ts",
+    "backend/src/models/auditEvent.ts",
+    "backend/tests/units/auditLog.test.ts"
+  ],
+  "change_summary": [
+    "Append-only, tenant-scoped audit log for authentication events (login, reset, lockout) with immutable rows."
+  ],
+  "verification_commands": [
+    "cd backend && npm run build",
+    "cd backend && npm test -- auditLog"
+  ],
+  "critical_invariants": [
+    "Audit rows are append-only: no update or delete path exists for a recorded event.",
+    "Every audit row is scoped to a tenant and carries actor, action, and UTC timestamp.",
+    "Reads are always filtered by tenant_id; cross-tenant reads are impossible."
+  ],
+  "requirement_closure": [
+    "Ticket ask: Append-only audit log for authentication events scoped to tenant (FR-1.3).",
+    "Implemented: auditLog service with insert-only writes, tenant-scoped reads, structured action enum; unit tests cover append-only enforcement and tenant isolation.",
+    "Not implemented: none",
+    "Deferred to: retention/rotation tracked by DOCS-401",
+    "Closeout verdict: complete"
+  ],
+  "feature_proof": [
+    "symbol:backend/src/services/auditLog.ts#recordEvent",
+    "path:backend/src/models/auditEvent.ts",
+    "text:append-only",
+    "route:GET /audit/events"
+  ],
+  "repo_gates": [
+    "cd backend && npm run build [result=pass; attribution=clean] - tsc clean",
+    "cd backend && npm test -- auditLog [result=pass; attribution=clean] - 14 passed"
+  ],
+  "prior_findings": [],
+  "self_review_cycles": [
+    { "cycle": 1, "total": 4, "lens": "contract/state invariants", "risks": ["mutable rows", "missing tenant scope"], "findings": "schema rejects update/delete; tenant_id non-null and indexed; tests assert append-only", "verification": "npm test -- auditLog", "verdict": "pass" },
+    { "cycle": 2, "total": 4, "lens": "auth/security/failure modes", "risks": ["cross-tenant read", "PII in logs"], "findings": "reads filtered by tenant_id; no credential material stored; isolation test passes", "verification": "npm test -- auditLog", "verdict": "pass" },
+    { "cycle": 3, "total": 4, "lens": "tests/operability/performance", "risks": ["unbounded growth", "slow tenant queries"], "findings": "index on (tenant_id, created_at) added in PERF-301; growth covered by retention doc", "verification": "npm test -- auditLog", "verdict": "pass" },
+    { "cycle": 4, "total": 4, "lens": "requirement closure", "risks": ["FR-1.3 partially met"], "findings": "every FR-1.3 clause mapped to code + test; closeout complete", "verification": "review against product/REQUIREMENTS.md FR-1.3", "verdict": "pass" }
+  ],
+  "synced_from_markdown_at": "2026-06-03T11:39:00Z"
+}

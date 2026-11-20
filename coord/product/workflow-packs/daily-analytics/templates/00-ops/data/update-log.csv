@@ -1,0 +1,2 @@
+run_id,run_at,pipeline_id,trigger,inputs_changed,source_snapshot_path,utility_ids,outputs_written,reconciliation_label,decision_supported_or_blocked,owner_ticket,result,notes
+RUN-0001,2026-01-15T15:00:00Z,PIPE-0001,scheduled,true,data/raw/ads/2026-01-15/example-ads.json,UTIL-0001,data/marts/ads/paid_media_reconciliation.csv,directional-only,supports creative review only,ANALYTICS-001,pass,synthetic example row

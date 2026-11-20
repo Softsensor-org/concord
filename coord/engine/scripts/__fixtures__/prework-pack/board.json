@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "metadata": { "title": "Prework-pack fixture board" },
+  "sections": [
+    {
+      "kind": "markdown",
+      "level": 2,
+      "heading": "Intro",
+      "body": ["Not a ticket table."]
+    },
+    {
+      "kind": "table",
+      "level": 2,
+      "heading": "Checkout Subsystem",
+      "columns": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      "rows": [
+        {
+          "ID": "PRW-100",
+          "Repo": "B",
+          "Type": "feature",
+          "Pri": "P2",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "Add checkout payment refund pricing rounding to the checkout flow",
+          "Depends On": ""
+        },
+        {
+          "ID": "PRW-101",
+          "Repo": "B",
+          "Type": "feature",
+          "Pri": "P2",
+          "Status": "done",
+          "Owner": "agentA",
+          "Description": "Prior checkout payment refund work; rounding bug fixed",
+          "Depends On": ""
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "level": 2,
+      "heading": "Notifications Subsystem",
+      "columns": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      "rows": [
+        {
+          "ID": "PRW-200",
+          "Repo": "F",
+          "Type": "feature",
+          "Pri": "P3",
+          "Status": "done",
+          "Owner": "agentB",
+          "Description": "Email digest notification smtp delivery scheduling",
+          "Depends On": ""
+        }
+      ]
+    }
+  ]
+}

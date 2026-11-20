@@ -1,0 +1,419 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coord/engine/governance-guards.schema.json",
+  "title": "Governance guard registry (COORD-914, ADR 0021)",
+  "description": "Every guard or gate check that can refuse a governed verb or fail a gate. TIERS: T0/T1/T2 are PROPOSED review classifications, not enforcement thresholds; under ADR 0021 nothing changes enforcement until the registry is reviewed and tier classification and affected-test selection are validated. Ownership, provenance and integration-safety guards stay enforced at every tier and are marked always_enforced: true (and classified T0). OWNERSHIP: changing a classification (tier, always_enforced, editions, merges, retirement) needs human-admin review through a governed ticket that cites ADR 0021. An intentional rewording of a refusal message must update its registry anchor in the same change; the completeness check failing on a stale anchor is the intended signal. COMPLETENESS: coord/engine/scripts/guard-registry.js scans the engine for refusal sites (see coverage.covered and coverage.not_covered). A site is registered when a `// guard:<id>` (or `# guard:<id>`) comment precedes it with no blank line between, or when an entry's anchor names its file and a prefix of its call text; an anchor must match exactly `matches` sites (default 1), so a duplicate or ambiguous anchor fails. Dynamically dispatched gate stages are registered through stage_refs. EDITIONS: editions lists the cuts that ship the guard. Files in the Enterprise-only subtree are named with the @enterprise/ prefix. In a release cut, an absent file is skipped only when the entry does not ship in that edition or the file is release tooling outside the engine-managed roots; a file the cut's manifest lists, or a managed-root file of an applicable entry, must exist. Enterprise-only entries are named in a coverage.not_covered item's guards. COST: unmeasured cost is wall_time null with cost_status unknown, never an estimate.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "ticket",
+    "adr",
+    "description",
+    "tier_semantics",
+    "ownership",
+    "review_date",
+    "measurement",
+    "coverage",
+    "review",
+    "guards"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "ticket": {
+      "type": "string",
+      "pattern": "^COORD-[0-9]+$"
+    },
+    "adr": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tier_semantics": {
+      "type": "string",
+      "minLength": 1
+    },
+    "review_date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "measurement": {
+      "type": "object",
+      "required": [
+        "source",
+        "note"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "covered",
+        "not_covered"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "covered": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "not_covered": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "surface",
+              "reason"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "surface": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "guards": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": [
+        "proposed_merges",
+        "retirement_candidates"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "proposed_merges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "guards",
+              "into",
+              "rationale",
+              "must_still_cover"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "guards": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "into": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              },
+              "must_still_cover": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        },
+        "retirement_candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "guard",
+              "rationale",
+              "must_still_cover"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "guard": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              },
+              "must_still_cover": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "guards": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "editions",
+          "tier",
+          "always_enforced",
+          "verbs",
+          "intent",
+          "answers",
+          "overlaps",
+          "locations",
+          "cost",
+          "remedy",
+          "retirement_criteria",
+          "review_date"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "verb-guard",
+              "hook-guard",
+              "gate-stage",
+              "safety-check"
+            ]
+          },
+          "editions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "enum": [
+                "Community",
+                "Enterprise"
+              ]
+            }
+          },
+          "tier": {
+            "enum": [
+              "T0",
+              "T1",
+              "T2"
+            ],
+            "description": "PROPOSED review classification (ADR 0021), not an enforcement threshold."
+          },
+          "always_enforced": {
+            "type": "boolean"
+          },
+          "verbs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "intent": {
+            "type": "string",
+            "minLength": 1
+          },
+          "answers": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "overlaps": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "locations": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "file",
+                "function",
+                "marker"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "file": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "function": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "marker": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "stage_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z-]+:[A-Za-z0-9_-]+$"
+            }
+          },
+          "anchors": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "file",
+                "text"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "file": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 8
+                },
+                "matches": {
+                  "type": "integer",
+                  "enum": [
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9,
+                    10
+                  ]
+                }
+              }
+            }
+          },
+          "cost": {
+            "type": "object",
+            "required": [
+              "frequency",
+              "wall_time",
+              "tests",
+              "cost_status",
+              "source",
+              "note"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "frequency": {
+                "type": "string",
+                "minLength": 1
+              },
+              "wall_time": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tests": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "cost_status": {
+                "enum": [
+                  "measured",
+                  "unknown"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "note": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "remedy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "retirement_criteria": {
+            "type": "string",
+            "minLength": 1
+          },
+          "review_date": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          }
+        }
+      }
+    },
+    "ownership": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

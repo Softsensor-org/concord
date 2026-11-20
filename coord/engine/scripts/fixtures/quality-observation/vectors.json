@@ -1,0 +1,40 @@
+{
+  "schema": "concord.quality-observation.conformance/v1",
+  "adapter_contract_version": 1,
+  "note": "Golden conformance vectors for the COORD-710 observation adapters. content_digest values are frozen: every supported Node lane must reproduce them exactly. A change here is a change to canonical content identity and needs a new contract version.",
+  "defaults": {
+    "repository": "X",
+    "suite": "unit",
+    "commitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "runtime": "node-22/linux-x64",
+    "sourceRoot": "/work/repo"
+  },
+  "vectors": [
+    { "name": "node 22 TAP basic", "adapter": "node-test-tap", "input": "node22-basic.tap",
+      "expect": { "content_digest": "1b054e876563682fa15ddd106871359b427c16a70c93b7dc9dea11d5463fd133", "run_status": "completed", "counts": { "tests": 5, "passed": 2, "failed": 1, "skipped": 2, "cancelled": 0 } } },
+    { "name": "node 24 TAP shape normalizes to the node 22 content", "adapter": "node-test-tap", "input": "node24-basic.tap",
+      "expect": { "content_digest": "1b054e876563682fa15ddd106871359b427c16a70c93b7dc9dea11d5463fd133", "run_status": "completed", "counts": { "tests": 5, "passed": 2, "failed": 1, "skipped": 2, "cancelled": 0 } } },
+    { "name": "node TAP cancelled by parent", "adapter": "node-test-tap", "input": "node22-cancelled.tap",
+      "expect": { "content_digest": "2eca37ed132ad7f48971221551b8dfb750dd3694fbc8ce90c909faa753e40ccb", "run_status": "cancelled", "counts": { "tests": 3, "passed": 1, "failed": 1, "skipped": 0, "cancelled": 1 } } },
+    { "name": "node TAP truncated", "adapter": "node-test-tap", "input": "node22-truncated.tap", "expect": { "rejection": "truncated" } },
+    { "name": "node TAP duplicate identity", "adapter": "node-test-tap", "input": "node22-duplicate.tap", "expect": { "rejection": "duplicate-test-identity" } },
+    { "name": "TAP 14 unsupported", "adapter": "node-test-tap", "input": "tap14-unsupported.tap", "expect": { "rejection": "unsupported-version" } },
+    { "name": "JUnit XML basic", "adapter": "junit-xml", "input": "junit-basic.xml",
+      "expect": { "content_digest": "63950c49ac2f5aa12a52ea7101905bd4da4b6aa0088aebf4022ce03086f16fee", "run_status": "completed", "counts": { "tests": 5, "passed": 2, "failed": 2, "skipped": 1, "cancelled": 0 } } },
+    { "name": "JUnit XML truncated", "adapter": "junit-xml", "input": "junit-truncated.xml", "expect": { "rejection": "truncated" } },
+    { "name": "JUnit XML partial", "adapter": "junit-xml", "input": "junit-partial.xml",
+      "expect": { "content_digest": "dac9449cc2caca79213d36ee93ecbf244eda0d21a7555cdcb359dd0d9cc36136", "run_status": "partial", "counts": { "tests": 2, "passed": 2, "failed": 0, "skipped": 0, "cancelled": 0 } } },
+    { "name": "Jest JSON basic", "adapter": "jest-json", "input": "jest-basic.json",
+      "expect": { "content_digest": "e7867317b9bd5b97e6a8a7537f82c6889650120457d79adfbf185079f6f7c25b", "run_status": "completed", "counts": { "tests": 5, "passed": 2, "failed": 1, "skipped": 2, "cancelled": 0 } } },
+    { "name": "Jest JSON interrupted", "adapter": "jest-json", "input": "jest-interrupted.json",
+      "expect": { "content_digest": "384706bfa5bfa37a2bad9612b98f11b8e08d8fc58fb9d620bc1797ba13c417b9", "run_status": "cancelled", "counts": { "tests": 1, "passed": 1, "failed": 0, "skipped": 0, "cancelled": 0 } } },
+    { "name": "Jest JSON malformed", "adapter": "jest-json", "input": "jest-malformed.json", "expect": { "rejection": "malformed" } },
+    { "name": "pytest-json basic", "adapter": "pytest-json", "input": "pytest-basic.json",
+      "expect": { "content_digest": "e4985d68d169392e6a0455e4e8e013d948fc9bb1bf994feaa89734008517694f", "run_status": "completed", "counts": { "tests": 6, "passed": 2, "failed": 2, "skipped": 2, "cancelled": 0 } } },
+    { "name": "pytest-json interrupted", "adapter": "pytest-json", "input": "pytest-interrupted.json",
+      "expect": { "content_digest": "82755871ade4a1c6c3b93d306709e7a2b694cbcaaff58654197c3bd7437c0382", "run_status": "cancelled", "counts": { "tests": 1, "passed": 1, "failed": 0, "skipped": 0, "cancelled": 0 } } },
+    { "name": "pytest-json no tests", "adapter": "pytest-json", "input": "pytest-no-tests.json",
+      "expect": { "content_digest": "f1ca6b8d7c7942546525b05a85fde255d9c4148d28788ceeeaf77006930656c8", "run_status": "no-tests", "counts": { "tests": 0, "passed": 0, "failed": 0, "skipped": 0, "cancelled": 0 } } },
+    { "name": "unsupported adapter", "adapter": "go-test-json", "input": "node22-basic.tap", "expect": { "rejection": "unsupported-format" } }
+  ]
+}

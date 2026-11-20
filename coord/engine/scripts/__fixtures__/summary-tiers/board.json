@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "metadata": { "title": "Summary-tier fixture board" },
+  "sections": [
+    {
+      "kind": "markdown",
+      "level": 2,
+      "heading": "Intro",
+      "body": ["Not a ticket table."]
+    },
+    {
+      "kind": "table",
+      "level": 2,
+      "heading": "Memory Subsystem",
+      "columns": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      "rows": [
+        {
+          "ID": "SUM-001",
+          "Repo": "X",
+          "Type": "feature",
+          "Pri": "P2",
+          "Status": "done",
+          "Owner": "claudea1",
+          "Description": "[Memory] worked ticket carrying a real decision record",
+          "Depends On": ""
+        },
+        {
+          "ID": "SUM-002",
+          "Repo": "X",
+          "Type": "chore",
+          "Pri": "P3",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "[Memory] unworked ticket, no decision record",
+          "Depends On": "SUM-001"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "level": 2,
+      "heading": "Bootstrap Subsystem",
+      "columns": ["ID", "Repo", "Type", "Pri", "Status", "Owner", "Description", "Depends On"],
+      "rows": [
+        {
+          "ID": "SUM-003",
+          "Repo": "B",
+          "Type": "feature",
+          "Pri": "P1",
+          "Status": "doing",
+          "Owner": "claudea2",
+          "Description": "[Server bootstrap] a backend-repo bootstrap ticket",
+          "Depends On": ""
+        },
+        {
+          "ID": "SUM-004",
+          "Repo": "F",
+          "Type": "bug",
+          "Pri": "P2",
+          "Status": "done",
+          "Owner": "claudea3",
+          "Description": "an unclassified ticket with no epic bracket prefix",
+          "Depends On": ""
+        }
+      ]
+    }
+  ]
+}

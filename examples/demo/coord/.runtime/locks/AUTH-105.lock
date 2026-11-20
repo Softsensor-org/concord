@@ -1,0 +1,13 @@
+{
+  "agent_id": "g21",
+  "owner": "geminia21",
+  "ticket": "AUTH-105",
+  "status": "doing",
+  "repo": "frontend",
+  "branch": "agent/geminia21-auth-105-audit-log-viewer",
+  "head": "e5f60718293a4b5c6d7e8f9012345678abcdef01",
+  "worktree": "frontend/.worktrees/geminia21/AUTH-105",
+  "session_id": "g21-demo",
+  "started_at_utc": "2026-06-12T09:15:00.000Z",
+  "heartbeat_utc": "2026-06-12T11:02:00.000Z"
+}

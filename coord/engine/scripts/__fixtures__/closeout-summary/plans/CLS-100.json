@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "ticket_id": "CLS-100",
+  "critical_invariants": [
+    "Refund reconciliation must be idempotent — replaying the same settlement event never double-credits.",
+    "All currency math uses integer minor units; no floating-point rounding in the refund path."
+  ],
+  "requirement_closure": [
+    "Ticket ask: Add idempotent refund reconciliation to the checkout subsystem.",
+    "Implemented: a settlement-keyed reconciliation ledger with an idempotency guard on the refund path.",
+    "Not implemented: multi-currency netting (out of scope).",
+    "Deferred to: CLS-300 (multi-currency refund netting)",
+    "Closeout verdict: complete"
+  ],
+  "feature_proof": [
+    "path:src/checkout/refund-reconciler.ts",
+    "symbol:src/checkout/refund-reconciler.ts#reconcileRefund"
+  ],
+  "repo_gates": [
+    "pnpm --filter @app/backend test - 412 pass / 0 fail",
+    "pnpm --filter @app/backend lint - clean"
+  ],
+  "self_review_cycles": [
+    {
+      "cycle": 1,
+      "total": 2,
+      "lens": "Contract and state invariants",
+      "diff": "new refund-reconciler module + idempotency guard",
+      "risks": ["double-credit on replay", "rounding drift"],
+      "findings": "idempotency guard keyed on settlement id; integer minor units throughout — asserted by a replay test.",
+      "verdict": "pass",
+      "raw": "lens=Contract and state invariants; verdict=pass"
+    },
+    {
+      "cycle": 2,
+      "total": 2,
+      "lens": "Security and failure modes",
+      "diff": "refund path error handling",
+      "risks": ["partial-write on crash"],
+      "findings": "none",
+      "verdict": "pass",
+      "raw": "lens=Security and failure modes; verdict=pass"
+    }
+  ],
+  "governance": {
+    "expected_closeout": { "method": "no_pr", "base_ref": "main", "provenance_note": null },
+    "review_profile": "standard",
+    "ticket_local_repairs": []
+  }
+}

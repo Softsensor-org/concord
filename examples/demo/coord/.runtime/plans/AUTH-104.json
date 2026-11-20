@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "ticket_id": "AUTH-104",
+  "markdown_heading": "AUTH-104 — Account lockout after repeated failures",
+  "review_round": 1,
+  "traceability_gate": "closing-gap",
+  "intended_files": [
+    "backend/src/services/lockout.ts",
+    "backend/tests/units/lockout.test.ts"
+  ],
+  "change_summary": [
+    "Lock an account after N failed logins within a window, with tenant-scoped thresholds and an audit entry."
+  ],
+  "verification_commands": [
+    "cd backend && npm run build",
+    "cd backend && npm test -- lockout"
+  ],
+  "critical_invariants": [
+    "Lockout thresholds are tenant-configurable and never leak across tenants.",
+    "A locked account always emits an audit event on lock and on unlock."
+  ],
+  "requirement_closure": [
+    "Ticket ask: Account lockout after repeated failed logins with tenant-scoped thresholds (account-security).",
+    "Implemented (in progress): failure-counter with sliding window and tenant threshold lookup; lock/unlock audit wiring underway.",
+    "Not implemented: admin unlock endpoint",
+    "Deferred to: none",
+    "Closeout verdict: in progress"
+  ],
+  "feature_proof": [
+    "symbol:backend/src/services/lockout.ts#registerFailure",
+    "route:POST /auth/login"
+  ],
+  "repo_gates": [
+    "cd backend && npm run build [result=pass; attribution=clean] - tsc clean (partial)"
+  ],
+  "prior_findings": [],
+  "self_review_cycles": [
+    { "cycle": 1, "total": 4, "lens": "contract/state invariants", "risks": ["off-by-one threshold", "window drift"], "findings": "threshold compared with >=; sliding window unit-tested", "verification": "npm test -- lockout", "verdict": "pass" },
+    { "cycle": 2, "total": 4, "lens": "auth/security/failure modes", "risks": ["lockout as enumeration oracle", "cross-tenant threshold"], "findings": "uniform response on lock; thresholds keyed per tenant", "verification": "npm test -- lockout", "verdict": "in-progress" }
+  ],
+  "synced_from_markdown_at": "2026-06-12T10:30:00Z"
+}

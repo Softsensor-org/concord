@@ -1,0 +1,202 @@
+{
+  "schema": "COORD-955 reviewed allowlist for verb/flag/doc parity (verb-flag-parity.test.js). Each entry carries a reason and a ticket or QUESTIONS.md reference. The test fails any entry that no longer describes a live divergence (stale), so this list can only shrink or be re-reviewed.",
+  "flags": [],
+  "verbs": [
+    {
+      "verb": "internally",
+      "docs": [
+        "USER_MANUAL.md"
+      ],
+      "reason": "English prose inside an unlabelled ASCII layout diagram ('call gov internally'), not a command.",
+      "ref": "COORD-955 review of the parity extraction"
+    }
+  ],
+  "coordVerbs": [
+    {
+      "verb": "config",
+      "docs": [
+        "coord/engine/docs/MEMORY_ARCHITECTURE.md"
+      ],
+      "reason": "Named as a proposed owner-bound verb in the memory architecture design ('a journaled, owner-bound coord config verb'); no such product-CLI verb exists.",
+      "ref": "COORD-955 review of the parity extraction"
+    },
+    {
+      "verb": "core",
+      "docs": [
+        "coord/engine/docs/PRODUCTION_MCP_ADAPTER_PLAN.md"
+      ],
+      "reason": "Diagram box label ('coord core') in a code block, not a command.",
+      "ref": "COORD-955 review of the parity extraction"
+    }
+  ],
+  "paths": [
+    {
+      "path": "coord/engine/affected-selection-policy.json",
+      "docs": [
+        "coord/product/TESTING_AND_GATES.md"
+      ],
+      "reason": "Historical reference: the same sentence says this policy file was migrated into coord/engine/test-policy.json (COORD-936); it is absent by design.",
+      "ref": "COORD-936 migration (test-policy.json migrated_from)"
+    },
+    {
+      "pattern": "^coord/(\\.runtime|\\.worktrees|artifacts|history|evidence|memory)/",
+      "reason": "Runtime state the engine creates in an installed workspace; absent from a fresh engine checkout.",
+      "ref": "COORD-955 review"
+    },
+    {
+      "pattern": "^coord/(WORKSPACE\\.md|\\.coord-engine\\.json|setup\\.decisions\\.json|onboarding\\.receipt\\.json|agents\\.json|ui/)$",
+      "reason": "Written by the installer or the adopter into an installed workspace; not part of the engine checkout.",
+      "ref": "COORD-955 review"
+    },
+    {
+      "pattern": "^coord/(TASKS|PROMPT_INDEX)\\.md$",
+      "docs": [
+        "coord/GOVERNANCE.md"
+      ],
+      "reason": "Gitignored compatibility mirrors (GOVERNANCE.md states this); generated, so absent from a checkout.",
+      "ref": "COORD-955 review"
+    },
+    {
+      "pattern": "^(scripts/(gate\\.sh|contract\\.js)|(backend|frontend)/scripts/gate\\.sh)$",
+      "reason": "Product-repo gate runners: present in an adopter product repo, not in the engine checkout (TESTING_AND_GATES describes them per repo).",
+      "ref": "COORD-955 review"
+    },
+    {
+      "path": ".github/workflows/governance-suite.yml",
+      "docs": [
+        "coord/product/TESTING_AND_GATES.md"
+      ],
+      "cut_editions": [
+        "Community",
+        "Enterprise"
+      ],
+      "reason": "These documents describe upstream release validation and guard implementation; the builder intentionally removes donor release tooling and workflows from both public cuts.",
+      "ref": "COORD-1052 actual-cut doc parity review"
+    },
+    {
+      "path": "coord/prompts/tickets/COORD-023.md",
+      "docs": [
+        "coord/product/TESTING_AND_GATES.md"
+      ],
+      "cut_editions": [
+        "Community",
+        "Enterprise"
+      ],
+      "reason": "The policy describes a synthetic donor prompt provisioned by its test; release cuts intentionally reset donor tickets.",
+      "ref": "COORD-1052 actual-cut doc parity review"
+    },
+    {
+      "path": "release/check-public-release.sh",
+      "docs": [
+        "coord/product/TESTING_AND_GATES.md",
+        "README.md",
+        "coord/engine/docs/GUARD_REGISTRY.md"
+      ],
+      "cut_editions": [
+        "Community",
+        "Enterprise"
+      ],
+      "reason": "These documents describe upstream release validation and guard implementation; the builder intentionally removes donor release tooling and workflows from both public cuts.",
+      "ref": "COORD-1052 actual-cut doc parity review"
+    },
+    {
+      "path": "release/check-public-release.test.js",
+      "docs": [
+        "coord/product/TESTING_AND_GATES.md"
+      ],
+      "cut_editions": [
+        "Community",
+        "Enterprise"
+      ],
+      "reason": "These documents describe upstream release validation and guard implementation; the builder intentionally removes donor release tooling and workflows from both public cuts.",
+      "ref": "COORD-1052 actual-cut doc parity review"
+    },
+    {
+      "path": "release/portability-canary.js",
+      "docs": [
+        "coord/product/TESTING_AND_GATES.md"
+      ],
+      "cut_editions": [
+        "Community",
+        "Enterprise"
+      ],
+      "reason": "These documents describe upstream release validation and guard implementation; the builder intentionally removes donor release tooling and workflows from both public cuts.",
+      "ref": "COORD-1052 actual-cut doc parity review"
+    },
+    {
+      "path": "release/portability-canary.sh",
+      "docs": [
+        "coord/product/TESTING_AND_GATES.md"
+      ],
+      "cut_editions": [
+        "Community",
+        "Enterprise"
+      ],
+      "reason": "These documents describe upstream release validation and guard implementation; the builder intentionally removes donor release tooling and workflows from both public cuts.",
+      "ref": "COORD-1052 actual-cut doc parity review"
+    },
+    {
+      "path": "release/portability-matrix.json",
+      "docs": [
+        "coord/product/TESTING_AND_GATES.md"
+      ],
+      "cut_editions": [
+        "Community",
+        "Enterprise"
+      ],
+      "reason": "These documents describe upstream release validation and guard implementation; the builder intentionally removes donor release tooling and workflows from both public cuts.",
+      "ref": "COORD-1052 actual-cut doc parity review"
+    },
+    {
+      "path": "release/suite-inventory.js",
+      "docs": [
+        "coord/engine/docs/GUARD_REGISTRY.md"
+      ],
+      "cut_editions": [
+        "Community",
+        "Enterprise"
+      ],
+      "reason": "These documents describe upstream release validation and guard implementation; the builder intentionally removes donor release tooling and workflows from both public cuts.",
+      "ref": "COORD-1052 actual-cut doc parity review"
+    },
+    {
+      "path": "release/suite-inventory.json",
+      "docs": [
+        "coord/product/TESTING_AND_GATES.md"
+      ],
+      "cut_editions": [
+        "Community",
+        "Enterprise"
+      ],
+      "reason": "These documents describe upstream release validation and guard implementation; the builder intentionally removes donor release tooling and workflows from both public cuts.",
+      "ref": "COORD-1052 actual-cut doc parity review"
+    },
+    {
+      "path": "release/verify-dual-release.sh",
+      "docs": [
+        "coord/product/TESTING_AND_GATES.md",
+        "coord/engine/docs/GUARD_REGISTRY.md"
+      ],
+      "cut_editions": [
+        "Community",
+        "Enterprise"
+      ],
+      "reason": "These documents describe upstream release validation and guard implementation; the builder intentionally removes donor release tooling and workflows from both public cuts.",
+      "ref": "COORD-1052 actual-cut doc parity review"
+    },
+    {
+      "path": "release/verify-upgrade-bridge.sh",
+      "docs": [
+        "coord/engine/docs/GUARD_REGISTRY.md"
+      ],
+      "cut_editions": [
+        "Community",
+        "Enterprise"
+      ],
+      "reason": "These documents describe upstream release validation and guard implementation; the builder intentionally removes donor release tooling and workflows from both public cuts.",
+      "ref": "COORD-1052 actual-cut doc parity review"
+    }
+  ],
+  "terms": [],
+  "verbsWithoutDrySeam": []
+}

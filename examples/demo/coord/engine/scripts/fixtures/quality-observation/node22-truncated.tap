@@ -1,0 +1,11 @@
+TAP version 13
+# Subtest: outer suite
+    # Subtest: passes
+    ok 1 - passes
+      ---
+      duration_ms: 0.732994
+      ...
+    # Subtest: skips
+    ok 2 - skips # SKIP nope
+      ---
+      duration_ms: 0.24

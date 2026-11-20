@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "ticket_id": "BILL-201",
+  "markdown_heading": "BILL-201 — Usage metering pipeline",
+  "review_round": 1,
+  "traceability_gate": "verified",
+  "intended_files": [
+    "backend/src/billing/metering.ts",
+    "backend/src/billing/billableUnit.ts",
+    "backend/tests/units/metering.test.ts"
+  ],
+  "change_summary": [
+    "Per-tenant API-call metering that aggregates raw request events into billable units on a fixed window."
+  ],
+  "verification_commands": [
+    "cd backend && npm run build",
+    "cd backend && npm test -- metering"
+  ],
+  "critical_invariants": [
+    "Metering is idempotent: re-processing the same window never double-counts.",
+    "Billable units are derived deterministically from raw events; no floating drift across runs."
+  ],
+  "requirement_closure": [
+    "Ticket ask: Aggregate per-tenant API calls into billable units (billing foundation).",
+    "Implemented: windowed aggregation keyed by tenant with idempotent upsert; deterministic rounding; unit tests cover idempotency and window boundaries.",
+    "Not implemented: none",
+    "Deferred to: invoice generation tracked by BILL-202",
+    "Closeout verdict: complete"
+  ],
+  "feature_proof": [
+    "symbol:backend/src/billing/metering.ts#aggregateWindow",
+    "path:backend/src/billing/billableUnit.ts",
+    "text:billable unit"
+  ],
+  "repo_gates": [
+    "cd backend && npm run build [result=pass; attribution=clean] - tsc clean",
+    "cd backend && npm test -- metering [result=pass; attribution=clean] - 9 passed"
+  ],
+  "prior_findings": [],
+  "self_review_cycles": [
+    { "cycle": 1, "total": 4, "lens": "contract/state invariants", "risks": ["double counting", "window overlap"], "findings": "idempotent upsert keyed by (tenant, window); overlap test passes", "verification": "npm test -- metering", "verdict": "pass" },
+    { "cycle": 2, "total": 4, "lens": "auth/security/failure modes", "risks": ["tenant leakage", "partial-window crash"], "findings": "aggregation scoped per tenant; crash mid-window is safely re-runnable", "verification": "npm test -- metering", "verdict": "pass" },
+    { "cycle": 3, "total": 4, "lens": "tests/operability/performance", "risks": ["hot-path cost", "memory blowup"], "findings": "streamed aggregation, bounded memory; benchmark within budget", "verification": "npm test -- metering", "verdict": "pass" },
+    { "cycle": 4, "total": 4, "lens": "requirement closure", "risks": ["billing foundation incomplete"], "findings": "billable-unit contract stable for BILL-202; closeout complete", "verification": "review against billing spec", "verdict": "pass" }
+  ],
+  "synced_from_markdown_at": "2026-05-22T09:04:00Z"
+}

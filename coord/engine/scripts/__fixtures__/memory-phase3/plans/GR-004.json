@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "ticket_id": "GR-004",
+  "requirement_closure": [
+    "Ticket ask: co-citation graph-fixture ticket",
+    "Implemented: work that also referenced GR-009",
+    "Not implemented: none",
+    "Deferred to: none",
+    "Closeout verdict: complete"
+  ],
+  "critical_invariants": [],
+  "self_review_cycles": []
+}

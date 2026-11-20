@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "phases": {
+    "exploration": {
+      "label": "Exploration",
+      "intent": "Capture discovery without pretending the repo is production-ready.",
+      "required_evidence": ["notes_or_findings", "promotion_path"],
+      "closeout_expectations": ["mark_assumptions", "promote_to_ticket_before_implementation"],
+      "minimum_profile": "solo-dev"
+    },
+    "prototype": {
+      "label": "Prototype",
+      "intent": "Move quickly while preserving decisions, assumptions, and local verification.",
+      "required_evidence": ["local_gate_or_not_required", "feature_proof", "requirement_closure"],
+      "closeout_expectations": ["clear_done_summary", "known_limits_recorded"],
+      "minimum_profile": "solo-dev"
+    },
+    "pilot": {
+      "label": "Pilot",
+      "intent": "Add user evidence, runtime verification, and adoption blockers.",
+      "required_evidence": ["repo_gate", "feature_proof", "review_cycles", "requirement_closure", "runtime_or_user_evidence"],
+      "closeout_expectations": ["pilot_blockers_split", "runtime_or_user_receipt", "followups_recorded"],
+      "minimum_profile": "product-engineering"
+    },
+    "production": {
+      "label": "Production",
+      "intent": "Require tests, release proof, rollback, and owner clarity.",
+      "required_evidence": ["repo_gate", "feature_proof", "review_cycles", "requirement_closure", "landing_evidence", "rollback_or_recovery", "runtime_or_deploy_receipt"],
+      "closeout_expectations": ["release_or_no_pr_rationale", "owner_clarity", "post_close_followups"],
+      "minimum_profile": "product-engineering"
+    },
+    "regulated-production": {
+      "label": "Regulated production",
+      "intent": "Require traceability, approvals, audit evidence, and validation-grade closure.",
+      "required_evidence": ["traceability", "repo_gate", "feature_proof", "review_cycles", "requirement_closure", "criticality", "evidence_class", "landing_evidence", "rollback_or_recovery", "runtime_or_deploy_receipt", "qa_or_business_signoff_when_required", "deviation_or_waiver_when_applicable"],
+      "closeout_expectations": ["validation_grade_closure", "controlled_document_or_code_evidence", "audit_trail", "partial_closure_not_laundered_as_satisfied"],
+      "minimum_profile": "regulated"
+    }
+  }
+}

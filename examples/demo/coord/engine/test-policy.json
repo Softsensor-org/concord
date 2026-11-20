@@ -1,0 +1,515 @@
+{
+  "schema_version": 2,
+  "policy_version": 2,
+  "ticket": "COORD-936",
+  "adr": "ADR 0021 (coord/docs/decisions/0021-governance-ceremony-is-tiered-by-risk-and-integration-is-a-separate-authority.md)",
+  "description": "The one stage-aware testing policy (COORD-936, activated by COORD-941 on 2026-11-06). One selector (COORD-924 affected-selector.js), one policy (this file), one runner (coord/scripts/test-runner.js, driven by coord/scripts/gov test-policy run). It maps developer and PR stages to blast-radius-selected checks and mandatory guards, nightly to conditional full qualification, and promotion to mandatory full-suite plus coverage ratchet. Teams map their own workflow stages (staging, main, beta, production, release, ...) onto them in install configuration. Its selection section is the COORD-924 affected-selection policy, migrated in under schema_version 2. Engine defaults ship here; an adopter tunes it in the testPolicy block of coord/project.config.js, never in engine code.",
+  "migrated_from": {
+    "path": "coord/engine/affected-selection-policy.json",
+    "schema_version": 1,
+    "policy_version": 1,
+    "ticket": "COORD-924"
+  },
+  "operating_mode": {
+    "pilot": "runnable-now",
+    "use": [
+      "developer",
+      "pr",
+      "nightly",
+      "promotion"
+    ],
+    "landing_gates": "active",
+    "note": "Human-admin activation is recorded for COORD-941. Developer and PR work use fresh blast-radius-selected checks plus mandatory guards; the existing selected-run manifest is accepted for eligible T0/T1 landing evidence. T2, unknown impact, policy and selector changes, and suspensions require the full gate. Nightly qualification is conditional; promotion remains full-suite plus coverage ratchet on the exact candidate. Rollback is one governed policy change that restores landing_gates=unchanged and selection.initial_state=shadow.",
+    "principle": "Fast feedback for everyday work; full qualification at promotion (human-admin decisions, item 9, 2026-11-06)."
+  },
+  "scopes": {
+    "engine": "Concord engine changes in the engine's own repository (the donor). Qualified by the engine suites.",
+    "product": "An adopter's product repository (a repos entry of coord/project.config.js). Qualified by that repository's own checks; never by the Concord engine suite.",
+    "engine-upgrade": "Engine files changed in an installed workspace (coord upgrade). Qualified by the engine's own release (gov verify-engine against the pinned release), never by re-running the Concord engine suite.",
+    "workspace": "Coordination-workspace files (board, prompts, plans, docs) in an installed workspace. No engine suite; adopter workspace checks only."
+  },
+  "engine_paths": [
+    "^coord/engine/",
+    "^coord/scripts/",
+    "^coord/paths\\.js$",
+    "^coord/engine-pin\\.json$",
+    "^coord/TEMPLATE_SYNC_MANIFEST\\.json$",
+    "^release/",
+    "^create-concord/",
+    "^test/"
+  ],
+  "execution": {
+    "fresh_runs": true,
+    "timeout_seconds": 3600,
+    "ordering": "History (--history <previous test-policy manifest>) only ORDERS independent checks: recently failed first, then shorter. It never skips a check and never credits a prior pass. A timed-out, interrupted or signalled check never passes.",
+    "flaky_rerun": "A failed suite or command is re-run once, fresh, only to CLASSIFY it (consistent or flaky); the run still fails. A rerun never turns a failure into a pass. A completed coverage-ratchet failure without named failing tests is deterministic and does not trigger a retry; when the report also names failing tests, their suites are re-run only to classify those test failures."
+  },
+  "sharding": {
+    "opt_in": true,
+    "authoritative": true,
+    "scope": "resolved-policy-plan",
+    "timing_sensitive_suites": [
+      {
+        "path": "coord/scripts/concurrent-burnin.test.js",
+        "reason": "COORD-224 multi-agent concurrency burn-in; keep its load isolated from other suites."
+      },
+      {
+        "path": "coord/engine/scripts/session-lifecycle-conformance.test.js",
+        "reason": "COORD-712 lifecycle conformance under concurrent process pressure."
+      },
+      {
+        "path": "coord/engine/scripts/session-lifecycle-mutations.test.js",
+        "reason": "COORD-857 mutation/reaping timing cases; keep its load isolated from other suites."
+      }
+    ],
+    "suspension": {
+      "active": false,
+      "reason": null,
+      "evidence": null
+    },
+    "authority_rule": "Human-admin direction recorded on COORD-900: sharding is opt-in for the exact resolved policy test set when it can speed execution. This includes selected developer/PR suites plus mandatory checks, complete T2/unknown full fallbacks, conditional nightly full runs when they run, promotion and release. It never changes resolver selection: each resolved suite runs exactly once, and mandatory checks remain included. Selected runs are partial evidence and never apply or claim the whole-suite coverage ratchet; complete full plans merge coverage once and apply one authoritative ratchet. The donor wrapper binds each receipt to the exact resolved plan, stage, qualification mode and suite set and checks live governance state. Use serial execution whenever the shard plan, inventory, manifest, comparison, coverage merge, or host isolation is uncertain. Serial/sharded comparisons are ongoing evidence; every mismatch blocks qualification and automatically journals a durable sharding suspension before further use. Direct runner and cut reports remain provisional; only the donor wrapper may issue a content-bound receipt after validating live governance state and final manifests.",
+    "comparison": {
+      "first_sharded_run_requires_same_tree_serial_comparison": false,
+      "scheduled_serial_full_comparison": false,
+      "compared": [
+        "test_identity",
+        "outcome",
+        "coverage_findings"
+      ],
+      "mismatch_action": "fail-qualification-and-automatically-suspend",
+      "comparison_execution": "donor-journaled-transaction"
+    }
+  },
+  "product_maps": {
+    "config_key": "testPolicy.repoMaps.<repo code>",
+    "format": "the affected-target map read by coord/engine/scripts/affected-targets.js (targets: id, files, command, depends_on; full_gate.commands; updated_at)",
+    "rule": "A product repository's dependency map is an input to the one resolver: mapped targets and their transitive depends_on consumers are selected; mapped docs select only the targets that name them; an unmapped, stale or invalid map, an unmapped path or an empty change runs the repository's full checks (testCommand or the map's full_gate). Without a map the product stage runs testCommand."
+  },
+  "checks": {
+    "selected-suites": {
+      "kind": "engine-suites",
+      "source": "selection",
+      "description": "Suites the affected-test selection reaches from the changed files."
+    },
+    "always-required-suites": {
+      "kind": "engine-suites",
+      "source": "selection.always_required_suites",
+      "description": "Suites every engine change runs (ownership, provenance, integration safety, template sync, inventory, titles, guard registry)."
+    },
+    "docs-checks": {
+      "kind": "engine-suites",
+      "source": "selection.doc_pattern",
+      "suites": [
+        "coord/scripts/documented-gov-verbs.test.js",
+        "coord/engine/scripts/engine-docs-migration.test.js",
+        "release/documented-install-commands.test.js",
+        "release/public-readme-block.test.js"
+      ],
+      "description": "Documentation checks (documented verbs and install commands, docs placement, the public README block), run when an ordinary document changes. Executable examples, policy documents and generated configuration are not ordinary docs: they select the suites that consume them through the selection graph and its generated-file rules."
+    },
+    "pinned-file-checks": {
+      "kind": "engine-suites",
+      "source": "coord/engine-pin.json files",
+      "suites": [
+        "coord/engine/scripts/closeout.test.js",
+        "coord/engine/scripts/template-sync-discovery.test.js",
+        "coord/engine/scripts/journal-loss-guard.test.js"
+      ],
+      "description": "Suites that verify the live tree against the engine pin and the template-sync manifest, run when a pinned file changes. Added from the 2026-11-06 pilot comparison: a pinned-helper edit without a regenerated pin failed these suites, which the module graph does not reach (a content-hash dependency, not a require or mention)."
+    },
+    "full-suite": {
+      "kind": "engine-suites",
+      "source": "runner",
+      "runner_args": [
+        "--engine-coverage"
+      ],
+      "description": "Every discovered suite through the authoritative runner, with the engine coverage ratchet; at promotion a run without a passing ratchet fails."
+    },
+    "product-tests": {
+      "kind": "product-command",
+      "source": "repos.<code>.testCommand",
+      "description": "The product repository's checks: the targets its dependency map selects, else its own test command, from coord/project.config.js."
+    },
+    "engine-release-evidence": {
+      "kind": "engine-release-evidence",
+      "command": [
+        "coord/scripts/gov",
+        "verify-engine"
+      ],
+      "description": "The installed engine matches its pinned release (gov verify-engine); the engine release was qualified by the engine's own gates."
+    },
+    "smoke": {
+      "kind": "smoke",
+      "source": "testPolicy.stages.<workflow stage>.smoke",
+      "description": "Environment-specific smoke checks, configured by the adopter."
+    }
+  },
+  "stages": {
+    "developer": {
+      "purpose": "Fast local feedback: affected checks plus the mandatory guards.",
+      "checks": {
+        "engine": [
+          "selected-suites",
+          "always-required-suites",
+          "docs-checks",
+          "pinned-file-checks"
+        ],
+        "product": [
+          "product-tests"
+        ],
+        "engine-upgrade": [
+          "engine-release-evidence"
+        ],
+        "workspace": []
+      },
+      "full_on": [
+        "urgent-release",
+        "t2-change",
+        "selection-fallback"
+      ],
+      "coverage": "advisory"
+    },
+    "pr": {
+      "purpose": "The pull-request check: blast-radius selection plus the mandatory checks; CI calls coord/scripts/gov test-policy run --stage pr. Coverage is ADVISORY: the whole-suite ratchet is never applied to a partial run (the runner refuses --engine-coverage with --file). Teams may require more through policy.",
+      "checks": {
+        "engine": [
+          "selected-suites",
+          "always-required-suites",
+          "docs-checks",
+          "pinned-file-checks"
+        ],
+        "product": [
+          "product-tests"
+        ],
+        "engine-upgrade": [
+          "engine-release-evidence"
+        ],
+        "workspace": []
+      },
+      "full_on": [
+        "urgent-release",
+        "t2-change",
+        "selection-fallback"
+      ],
+      "coverage": "advisory"
+    },
+    "nightly": {
+      "purpose": "The scheduled full run, CONDITIONAL: it runs only when qualifying changes have accumulated since the last successful full run, judged by significance, not commit count; it skips an unchanged tree and ordinary docs-only changes, and records why it ran or skipped. It carries the authoritative coverage ratchet.",
+      "qualifies": true,
+      "checks": {
+        "engine": [
+          "full-suite"
+        ],
+        "product": [
+          "product-tests"
+        ],
+        "engine-upgrade": [
+          "engine-release-evidence"
+        ],
+        "workspace": []
+      },
+      "schedule": "whenever the install's existing scheduler invokes coord/scripts/gov test-policy run --stage nightly; the command itself decides run or skip (no engine scheduler)",
+      "conditional": true,
+      "coverage": "ratchet",
+      "triggers": {
+        "no_previous_success": true,
+        "t2_change": true,
+        "unknown_impact": true,
+        "shared_helper": true,
+        "min_affected_suites": 25,
+        "max_unqualified_hours": 24
+      },
+      "runtimes": [
+        "22",
+        "24"
+      ]
+    },
+    "promotion": {
+      "purpose": "Promotion of the exact candidate to a delivery environment: ALWAYS the full suite and the coverage ratchet on a clean, committed candidate, plus that environment's smoke checks. A promotion run cannot pass without a passing ratchet; exceptions cannot reduce it.",
+      "qualifies": true,
+      "checks": {
+        "engine": [
+          "full-suite",
+          "smoke"
+        ],
+        "product": [
+          "product-tests",
+          "smoke"
+        ],
+        "engine-upgrade": [
+          "engine-release-evidence",
+          "smoke"
+        ],
+        "workspace": [
+          "smoke"
+        ]
+      },
+      "coverage": "ratchet",
+      "requires": [
+        "clean_candidate",
+        "full_suite",
+        "coverage_ratchet"
+      ]
+    }
+  },
+  "full_suite_triggers": {
+    "adr": "ADR 0025 (accepted 2026-11-15): decision 2 full-suite triggers, reported by gov test-policy resolve (COORD-974).",
+    "landed_tickets": 10,
+    "radius_percent": 70,
+    "landed_source": "board landing_index recorded_at, counted after the last passing full run (coord/.runtime/test-policy/last-qualified.json)",
+    "unknown_selector_fallback": "dynamic_dependency, unknown_dependents, incomplete_analysis, unattributed_generated",
+    "note": "Reported only. ADR 0025 acceptance does not switch the PR gate; enforcing these triggers is a separate governed change."
+  },
+  "on_demand_full": {
+    "triggers": {
+      "urgent-release": "--trigger urgent-release runs the full qualification at any stage.",
+      "t2-change": "A T2 (high-risk) change runs the full suite at developer and pr.",
+      "selection-fallback": "Unknown impact (a selection that falls back) runs the full suite at pr."
+    },
+    "checks": [
+      "full-suite"
+    ],
+    "qualifies": true
+  },
+  "adopter_overrides": {
+    "config_key": "testPolicy",
+    "allowed": [
+      "stageMap.<workflow stage or branch> = developer | pr | nightly | promotion",
+      "stages.<stage or workflow stage>.checks (added checks: {id, command, scope})",
+      "stages.<promotion workflow stage>.smoke (environment smoke checks: {id, command})",
+      "stages.nightly.triggers (the significance triggers of the conditional scheduled run)",
+      "repoMaps.<repo code> (a product repository's affected-target dependency map)",
+      "execution.timeout_seconds (1..86400)"
+    ],
+    "refused": [
+      "operating_mode",
+      "selection",
+      "engine_paths",
+      "checks",
+      "scopes",
+      "stages replacing or removing engine checks"
+    ],
+    "trust": "Overrides carry commands. They are read from the coordination workspace's own coord/project.config.js (the trusted operator branch), never from an incoming product change."
+  },
+  "selection": {
+    "description": "Affected-test selection policy (COORD-924, ADR 0021), activated through COORD-941 under the human-admin ruling cited below. T0/T1 selected-suite runs plus always_required_suites are accepted as repo-gate evidence when their manifest proves the exact tree and base, current policy and selector, complete required suites, and a pass. T2 surfaces, always_enforced guard implementations, unknown or dynamic dependencies, incomplete analysis, unattributed generated files, policy or selector changes, and suspended categories require the full gate. A recorded miss suspends selection for its change categories until resolved under a later policy_version. Changing this file is itself a full-gate fallback. Developer and PR runs use the same selector and keep coverage advisory; scheduled full runs and promotion retain the full-suite coverage ratchet.",
+    "initial_state": "active",
+    "activation_ruling": "Human-admin activation ruling recorded by gov amend-ticket COORD-941 at 2026-11-06T20:54:10.266Z (snapshot 33304d5a58e60903cab044ec2ea83f09e0e5b3ed): \"We need to adopt the adaptive testing going forward. we have a ticket for that\" followed by \"continue and implement it\". The human also explicitly ordered stopping the current C1 gate and directed focused behavioral and integration checks during this activation bootstrap, with their actual scope and all known failed/interrupted full runs recorded. This authorizes activation of the existing COORD-936/941 path; it does not waive full-suite and ratchet qualification for promotion, normal high-risk/unknown fallbacks, or first-week observation. First-week measurements remain pending until observed; none are fabricated. Rollback is one governed policy change restoring landing_gates=unchanged and initial_state=shadow.",
+    "fallback_paths": [
+      {
+        "pattern": "(^|/)(package\\.json|package-lock\\.json|npm-shrinkwrap\\.json|pnpm-lock\\.yaml|yarn\\.lock|\\.nvmrc|\\.node-version)$",
+        "reason": "dependency_change",
+        "category": "dependency"
+      },
+      {
+        "pattern": "^coord/(project\\.config\\.js|project-owned-state\\.js)$",
+        "reason": "config_seam",
+        "category": "config-seam"
+      },
+      {
+        "pattern": "^coord/engine/scripts/engine-coverage-baseline(-node\\d+)?\\.json$",
+        "reason": "coverage_baseline",
+        "category": "generated"
+      },
+      {
+        "pattern": "^coord/engine/(test-policy\\.json|scripts/affected-[a-z-]+\\.js|scripts/test-policy[a-z-]*\\.js)$",
+        "reason": "selector_change",
+        "category": "engine-module"
+      },
+      {
+        "pattern": "^coord/(engine/)?scripts/test-runner[a-z-]*\\.js$",
+        "reason": "core_surface",
+        "category": "engine-module"
+      },
+      {
+        "pattern": "^coord/engine/scripts/journal[a-z-]*\\.js$",
+        "reason": "core_surface",
+        "category": "engine-module"
+      },
+      {
+        "pattern": "^coord/engine/scripts/integration-authority[a-z-]*\\.js$",
+        "reason": "core_surface",
+        "category": "engine-module"
+      },
+      {
+        "pattern": "^coord/(engine/)?scripts/fixtures/",
+        "reason": "core_surface",
+        "category": "fixture"
+      },
+      {
+        "pattern": "^coord/(GOVERNANCE\\.md|engine/governance-guards(\\.schema)?\\.json|engine/run-manifest\\.schema\\.json)$",
+        "reason": "t2_surface",
+        "category": "engine-module"
+      },
+      {
+        "pattern": "^coord/docs/decisions/",
+        "reason": "t2_surface",
+        "category": "engine-module"
+      },
+      {
+        "pattern": "^release/(?!.*\\.test\\.js$)",
+        "reason": "t2_surface",
+        "category": "engine-module"
+      },
+      {
+        "pattern": "^coord/engine/scripts/[^/]*(upgrade|migrat)[^/]*\\.js$",
+        "reason": "t2_surface",
+        "category": "engine-module"
+      },
+      {
+        "pattern": "^\\.github/",
+        "reason": "t2_surface",
+        "category": "config-seam"
+      }
+    ],
+    "generated_files": [
+      {
+        "path": "coord/TEMPLATE_SYNC_MANIFEST.json",
+        "suites": [
+          "coord/engine/scripts/check-template-sync.test.js",
+          "coord/engine/scripts/template-sync-discovery.test.js"
+        ]
+      },
+      {
+        "path": "coord/engine-pin.json",
+        "suites": [
+          "coord/engine/scripts/check-template-sync.test.js",
+          "coord/engine/scripts/engine-pin.test.js"
+        ]
+      },
+      {
+        "path": "release/suite-inventory.json",
+        "suites": [
+          "release/suite-inventory.test.js",
+          "release/suite-titles.test.js"
+        ]
+      },
+      {
+        "path": "coord/engine/docs/GUARD_REGISTRY.md",
+        "suites": [
+          "coord/engine/scripts/guard-registry.test.js"
+        ]
+      }
+    ],
+    "generated_patterns": [
+      "^coord/TEMPLATE_SYNC_MANIFEST\\.json$",
+      "^coord/engine-pin\\.json$",
+      "^release/suite-inventory\\.json$",
+      "^coord/engine/docs/GUARD_REGISTRY\\.md$",
+      "^coord/rendered/",
+      "^coord/engine/scripts/engine-coverage-baseline",
+      "\\.(lcov|tap)$"
+    ],
+    "doc_pattern": "\\.(md|txt)$",
+    "shared_helper_min_dependent_suites": 25,
+    "review_criteria": {
+      "min_shadow_runs": 30,
+      "max_missed_failures": 0,
+      "require_fault_suite_pass": true,
+      "require_categories": [
+        "shared-helper",
+        "engine-module",
+        "config-seam",
+        "dependency",
+        "generated",
+        "rename-move-delete",
+        "shim-registered-move",
+        "test-only",
+        "fixture"
+      ],
+      "require_editions": [
+        "Community",
+        "Enterprise"
+      ],
+      "require_node_majors": [
+        22,
+        24
+      ],
+      "counted_runs": "shadow runs recorded with the current selector digest since the last suspension was resolved",
+      "role": "post-activation monitoring criteria for review; these are not a prerequisite for the human-authorized COORD-941 activation"
+    },
+    "always_required_suites": [
+      "coord/engine/scripts/check-template-sync.test.js",
+      "coord/engine/scripts/guard-registry.test.js",
+      "coord/engine/scripts/test-title-precheck.test.js",
+      "release/suite-inventory.test.js",
+      "release/suite-titles.test.js",
+      "coord/engine/scripts/governance-session.test.js",
+      "coord/engine/scripts/identity-v2.test.js",
+      "coord/engine/scripts/closeout-provenance.test.js",
+      "coord/engine/scripts/sync-provenance.test.js",
+      "coord/engine/scripts/journal.test.js",
+      "coord/engine/scripts/commit-scope.test.js",
+      "coord/engine/scripts/tree-mutation-safety.test.js"
+    ],
+    "always_required_note": "Ownership (governance-session, identity-v2), provenance (closeout-provenance, sync-provenance, journal) and integration safety (commit-scope, tree-mutation-safety), plus template sync, suite inventory, title check and the guard registry. Suites absent from an edition's inventory are not required there."
+  },
+  "stage_aliases": {
+    "staging": "promotion",
+    "beta": "promotion",
+    "production": "promotion",
+    "release": "promotion"
+  },
+  "metrics": {
+    "report": [
+      "selection scope (selected and omitted suites or targets)",
+      "fallback reasons",
+      "feedback time (wall time per check and in total)",
+      "flaky failures (failed, then passed on the classification rerun)",
+      "selection misses (gov test-policy compare: detection misses, skipped work, environmental failures)",
+      "promotion outcomes (per workflow stage: qualification and smoke results)",
+      "scheduled-run decisions (ran or skipped, with the trigger or skip reason)"
+    ],
+    "maturity": {
+      "repeatable-baseline": "clean-checkout reproducibility, failure reasons, timeout and interruption rates",
+      "scoped-feedback": "selected versus omitted, unknown-path fallbacks, developer feedback median and p95",
+      "dependency-aware-testing": "consumer coverage, mapping misses found by nightly comparison, escaped regressions",
+      "promotion-qualification": "full qualification on actual promotion candidates and its outcomes",
+      "continuous-improvement": "failure-first ordering, duration trend, flaky-test ownership, resolved selection misses"
+    },
+    "rule": "Maturity is demonstrated capability, not a test count or coverage alone. A check is never narrowed because it has passed often. Nightly comparison misses feed dependency-map corrections (graph edges in the engine, repoMaps targets in a product repository)."
+  },
+  "stage_aliases_note": "Environment stages map to promotion. Branches (main, dev, release branches) map to nothing by default: branch promotion is separate from scheduled execution, and an adopter maps branches in testPolicy.stageMap.",
+  "promotion_edges": {
+    "dev->staging": {
+      "adr": "ADR-0028",
+      "gate": "dev-to-staging",
+      "gates": [
+        "full-suite-sharded-node22"
+      ],
+      "note": "Full suite, sharded, on Node 22 (ADR 0022); mandatory full-suite trigger under ADR 0025 (c)."
+    },
+    "staging->main": {
+      "adr": "ADR-0028",
+      "gate": "staging-to-main",
+      "gates": [
+        "full-suite-node22",
+        "full-suite-node24",
+        "coverage-ratchet"
+      ],
+      "note": "Full suite on Node 22 and Node 24 plus the coverage ratchet (ADR 0028 section 3; Node 24 accepted at this edge, open question 8)."
+    },
+    "main->concord-public-release": {
+      "adr": "ADR-0028",
+      "gate": "main-to-concord-public-release",
+      "gates": [
+        "community-cut-build",
+        "donor-hygiene-scan",
+        "release-secret-scan",
+        "dual-release-verify",
+        "install-canaries-npm-sea"
+      ],
+      "note": "Public release gates; human-admin approval per commit and edition (ADR 0028 section 4)."
+    },
+    "main->concord-enterprise-release": {
+      "adr": "ADR-0028",
+      "gate": "main-to-concord-enterprise-release",
+      "gates": [
+        "enterprise-cut-build",
+        "enterprise-qualification",
+        "enterprise-ref-scan"
+      ],
+      "note": "Enterprise cut build and Enterprise qualification; human-admin approval per commit and edition (ADR 0028 section 4)."
+    }
+  }
+}

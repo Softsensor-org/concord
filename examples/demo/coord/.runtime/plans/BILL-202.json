@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "ticket_id": "BILL-202",
+  "markdown_heading": "BILL-202 — Monthly invoice generation",
+  "review_round": 1,
+  "traceability_gate": "closing-gap",
+  "intended_files": [
+    "backend/src/billing/invoice.ts",
+    "backend/tests/units/invoice.test.ts"
+  ],
+  "change_summary": [
+    "Generate a monthly invoice from metered billable units with a per-line breakdown and totals."
+  ],
+  "verification_commands": [
+    "cd backend && npm run build",
+    "cd backend && npm test -- invoice"
+  ],
+  "critical_invariants": [
+    "Invoice totals equal the sum of line items; no rounding drift across currencies.",
+    "An invoice is generated at most once per tenant per billing period (idempotent)."
+  ],
+  "requirement_closure": [
+    "Ticket ask: Monthly invoice generation from metered usage (billing).",
+    "Implemented (in progress): line-item builder over BILL-201 billable units; total reconciliation underway.",
+    "Not implemented: tax + proration",
+    "Deferred to: none",
+    "Closeout verdict: in progress"
+  ],
+  "feature_proof": [
+    "symbol:backend/src/billing/invoice.ts#generateInvoice",
+    "text:line-item breakdown"
+  ],
+  "repo_gates": [
+    "cd backend && npm run build [result=pass; attribution=clean] - tsc clean (partial)"
+  ],
+  "prior_findings": [],
+  "self_review_cycles": [
+    { "cycle": 1, "total": 4, "lens": "contract/state invariants", "risks": ["total != sum of lines", "rounding drift"], "findings": "totals reconciled to line items; banker's rounding unit-tested", "verification": "npm test -- invoice", "verdict": "pass" },
+    { "cycle": 2, "total": 4, "lens": "auth/security/failure modes", "risks": ["duplicate invoice", "tenant mix-up"], "findings": "idempotency key per (tenant, period); tenant-scoped read", "verification": "npm test -- invoice", "verdict": "in-progress" }
+  ],
+  "synced_from_markdown_at": "2026-06-12T10:58:00Z"
+}

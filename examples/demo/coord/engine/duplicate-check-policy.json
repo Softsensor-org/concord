@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "enforcement": "off",
+  "adr": "ADR 0026 (Proposed): enforcement stays off until the human admin accepts the ADR"
+}

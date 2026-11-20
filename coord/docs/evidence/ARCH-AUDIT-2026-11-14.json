@@ -1,0 +1,1124 @@
+{
+  "schema": "coord.architecture-audit",
+  "version": 1,
+  "revision": "e6c72afa (origin/dev) merged with COORD-976",
+  "scope": {
+    "engine_scripts": "coord/engine/scripts",
+    "excludes": [
+      "*.test.js",
+      "__fixtures__/",
+      "fixtures/"
+    ]
+  },
+  "metrics": {
+    "guards": 101,
+    "production_modules": 371,
+    "production_loc": 102485,
+    "production_raw_lines": 129171,
+    "engine_js_files": 729,
+    "test_files": 346,
+    "fixture_files": 12
+  },
+  "ratchet": {
+    "file": "coord/engine/architecture-ratchet.json",
+    "present": true,
+    "status": [
+      {
+        "metric": "guards",
+        "measured": 101,
+        "ratchet": 101,
+        "headroom": 0
+      },
+      {
+        "metric": "production_modules",
+        "measured": 371,
+        "ratchet": 371,
+        "headroom": 0
+      },
+      {
+        "metric": "production_loc",
+        "measured": 102485,
+        "ratchet": 102485,
+        "headroom": 0
+      }
+    ]
+  },
+  "deltas": null,
+  "guard_registry": {
+    "guards": 101,
+    "proposed_merges": 2,
+    "retirement_candidates": 4
+  },
+  "clones": {
+    "method": {
+      "window_lines": 8,
+      "min_alnum_lines": 5,
+      "boilerplate_windows_ignored": true,
+      "grouping": "exact file set"
+    },
+    "clusters": 99,
+    "allowlisted": [
+      {
+        "files": [
+          "@enterprise/adapter-authz-policy.js",
+          "@enterprise/conformance-bundle.js"
+        ],
+        "duplicated_windows": 5,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "@enterprise/adapter-authz-policy.js",
+          "@enterprise/conformance-bundle.js",
+          "@enterprise/rehash-verifier.js",
+          "coord/engine/scripts/journal-signing.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "@enterprise/adapter-authz-policy.js",
+          "@enterprise/conformance-bundle.js",
+          "coord/engine/scripts/journal-signing.js"
+        ],
+        "duplicated_windows": 10,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "@enterprise/conformance-bundle.js",
+          "coord/engine/scripts/journal-signing.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "@enterprise/enterprise-rbac-policy.js",
+          "coord/engine/scripts/coord-ui-access-core.js"
+        ],
+        "duplicated_windows": 4,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "@enterprise/org-collector.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/a11y-policy.js",
+          "coord/engine/scripts/mutation-policy.js",
+          "coord/engine/scripts/perf-budget-policy.js",
+          "coord/engine/scripts/sast-policy.js",
+          "coord/engine/scripts/supply-chain-policy.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Policy adapter skeleton shared by the *-policy.js gates (ARCH-AUDIT-2026-11-13 F-05). Accepted at baseline; simplification candidate, not a defect."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/a11y-policy.js",
+          "coord/engine/scripts/perf-budget-policy.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Policy adapter skeleton shared by the *-policy.js gates (ARCH-AUDIT-2026-11-13 F-05). Accepted at baseline; simplification candidate, not a defect."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/a11y-policy.js",
+          "coord/engine/scripts/perf-budget-policy.js",
+          "coord/engine/scripts/sast-policy.js",
+          "coord/engine/scripts/supply-chain-policy.js"
+        ],
+        "duplicated_windows": 13,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Policy adapter skeleton shared by the *-policy.js gates (ARCH-AUDIT-2026-11-13 F-05). Accepted at baseline; simplification candidate, not a defect."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/a11y-policy.js",
+          "coord/engine/scripts/sast-policy.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Policy adapter skeleton shared by the *-policy.js gates (ARCH-AUDIT-2026-11-13 F-05). Accepted at baseline; simplification candidate, not a defect."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/a11y-policy.js",
+          "coord/engine/scripts/sast-policy.js",
+          "coord/engine/scripts/supply-chain-policy.js"
+        ],
+        "duplicated_windows": 10,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Policy adapter skeleton shared by the *-policy.js gates (ARCH-AUDIT-2026-11-13 F-05). Accepted at baseline; simplification candidate, not a defect."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/a11y-policy.js",
+          "coord/engine/scripts/supply-chain-policy.js"
+        ],
+        "duplicated_windows": 4,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Policy adapter skeleton shared by the *-policy.js gates (ARCH-AUDIT-2026-11-13 F-05). Accepted at baseline; simplification candidate, not a defect."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/adapters/live-case-adapter-reference.js",
+          "coord/engine/scripts/adapters/live-case-fixture-promotion.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/adr-validator.js",
+          "coord/engine/scripts/business-context-pack.js",
+          "coord/engine/scripts/business-discovery-synthesize.js",
+          "coord/engine/scripts/business-discovery.js",
+          "coord/engine/scripts/requirements-baseline-gate.js",
+          "coord/engine/scripts/requirements-conformance.js",
+          "coord/engine/scripts/requirements-donor-derived.js",
+          "coord/engine/scripts/requirements-donor-reuse.js",
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-import.js",
+          "coord/engine/scripts/requirements-linkage-backfill.js",
+          "coord/engine/scripts/requirements-linkage.js",
+          "coord/engine/scripts/requirements-persona-workflow.js",
+          "coord/engine/scripts/requirements-screen-coverage.js",
+          "coord/engine/scripts/requirements-sequencing.js",
+          "coord/engine/scripts/requirements-stale-impact.js",
+          "coord/engine/scripts/requirements-surface-conformance.js",
+          "coord/engine/scripts/requirements-traceability.js",
+          "coord/engine/scripts/requirements-walking-skeleton.js",
+          "coord/engine/scripts/requirements-workflow-alignment.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Business-discovery and requirements family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/adr-validator.js",
+          "coord/engine/scripts/gates/adr.js"
+        ],
+        "duplicated_windows": 11,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/affected-targets.js",
+          "coord/engine/scripts/gate-plan.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/analytics-gate.js",
+          "coord/engine/scripts/content-gate.js",
+          "coord/engine/scripts/infra-gate.js"
+        ],
+        "duplicated_windows": 5,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/arch-checks.js",
+          "coord/engine/scripts/audit-policy.js",
+          "coord/engine/scripts/contract-policy.js",
+          "coord/engine/scripts/coverage-policy.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Policy adapter skeleton shared by the *-policy.js gates (ARCH-AUDIT-2026-11-13 F-05). Accepted at baseline; simplification candidate, not a defect."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/audit-policy.js",
+          "coord/engine/scripts/coverage-policy.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Policy adapter skeleton shared by the *-policy.js gates (ARCH-AUDIT-2026-11-13 F-05). Accepted at baseline; simplification candidate, not a defect."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/business-context-pack.js"
+        ],
+        "duplicated_windows": 4,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Business-discovery and requirements family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/business-context-pack.js",
+          "coord/engine/scripts/business-discovery-synthesize.js",
+          "coord/engine/scripts/business-discovery.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Business-discovery and requirements family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/business-context-pack.js",
+          "coord/engine/scripts/business-discovery.js",
+          "coord/engine/scripts/knowledge-claim-compiler.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Business-discovery and requirements family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/business-context-pack.js",
+          "coord/engine/scripts/recall.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Business-discovery and requirements family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/business-discovery-synthesize.js",
+          "coord/engine/scripts/business-discovery.js"
+        ],
+        "duplicated_windows": 4,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Business-discovery and requirements family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/business-discovery-synthesize.js",
+          "coord/engine/scripts/exploration-promotion.js",
+          "coord/engine/scripts/requirements-artifact-model.js",
+          "coord/engine/scripts/requirements-baseline-gate.js",
+          "coord/engine/scripts/requirements-cockpit-model.js",
+          "coord/engine/scripts/requirements-domain-boundary.js",
+          "coord/engine/scripts/requirements-donor-derived.js",
+          "coord/engine/scripts/requirements-donor-reuse.js",
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-generalization-audit.js",
+          "coord/engine/scripts/requirements-review-pack.js",
+          "coord/engine/scripts/requirements-sequencing.js",
+          "coord/engine/scripts/requirements-stale-impact.js",
+          "coord/engine/scripts/requirements-traceability.js",
+          "coord/engine/scripts/requirements-walking-skeleton.js",
+          "coord/engine/scripts/requirements-workflow-alignment.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Business-discovery and requirements family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/business-discovery.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Business-discovery and requirements family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/cli.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: CLI flag tables repeated between cli.js and lifecycle-flags.js (ARCH-AUDIT-2026-11-13 F-04). Accepted at baseline; simplification candidate."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/cli.js",
+          "coord/engine/scripts/lifecycle-flags.js"
+        ],
+        "duplicated_windows": 32,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: CLI flag tables repeated between cli.js and lifecycle-flags.js (ARCH-AUDIT-2026-11-13 F-04). Accepted at baseline; simplification candidate."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/closeout-summary.js",
+          "coord/engine/scripts/prework-pack.js"
+        ],
+        "duplicated_windows": 10,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/closeout.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/control-plane-landing.js",
+          "coord/engine/scripts/landing-record-classification.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/control-plane-merge-history.js",
+          "coord/engine/scripts/control-plane-push-history.js"
+        ],
+        "duplicated_windows": 6,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/coord-conformance.js",
+          "coord/engine/scripts/coord-upgrade.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/coord-init-wizard.js",
+          "coord/engine/scripts/readiness-doctor.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/coord-ui-bootstrap-risk-view-model.js",
+          "coord/engine/scripts/coord-ui-live-mcp-view-model.js"
+        ],
+        "duplicated_windows": 14,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/coord-upgrade.js",
+          "coord/engine/scripts/state-io.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/directory-locks.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/exploration-promotion.js",
+          "coord/engine/scripts/knowledge-claim-compiler.js",
+          "coord/engine/scripts/requirements-artifact-model.js",
+          "coord/engine/scripts/requirements-baseline-gate.js",
+          "coord/engine/scripts/requirements-cockpit-model.js",
+          "coord/engine/scripts/requirements-domain-boundary.js",
+          "coord/engine/scripts/requirements-donor-derived.js",
+          "coord/engine/scripts/requirements-donor-reuse.js",
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-generalization-audit.js",
+          "coord/engine/scripts/requirements-review-pack.js",
+          "coord/engine/scripts/requirements-sequencing.js",
+          "coord/engine/scripts/requirements-traceability.js",
+          "coord/engine/scripts/requirements-walking-skeleton.js",
+          "coord/engine/scripts/requirements-workflow-alignment.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/exploration-promotion.js",
+          "coord/engine/scripts/requirements-artifact-model.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/exploration-promotion.js",
+          "coord/engine/scripts/requirements-artifact-model.js",
+          "coord/engine/scripts/requirements-baseline-gate.js",
+          "coord/engine/scripts/requirements-cockpit-model.js",
+          "coord/engine/scripts/requirements-conformance.js",
+          "coord/engine/scripts/requirements-domain-boundary.js",
+          "coord/engine/scripts/requirements-donor-derived.js",
+          "coord/engine/scripts/requirements-donor-reuse.js",
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-generalization-audit.js",
+          "coord/engine/scripts/requirements-persona-workflow.js",
+          "coord/engine/scripts/requirements-review-pack.js",
+          "coord/engine/scripts/requirements-screen-coverage.js",
+          "coord/engine/scripts/requirements-sequencing.js",
+          "coord/engine/scripts/requirements-stale-impact.js",
+          "coord/engine/scripts/requirements-surface-conformance.js",
+          "coord/engine/scripts/requirements-traceability.js",
+          "coord/engine/scripts/requirements-walking-skeleton.js",
+          "coord/engine/scripts/requirements-workflow-alignment.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/exploration-promotion.js",
+          "coord/engine/scripts/requirements-artifact-model.js",
+          "coord/engine/scripts/requirements-baseline-gate.js",
+          "coord/engine/scripts/requirements-cockpit-model.js",
+          "coord/engine/scripts/requirements-domain-boundary.js",
+          "coord/engine/scripts/requirements-donor-derived.js",
+          "coord/engine/scripts/requirements-donor-reuse.js",
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-generalization-audit.js",
+          "coord/engine/scripts/requirements-review-pack.js",
+          "coord/engine/scripts/requirements-sequencing.js",
+          "coord/engine/scripts/requirements-stale-impact.js",
+          "coord/engine/scripts/requirements-traceability.js",
+          "coord/engine/scripts/requirements-walking-skeleton.js",
+          "coord/engine/scripts/requirements-workflow-alignment.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/exploration-promotion.js",
+          "coord/engine/scripts/requirements-domain-boundary.js",
+          "coord/engine/scripts/requirements-donor-reuse.js",
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-generalization-audit.js",
+          "coord/engine/scripts/requirements-persona-workflow.js",
+          "coord/engine/scripts/requirements-surface-conformance.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/gates/readiness.js",
+          "coord/engine/scripts/token-economics.js"
+        ],
+        "duplicated_windows": 8,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/governance-board-state.js",
+          "coord/engine/scripts/lifecycle-board-validate.js"
+        ],
+        "duplicated_windows": 5,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Governance ticket and plan modules with repeated blocks (ARCH-AUDIT-2026-11-13 F-19 family). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/governance-mcp.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Governance ticket and plan modules with repeated blocks (ARCH-AUDIT-2026-11-13 F-19 family). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/governance-plan-shape.js",
+          "coord/engine/scripts/plan-scaffold-text.js"
+        ],
+        "duplicated_windows": 5,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Governance ticket and plan modules with repeated blocks (ARCH-AUDIT-2026-11-13 F-19 family). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/governance-session.js",
+          "coord/engine/scripts/memory-classification.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Governance ticket and plan modules with repeated blocks (ARCH-AUDIT-2026-11-13 F-19 family). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/governed-workspace-recovery.js"
+        ],
+        "duplicated_windows": 5,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/independent-review-command.js",
+          "coord/engine/scripts/managed-evidence-command.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/insight-reports.js",
+          "coord/engine/scripts/memory-graph.js",
+          "coord/engine/scripts/summary-tiers.js"
+        ],
+        "duplicated_windows": 8,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/insight-reports.js",
+          "coord/engine/scripts/summary-tiers.js"
+        ],
+        "duplicated_windows": 10,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/journal.js",
+          "coord/engine/scripts/worktree-ops.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/learned-rule-promotion.js",
+          "coord/engine/scripts/prework-pack.js",
+          "coord/engine/scripts/recall.js"
+        ],
+        "duplicated_windows": 4,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/lifecycle-board-commands.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Governance ticket and plan modules with repeated blocks (ARCH-AUDIT-2026-11-13 F-19 family). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/memory-graph.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/mutation-policy.js",
+          "coord/engine/scripts/perf-budget-policy.js"
+        ],
+        "duplicated_windows": 4,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Policy adapter skeleton shared by the *-policy.js gates (ARCH-AUDIT-2026-11-13 F-05). Accepted at baseline; simplification candidate, not a defect."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/mutation-policy.js",
+          "coord/engine/scripts/perf-budget-policy.js",
+          "coord/engine/scripts/sast-policy.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Policy adapter skeleton shared by the *-policy.js gates (ARCH-AUDIT-2026-11-13 F-05). Accepted at baseline; simplification candidate, not a defect."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/plan-records.js"
+        ],
+        "duplicated_windows": 20,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Governance ticket and plan modules with repeated blocks (ARCH-AUDIT-2026-11-13 F-19 family). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/prework-pack.js",
+          "coord/engine/scripts/recall.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/prompt-coverage.js"
+        ],
+        "duplicated_windows": 8,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Governance ticket and plan modules with repeated blocks (ARCH-AUDIT-2026-11-13 F-19 family). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/prompt-coverage.js",
+          "coord/engine/scripts/ticket-commands.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Governance ticket and plan modules with repeated blocks (ARCH-AUDIT-2026-11-13 F-19 family). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-baseline-gate.js",
+          "coord/engine/scripts/requirements-cockpit-model.js",
+          "coord/engine/scripts/requirements-command-contracts.js",
+          "coord/engine/scripts/requirements-domain-boundary.js",
+          "coord/engine/scripts/requirements-donor-derived.js",
+          "coord/engine/scripts/requirements-donor-reuse.js",
+          "coord/engine/scripts/requirements-generalization-audit.js",
+          "coord/engine/scripts/requirements-import.js",
+          "coord/engine/scripts/requirements-persona-workflow.js",
+          "coord/engine/scripts/requirements-review-pack.js",
+          "coord/engine/scripts/requirements-screen-coverage.js",
+          "coord/engine/scripts/requirements-sequencing.js",
+          "coord/engine/scripts/requirements-surface-conformance.js",
+          "coord/engine/scripts/requirements-walking-skeleton.js",
+          "coord/engine/scripts/requirements-workflow-alignment.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-baseline-gate.js",
+          "coord/engine/scripts/requirements-cockpit-model.js",
+          "coord/engine/scripts/requirements-domain-boundary.js",
+          "coord/engine/scripts/requirements-donor-derived.js",
+          "coord/engine/scripts/requirements-donor-reuse.js",
+          "coord/engine/scripts/requirements-generalization-audit.js",
+          "coord/engine/scripts/requirements-import.js",
+          "coord/engine/scripts/requirements-persona-workflow.js",
+          "coord/engine/scripts/requirements-review-pack.js",
+          "coord/engine/scripts/requirements-screen-coverage.js",
+          "coord/engine/scripts/requirements-sequencing.js",
+          "coord/engine/scripts/requirements-surface-conformance.js",
+          "coord/engine/scripts/requirements-walking-skeleton.js",
+          "coord/engine/scripts/requirements-workflow-alignment.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-baseline-gate.js",
+          "coord/engine/scripts/requirements-domain-boundary.js",
+          "coord/engine/scripts/requirements-donor-reuse.js",
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-generalization-audit.js",
+          "coord/engine/scripts/requirements-persona-workflow.js",
+          "coord/engine/scripts/requirements-screen-coverage.js",
+          "coord/engine/scripts/requirements-stale-impact.js",
+          "coord/engine/scripts/requirements-surface-conformance.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-conformance.js",
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-linkage.js",
+          "coord/engine/scripts/requirements-traceability.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-conformance.js",
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-sequencing.js",
+          "coord/engine/scripts/requirements-traceability.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-conformance.js",
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-traceability.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-conformance.js",
+          "coord/engine/scripts/requirements-sequencing.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-domain-boundary.js",
+          "coord/engine/scripts/requirements-donor-reuse.js",
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-generalization-audit.js",
+          "coord/engine/scripts/requirements-persona-workflow.js",
+          "coord/engine/scripts/requirements-surface-conformance.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-domain-boundary.js",
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-generalization-audit.js",
+          "coord/engine/scripts/requirements-persona-workflow.js",
+          "coord/engine/scripts/requirements-screen-coverage.js",
+          "coord/engine/scripts/requirements-stale-impact.js",
+          "coord/engine/scripts/requirements-surface-conformance.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-donor-derived.js",
+          "coord/engine/scripts/requirements-donor-reuse.js",
+          "coord/engine/scripts/requirements-persona-workflow.js",
+          "coord/engine/scripts/requirements-screen-coverage.js",
+          "coord/engine/scripts/requirements-walking-skeleton.js",
+          "coord/engine/scripts/requirements-workflow-alignment.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-donor-derived.js",
+          "coord/engine/scripts/requirements-workflow-alignment.js"
+        ],
+        "duplicated_windows": 5,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-linkage.js",
+          "coord/engine/scripts/requirements-sequencing.js",
+          "coord/engine/scripts/requirements-stale-impact.js",
+          "coord/engine/scripts/requirements-traceability.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-sequencing.js"
+        ],
+        "duplicated_windows": 10,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-sequencing.js",
+          "coord/engine/scripts/requirements-stale-impact.js",
+          "coord/engine/scripts/requirements-traceability.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-sequencing.js",
+          "coord/engine/scripts/requirements-surface-conformance.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-sequencing.js",
+          "coord/engine/scripts/requirements-traceability.js"
+        ],
+        "duplicated_windows": 14,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-stale-impact.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-evidence-policy.js",
+          "coord/engine/scripts/requirements-traceability.js"
+        ],
+        "duplicated_windows": 9,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-linkage-backfill.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-linkage-backfill.js",
+          "coord/engine/scripts/requirements-linkage.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-linkage-backfill.js",
+          "coord/engine/scripts/requirements-stale-impact.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-linkage.js",
+          "coord/engine/scripts/requirements-persona-workflow.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-persona-workflow.js",
+          "coord/engine/scripts/requirements-screen-coverage.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-screen-coverage.js",
+          "coord/engine/scripts/requirements-stale-impact.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-screen-coverage.js",
+          "coord/engine/scripts/requirements-workflow-alignment.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Requirements module family with a shared shape. Accepted at baseline; candidate for a shared helper."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/runtime-authority-decision.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/runtime-cleanup.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated blocks across enterprise, journal and control-plane modules (ARCH-AUDIT-2026-11-13 F-11 and F-06 families). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/static-config-declaration.js"
+        ],
+        "duplicated_windows": 2,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/ticket-commands.js"
+        ],
+        "duplicated_windows": 11,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Governance ticket and plan modules with repeated blocks (ARCH-AUDIT-2026-11-13 F-19 family). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/ticket-commands.js",
+          "coord/engine/scripts/ticket-transitions.js"
+        ],
+        "duplicated_windows": 1,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Governance ticket and plan modules with repeated blocks (ARCH-AUDIT-2026-11-13 F-19 family). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/ticket-queue-service.js"
+        ],
+        "duplicated_windows": 4,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Governance ticket and plan modules with repeated blocks (ARCH-AUDIT-2026-11-13 F-19 family). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/ticket-transitions.js"
+        ],
+        "duplicated_windows": 4,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Governance ticket and plan modules with repeated blocks (ARCH-AUDIT-2026-11-13 F-19 family). Accepted at baseline; candidate for extraction."
+      },
+      {
+        "files": [
+          "coord/engine/scripts/verb-parity.js"
+        ],
+        "duplicated_windows": 3,
+        "reason": "Reviewed by COORD-976 at baseline origin/dev 23e5d673: Repeated block within or across these modules, reviewed at family level at baseline origin/dev 23e5d673. Accepted; re-review if it grows."
+      }
+    ],
+    "unallowlisted_count": 5,
+    "unallowlisted": [
+      {
+        "files": [
+          "coord/engine/scripts/a11y-policy.js",
+          "coord/engine/scripts/mutation-policy.js",
+          "coord/engine/scripts/sast-policy.js",
+          "coord/engine/scripts/supply-chain-policy.js"
+        ],
+        "duplicated_windows": 2,
+        "sample": "function runCli(argv, { stdout, stderr } = {}) {",
+        "first": {
+          "file": "coord/engine/scripts/a11y-policy.js",
+          "line": 402
+        }
+      },
+      {
+        "files": [
+          "coord/engine/scripts/guided-closeout.js",
+          "coord/engine/scripts/lifecycle-utils.js",
+          "coord/engine/scripts/publishability-check.js"
+        ],
+        "duplicated_windows": 1,
+        "sample": "}",
+        "first": {
+          "file": "coord/engine/scripts/guided-closeout.js",
+          "line": 25
+        }
+      },
+      {
+        "files": [
+          "coord/engine/scripts/insight-reports.js",
+          "coord/engine/scripts/memory-graph.js"
+        ],
+        "duplicated_windows": 1,
+        "sample": "}",
+        "first": {
+          "file": "coord/engine/scripts/insight-reports.js",
+          "line": 43
+        }
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-linkage-backfill.js",
+          "coord/engine/scripts/requirements-surface-conformance.js"
+        ],
+        "duplicated_windows": 1,
+        "sample": "}",
+        "first": {
+          "file": "coord/engine/scripts/requirements-linkage-backfill.js",
+          "line": 16
+        }
+      },
+      {
+        "files": [
+          "coord/engine/scripts/requirements-linkage.js",
+          "coord/engine/scripts/requirements-sequencing.js"
+        ],
+        "duplicated_windows": 1,
+        "sample": "]);",
+        "first": {
+          "file": "coord/engine/scripts/requirements-linkage.js",
+          "line": 17
+        }
+      }
+    ],
+    "stale_allowlist": [
+      "coord/engine/scripts/closeout-summary.js|coord/engine/scripts/decision-extractor.js|coord/engine/scripts/insight-reports.js|coord/engine/scripts/learned-rule-promotion.js|coord/engine/scripts/prework-pack.js|coord/engine/scripts/summary-tiers.js",
+      "coord/engine/scripts/guided-closeout.js|coord/engine/scripts/publishability-check.js",
+      "coord/engine/scripts/recall.js",
+      "coord/engine/scripts/requirements-linkage-backfill.js|coord/engine/scripts/requirements-sequencing.js|coord/engine/scripts/requirements-surface-conformance.js",
+      "coord/engine/scripts/requirements-sequencing.js|coord/engine/scripts/requirements-surface-conformance.js",
+      "coord/engine/scripts/sast-policy.js|coord/engine/scripts/supply-chain-policy.js",
+      "coord/engine/scripts/test-policy-run.js|coord/engine/scripts/test-policy-schedule.js"
+    ]
+  },
+  "proposals": {
+    "filed": false,
+    "note": "Proposals are not filed. Each needs human-admin approval before a ticket is filed (COORD-976 acceptance 4).",
+    "items": [
+      {
+        "kind": "guard-merge",
+        "guards": [
+          "adr-requirement",
+          "adr-compliance-closure",
+          "business-context-status",
+          "context-pack-ack"
+        ],
+        "into": "one decision-context record per ticket, validated once at move-review; implemented as the versioned packet in coord/engine/scripts/decision-context.js (COORD-932, expands into adr_refs, decision_required, the business-context invariant and context_pack_ack; proposal still needs human review)",
+        "summary": "Merge adr-requirement, adr-compliance-closure, business-context-status, context-pack-ack into one decision-context record per ticket, validated once at move-review; implemented as the versioned packet in coord/engine/scripts/decision-context.js (COORD-932, expands into adr_refs, decision_required, the business-context invariant and context_pack_ack; proposal still needs human review)"
+      },
+      {
+        "kind": "guard-merge",
+        "guards": [
+          "tree-mutation-safety",
+          "canonical-authority-write",
+          "co-located-writer"
+        ],
+        "into": "the integration-authority permission (COORD-915)",
+        "summary": "Merge tree-mutation-safety, canonical-authority-write, co-located-writer into the integration-authority permission (COORD-915)"
+      },
+      {
+        "kind": "guard-retirement",
+        "guard": "legacy-entrypoints",
+        "summary": "Retire guard legacy-entrypoints: Exists only for the COORD-589 shim deprecation window."
+      },
+      {
+        "kind": "guard-retirement",
+        "guard": "upgrade-bridge",
+        "summary": "Retire guard upgrade-bridge: Bridges v0.1.16 adopters only."
+      },
+      {
+        "kind": "guard-retirement",
+        "guard": "wip-cap",
+        "summary": "Retire guard wip-cap: Protects attention, not state; integration authority and dependency readiness cover the state risks."
+      },
+      {
+        "kind": "guard-retirement",
+        "guard": "adr-path-packet",
+        "summary": "Retire guard adr-path-packet: For ADR metadata-only edits, once a decision-context record exists."
+      },
+      {
+        "kind": "clone-cluster",
+        "files": [
+          "coord/engine/scripts/a11y-policy.js",
+          "coord/engine/scripts/mutation-policy.js",
+          "coord/engine/scripts/sast-policy.js",
+          "coord/engine/scripts/supply-chain-policy.js"
+        ],
+        "duplicated_windows": 2,
+        "summary": "Review duplicated logic across coord/engine/scripts/a11y-policy.js, coord/engine/scripts/mutation-policy.js, coord/engine/scripts/sast-policy.js, coord/engine/scripts/supply-chain-policy.js"
+      },
+      {
+        "kind": "clone-cluster",
+        "files": [
+          "coord/engine/scripts/guided-closeout.js",
+          "coord/engine/scripts/lifecycle-utils.js",
+          "coord/engine/scripts/publishability-check.js"
+        ],
+        "duplicated_windows": 1,
+        "summary": "Review duplicated logic across coord/engine/scripts/guided-closeout.js, coord/engine/scripts/lifecycle-utils.js, coord/engine/scripts/publishability-check.js"
+      },
+      {
+        "kind": "clone-cluster",
+        "files": [
+          "coord/engine/scripts/insight-reports.js",
+          "coord/engine/scripts/memory-graph.js"
+        ],
+        "duplicated_windows": 1,
+        "summary": "Review duplicated logic across coord/engine/scripts/insight-reports.js, coord/engine/scripts/memory-graph.js"
+      },
+      {
+        "kind": "clone-cluster",
+        "files": [
+          "coord/engine/scripts/requirements-linkage-backfill.js",
+          "coord/engine/scripts/requirements-surface-conformance.js"
+        ],
+        "duplicated_windows": 1,
+        "summary": "Review duplicated logic across coord/engine/scripts/requirements-linkage-backfill.js, coord/engine/scripts/requirements-surface-conformance.js"
+      },
+      {
+        "kind": "clone-cluster",
+        "files": [
+          "coord/engine/scripts/requirements-linkage.js",
+          "coord/engine/scripts/requirements-sequencing.js"
+        ],
+        "duplicated_windows": 1,
+        "summary": "Review duplicated logic across coord/engine/scripts/requirements-linkage.js, coord/engine/scripts/requirements-sequencing.js"
+      }
+    ]
+  },
+  "not_measured": [
+    "overlapping helpers that implement one rule (manual review; see ARCH-AUDIT-2026-11-13.md section 2b)",
+    "redundant verbs and flags (manual review; see section 2c)",
+    "require-graph cycles (manual review; see section 4)"
+  ]
+}

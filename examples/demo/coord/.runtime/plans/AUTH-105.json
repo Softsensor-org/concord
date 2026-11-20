@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "ticket_id": "AUTH-105",
+  "markdown_heading": "AUTH-105 — Audit-log viewer screen",
+  "review_round": 1,
+  "traceability_gate": "closing-gap",
+  "intended_files": [
+    "frontend/src/screens/AuditLog/index.tsx",
+    "frontend/src/screens/AuditLog/SeverityFilter.tsx"
+  ],
+  "change_summary": [
+    "Screen to browse the auth audit log with a severity filter, paginated and tenant-scoped."
+  ],
+  "verification_commands": ["cd frontend && yarn build", "cd frontend && yarn test auditLog"],
+  "critical_invariants": [
+    "The viewer only ever requests the caller's own tenant scope.",
+    "Severity filter is purely client-side over already-authorized rows."
+  ],
+  "requirement_closure": [
+    "Ticket ask: Audit-log viewer with severity filter and tenant scoping (FR-1.3 surface).",
+    "Implemented (in progress): list + pagination wired to GET /audit/events; severity filter component built.",
+    "Not implemented: CSV export",
+    "Deferred to: none",
+    "Closeout verdict: in progress"
+  ],
+  "feature_proof": [
+    "route:/audit-log",
+    "symbol:frontend/src/screens/AuditLog/index.tsx#AuditLogScreen"
+  ],
+  "repo_gates": [
+    "cd frontend && yarn build [result=pass; attribution=clean] - build ok (partial)"
+  ],
+  "prior_findings": [],
+  "self_review_cycles": [
+    { "cycle": 1, "total": 4, "lens": "contract/state invariants", "risks": ["pagination off-by-one"], "findings": "cursor pagination unit-tested", "verification": "yarn test auditLog", "verdict": "pass" },
+    { "cycle": 2, "total": 4, "lens": "auth/security/failure modes", "risks": ["cross-tenant request"], "findings": "tenant scope injected server-side; client cannot widen it", "verification": "manual + yarn test", "verdict": "in-progress" }
+  ],
+  "synced_from_markdown_at": "2026-06-12T11:02:00Z"
+}

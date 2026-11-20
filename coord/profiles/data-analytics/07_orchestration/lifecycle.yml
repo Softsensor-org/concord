@@ -1,0 +1,49 @@
+# =============================================================================
+# lifecycle.yml — RETIREMENT ledger  (TEMPLATE / stub)
+# =============================================================================
+# The retirement half of the dual registry. pipeline.yml says what is built;
+# this file says what STATUS each output has and what has been retired.
+#
+# The lifecycle check (a `label_lifecycle`-style step in the data-contract gate)
+# must stay green. Its central rule:
+#
+#   >>> NO `superseded:` ITEM MAY FEED A CERTIFIED PRODUCT. <<<
+#
+# i.e. if a certified entry in pipeline.yml lists an input that appears under
+# `superseded:` here, the gate HARD-FAILS. This is how "certified-only-feeds-
+# certified" stays true over time: retiring an output also bans it as an input
+# to anything certified. Retired files should physically move to
+# archive/retired_YYYY-MM-DD/ with a README naming the successor.
+#
+# Sections:
+#   canonical:   the load-bearing certified products (the source-of-truth set)
+#   support:     certified helpers / intermediate products downstream may use
+#   superseded:  retired outputs — each names its successor (`by`) and a `note`
+# =============================================================================
+
+canonical:
+  # The products other work is allowed to build on. Keep this list small and
+  # deliberate — it is the spine of the engagement.
+  - example_customer_summary
+  - example_model_card
+
+support:
+  # Certified intermediates / helpers — fine to consume, but not headline truth.
+  - example_feature_panel
+  - example_source
+
+superseded:
+  # Retired outputs. Each entry: {name, by, note}.
+  # `by` MUST point at a live canonical/support successor (not another superseded
+  # item). The note records WHY it was retired so the number never resurfaces.
+  - name: example_old_customer_summary
+    by: example_customer_summary
+    note: >
+      Replaced by the reconciled customer summary. The old version double-counted
+      a denominator; do not resurface its figures in any deck or memo.
+
+  - name: example_v1_model_card
+    by: example_model_card
+    note: >
+      Superseded after the baseline_metric band was introduced; v1 shipped an
+      out-of-band AUC. Retained only in archive/ for provenance.

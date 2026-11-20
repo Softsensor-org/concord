@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "issued_at": "2026-06-24T05:10:00.000Z",
+  "subject": {
+    "engine_version": "test-engine",
+    "journal_chain_head": {
+      "head": "fd8f23bbc4829346e101d7933d4e2bd55616f327",
+      "ok": true,
+      "total_events": 7,
+      "chained_events": 7
+    }
+  },
+  "subject_digest": "31a9c3e2b25588a5e0c8df6fc48eb7360d1c3d4a",
+  "signature": {
+    "algorithm": "ed25519",
+    "value": "FIXTURE_SIGNATURE_BASE64==",
+    "public_key_pem": "-----BEGIN PUBLIC KEY-----\nFIXTURE\n-----END PUBLIC KEY-----\n"
+  }
+}

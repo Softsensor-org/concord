@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "governance": {
+      "command": "node",
+      "args": ["coord/scripts/governance-mcp.js"],
+      "description": "Local governed ticket lifecycle server. Covers the common lifecycle, not the full CLI verb set. No shell parsing or package installation is required."
+    }
+  }
+}

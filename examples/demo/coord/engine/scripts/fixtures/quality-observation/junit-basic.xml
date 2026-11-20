@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- representative JUnit XML: Surefire / pytest --junitxml dialect -->
+<testsuites name="unit" tests="5" failures="1" errors="1" skipped="1" time="0.4200">
+  <testsuite name="com.example.CartTest" tests="3" failures="1" errors="0" skipped="1" time="0.300" timestamp="2026-10-20T10:00:00" hostname="ci-1">
+    <properties>
+      <property name="java.version" value="21"/>
+    </properties>
+    <testcase classname="com.example.CartTest" name="adds &amp; removes items" time="0.125" file="src/test/java/com/example/CartTest.java"/>
+    <testcase classname="com.example.CartTest" name="totals &lt;tax&gt;" time="0.0750">
+      <failure message="expected 3 but was 4" type="AssertionError"><![CDATA[at CartTest.totals(CartTest.java:42) </failure> inside cdata]]></failure>
+      <system-out>noise</system-out>
+    </testcase>
+    <testcase classname="com.example.CartTest" name="ignored case" time="0">
+      <skipped message="disabled"/>
+    </testcase>
+  </testsuite>
+  <testsuite name="com.example.PriceTest" tests="2" failures="0" errors="1" skipped="0" time="0.120">
+    <testcase classname="com.example.PriceTest" name="rounds &#x2014; half up" time="0.1"/>
+    <testcase classname="com.example.PriceTest" name="parses &#39;quoted&#39;" time="0.020">
+      <error message="NPE" type="java.lang.NullPointerException">trace</error>
+    </testcase>
+  </testsuite>
+</testsuites>

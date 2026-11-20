@@ -1,0 +1,288 @@
+# GCV-4 Engine / Config Seam
+
+Status: design slice of record. No engine refactor is implied by this file
+alone.
+
+## Problem
+
+Downstream `coord` repos currently carry mutable copies of the governance
+engine. Each upstream improvement is replayed as a hand merge into every
+consumer. That worked for small drift in acme-ops, but it breaks down for older
+consumers such as acme where project config and engine code are interleaved.
+
+The repeated merge loop is the bug. The engine must behave like a support
+library: versioned, pinned, and upgraded through a declared path. Per-project
+state must be data read by the engine, not edits inside engine files.
+
+## Decision
+
+Use a vendored engine bundle, pinned to a coord-template release, plus a
+project-local config file.
+
+Do not use an npm package for the first implementation. The engine includes
+Node scripts, governance policy, schemas, hooks, prompts, MCP glue, and
+operator docs; consumers also need local offline operation. A tagged bundle
+copied by `coord upgrade` preserves the current repo shape while ending manual
+merge propagation.
+
+Do not use a git submodule for the first implementation. Submodules make the
+source relationship explicit, but they complicate local edits, bootstrap, and
+multi-repo agent workflows. The upgrade command should be the only mechanism
+that changes engine-managed files.
+
+## Target Layout
+
+```text
+coord/
+|-- .coord-engine.json        # pinned upstream source/version
+|-- project.config.js         # project-owned config
+|-- paths.js                  # engine-managed adapter; reads project.config.js
+|-- scripts/                  # engine-managed
+|-- board/board.js            # engine-managed
+|-- board/*.schema.json       # engine-managed
+|-- prompts/                  # engine-managed defaults, project-overridable later
+|-- product/                  # project-owned product docs
+|-- board/tasks.json          # project-owned board state
+|-- active/                   # project-owned ticket notes
+`-- .runtime/                 # project-owned runtime, gitignored
+```
+
+The exact engine-managed path list is declared in the upstream release
+manifest. Consumers must not hand-edit those files. Project-owned paths are
+never overwritten by upgrade.
+
+### Engine-Managed Path Discovery (COORD-607)
+
+That path list is **derived, not curated**. `coord/TEMPLATE_SYNC_MANIFEST.json`
+used to be a hand-maintained list seeded once from a static 2026-04-12
+maintainer inventory snapshot. There was no discovery rule, so an engine
+file created afterwards stayed invisible to both integrity surfaces —
+`check-template-sync.sh` (manifest vs files) and `gov verify-engine` (surface vs
+pin) — until someone added it by hand. Both reported green while untracked
+engine code could drift or be tampered with, and because the manifest
+fingerprint feeds conformance attestation (ENT-010) and the engine pin
+(ENT-011), the gap weakened every downstream integrity claim.
+
+The rule now lives in `coord/engine/scripts/template-sync-discovery.js`:
+
+- **Roots**: every file under `coord/scripts/**` and `coord/board/**` — the
+  engine-managed roots of the Target Layout above — is engine-managed.
+- **No extension allowlist.** An allowlist is how the extensionless
+  `coord/scripts/agent` entrypoint stayed invisible.
+- **Exclusions** are explicit and each carries a recorded reason, published in
+  the manifest under `discovery.exclusions`. Currently only project-owned board
+  state (`coord/board/tasks.json`, `coord/board/plans/**`), which the Upgrade
+  Contract preserves rather than replaces.
+- **Curated extras** (governance docs, `.claude/settings.json`) live outside the
+  roots, so no rule claims them; they stay hand-listed and are marked
+  `discovery: "curated-extra"`.
+
+Regenerate with `node coord/scripts/template-sync-discovery.js --write`, then
+re-pin with `gov verify-engine --pin`. `check-template-sync.sh --audit-coverage`
+and `coord/engine/scripts/template-sync-discovery.test.js` both FAIL when an
+engine-managed file is untracked, so the gap cannot silently reopen. An
+unexplained exclusion is the same hole in a new shape: add one only when the
+file is genuinely not engine-managed, and record why.
+
+## Project Config Contract
+
+`coord/project.config.js` is the project-owned seam. It exports plain data:
+
+```js
+module.exports = {
+  repos: {
+    B: {
+      path: "backend",
+      integrationBranch: "main",
+      origin: null,
+      legacyAliases: []
+    },
+    F: {
+      path: "frontend",
+      integrationBranch: "main",
+      origin: null,
+      legacyAliases: []
+    }
+  },
+  requirements: {
+    path: "product/REQUIREMENTS.md"
+  }
+};
+```
+
+Rules:
+
+1. `X` remains reserved for coord/cross-repo work and is never listed in
+   `repos`.
+2. Each repo code is a single uppercase letter.
+3. `path` is relative to the project root unless absolute.
+4. `integrationBranch` is the per-repo integration base. The shipped template
+   sets it to `main`; if the key is omitted entirely the engine resolution
+   fallback is `dev`.
+5. `origin` is optional metadata for audit/upgrade tools; it does not replace
+   the local git remote.
+6. `legacyAliases` are historical directory prefixes accepted in plan and
+   feature-proof normalization.
+7. `requirements.path` defaults to `product/REQUIREMENTS.md`.
+8. `boardBranch` (optional, COORD-895) names the coord workspace (board)
+   branch. It is read by the hooks (the protected board branch), closeout and
+   finalize (the Repo-X closeout base and the governed board push), `gov
+   doctor`, and plan-record defaults. Unset, the engine derives the branch from
+   `origin/HEAD` and falls back to `main` (`DEFAULT_BOARD_BRANCH` in
+   `coord/paths.js`). Because this file is project-owned, `coord upgrade`
+   never rewrites it, so the setting survives every engine update. No other
+   engine site may hard-code the board branch: `coord/scripts/paths.test.js`
+   inventories every remaining `main` literal and fails on a new one.
+9. `boardLanding` (optional, COORD-894) is `"push"` (default) or `"pr"`. In
+   `"pr"` mode finalize/land publishes the board (landing) commit as a
+   governance-only pull request from `coord-board/<ticket>`, enables
+   auto-merge with a merge commit (`gh pr merge --auto --merge`), waits a
+   bounded time for the merge, and completes closeout only once the landing
+   commit is an ancestor of the board branch. The journal records the PR URL
+   and merge commit as a `control_plane_pr_landing` side effect and the
+   landing record cites them as `board_pr_landing`. `coord onboard` and `gov
+   doctor` run a preflight against the remote's effective branch rules
+   (`gh api repos/<o>/<r>/rules/branches/<b>` plus classic protection) and
+   report a blocked direct push, with remedies, before the first finalize;
+   when `gh` is missing, unauthenticated or offline they report `UNKNOWN`,
+   never a pass. `gov doctor --offline` (or `COORD_DOCTOR_OFFLINE=1`) skips
+   the check and reports `UNKNOWN (skipped)`; each `gh` call has a 5-second
+   timeout, reported as `UNKNOWN (timeout)`. The `--push-after-sync` sync
+   commit uses the same PR path (head `coord-board/<ticket>-sync`).
+   `boardLandingWaitSeconds` (0-3600, default 300) bounds the merge wait,
+   which runs inside the governed mutation: on timeout nothing is marked done,
+   the PR stays open, and re-running the same terminal verb resumes — a merged
+   PR is found by its head branch and cited, never reopened.
+
+acme should therefore be config, not a custom engine fork:
+
+```js
+module.exports = {
+  repos: {
+    B: {
+      path: "acme-api",
+      integrationBranch: "devx",
+      origin: "git@github.com:acme-org/acme-api.git",
+      legacyAliases: []
+    },
+    C: {
+      path: "acme-cam",
+      integrationBranch: "devx",
+      origin: "git@github.com:acme-org/acme-cam.git",
+      legacyAliases: []
+    }
+  },
+  requirements: {
+    path: "product/REQUIREMENTS.md"
+  }
+};
+```
+
+### `testPolicy` (optional, COORD-936)
+
+The adopter's tuning of the stage-aware test policy: `stageMap` (workflow
+stage to `developer | pr | nightly | promotion`), `stages.<stage>.checks` and
+`.smoke` (added checks only), `repoMaps.<repo code>` (a product repository's
+dependency map) and `execution.timeout_seconds`. The engine defaults ship in
+`coord/engine/test-policy.json`; engine-owned keys are refused. Reference:
+`coord/product/TESTING_AND_GATES.md`, "Stage-Aware Test Policy".
+
+## Engine Adapter Contract
+
+`coord/paths.js` becomes engine-managed. Its job is to:
+
+1. load `coord/project.config.js`;
+2. validate the config shape;
+3. derive `repoRoots`, `repoIntegrationBranches`, `repoRegistry`,
+   `legacyRepoAliases`, and any future repo metadata from config;
+4. keep the existing `createCoordPaths()` and `allBoardRepoCodes()` API stable
+   for `governance.js`, `board.js`, MCP, and tests.
+
+During one migration release, `paths.js` may read legacy inline constants only
+to generate a migration warning or a one-time `project.config.js`. After the
+fleet is migrated, project-specific constants inside `paths.js` are invalid.
+
+## Pin File
+
+`.coord-engine.json` records both identity and channel. A SHA alone is not
+enough because upgrade tooling must know what "latest" means.
+
+```json
+{
+  "schema": 1,
+  "engine_version": "0.4.0",
+  "source": {
+    "repo": "https://github.com/Softsensor-org/concord",
+    "channel": "community",
+    "ref": "coord-engine-v0.4.0",
+    "sha": "<release-sha>"
+  },
+  "applied_at": "<ISO-8601>"
+}
+```
+
+`source.channel` is the **distribution channel** — `community` (public,
+Apache-2.0) or `enterprise` (private, licensed) — that `coord upgrade` resolves
+"latest" against. Switching community→enterprise is the licensed in-place
+upgrade: `coord upgrade --channel enterprise --entitlement <token>` (fail-closed
+without the token). `source.ref` is the immutable release ref actually applied.
+`source.sha` is the exact content provenance. This pin (identity/provenance) is
+distinct from `engine-pin.json` (in-tree surface integrity fingerprint);
+`coord upgrade --check` reports engine drift against the latter and the
+version/channel from the former.
+
+## Upgrade Contract
+
+`coord/scripts/coord upgrade` is the only supported engine update path.
+
+Minimum behavior:
+
+1. fetch the configured upstream source;
+2. resolve the requested release (`--to <ref>` or `--latest`);
+3. read the release manifest;
+4. refuse if the working tree has unrelated edits in engine-managed paths;
+5. copy only engine-managed paths;
+6. preserve `project.config.js`, board state, product docs, active notes, and
+   `.runtime/`;
+7. run declared migrations;
+8. run the governance test suite;
+9. update `.coord-engine.json`;
+10. create one upgrade commit.
+
+The upgrade command must report local project config separately from engine
+drift. A dirty board or runtime journal is not an engine-modification signal.
+
+## Migration Plan
+
+1. Add `project.config.js` to coord-template with the default
+   `B=backend`, `F=frontend` config.
+2. Refactor template `paths.js` to read config while preserving its exported
+   API and tests.
+3. Add a migration helper that converts known legacy `paths.js` constants into
+   `project.config.js`.
+4. Add `.coord-engine.json` and the release manifest format.
+5. Run `coord upgrade --check`, review the upgrade plan, then apply the reviewed
+   digest with `coord upgrade --apply-plan <digest>`.
+6. Migrate acme-ops from inline `REPO_REGISTRY` to `project.config.js`.
+7. Migrate acme by writing config for `B=acme-api`, `C=acme-cam`,
+   and `devx`; do not hand-merge engine code.
+
+## Stop Rule
+
+Do not perform additional downstream hand-sync PRs for acme or other older
+consumers after acme-ops B6. The next downstream propagation should be a GCV-4
+library adoption PR, not another manual copy/merge of engine files.
+
+## Acceptance For GCV-4 Slice 1
+
+- `coord-template` has a committed `project.config.js`.
+- `paths.js` contains no project-specific repo constants beyond loading the
+  config.
+- Existing governance tests pass unchanged.
+- A fixture proves a three-repo config with code `C` derives correct roots and
+  integration branches.
+- A fixture proves acme-ops-style `B=msrv`, `F=frontend` config derives the same
+  values as the previous inline registry.
+- `.coord-engine.json` includes repo, channel, ref, and sha.
+- `coord upgrade --check` can distinguish engine drift from project config/state
+  drift.

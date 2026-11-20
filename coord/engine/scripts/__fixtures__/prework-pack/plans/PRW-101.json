@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "ticket_id": "PRW-101",
+  "requirement_closure": [
+    "Ticket ask: fix checkout payment refund rounding",
+    "Implemented: checkout refund rounding",
+    "Not implemented: none",
+    "Deferred to: none",
+    "Closeout verdict: complete"
+  ],
+  "critical_invariants": [
+    "Refund amounts must never round in the customer's favor beyond one cent."
+  ],
+  "self_review_cycles": [
+    {
+      "cycle": 1,
+      "total": 1,
+      "lens": "Security and failure modes",
+      "diff": "switched refund math to integer cents",
+      "risks": ["floating-point refund rounding drifts under split payment"],
+      "findings": "the checkout refund rounding used floating-point cents and lost a cent under split payments; switched to integer-cent math before submit",
+      "verification": "node --test",
+      "verdict": "fail",
+      "raw": "lens=Security and failure modes; risks=floating-point refund rounding drifts under split payment; findings=checkout refund rounding lost a cent; verdict=fail"
+    }
+  ]
+}

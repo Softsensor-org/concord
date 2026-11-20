@@ -1,0 +1,453 @@
+{
+  "schema_version": 1,
+  "ticket": "COORD-976",
+  "description": "Caps for the engine guard, production module and production LOC counts (prodloc rule), pinned at the merged COORD-976 head against origin/dev e6c72afa (guards 99, modules 383, LOC 104653). Caps may not rise without a growth record naming the ticket that grows them; checked at closeout by prodloc-closeout.js.",
+  "values": {
+    "guards": 99,
+    "production_modules": 387,
+    "production_loc": 106305
+  },
+  "growth": [
+    {
+      "ticket": "COORD-976",
+      "metric": "production_modules",
+      "from": 370,
+      "to": 371,
+      "reason": "One new production module: coord/engine/scripts/architecture-audit.js (the read-only audit, deterministic clone detection and the ratchet evaluation). No existing module carries the audit: audit-landings and audit-worktrees are unrelated write-path or landing-state reports, and prodloc-budget.js holds only the LOC rule, which the audit reuses."
+    },
+    {
+      "ticket": "COORD-976",
+      "metric": "production_loc",
+      "from": 102050,
+      "to": 102485,
+      "reason": "Engine LOC growth from the audit module (about 400 logical lines), the closeout ratchet call in prodloc-closeout.js and the cli.js dispatch line. Reuses countLoc, stripComments and gitTry; no duplicate LOC rule was added."
+    },
+    {
+      "ticket": "COORD-998",
+      "metric": "production_loc",
+      "from": 102456,
+      "to": 102462,
+      "reason": "default coord-test commit identity in test-git-fixture.js gitFixtureEnv so fixture commits do not depend on host git identity (COORD-952 isolation); test helper counted by the prodloc rule"
+    },
+    {
+      "ticket": "COORD-1000",
+      "metric": "production_loc",
+      "from": 102462,
+      "to": 102479,
+      "reason": "COORD-1000 follow-up of COORD-932: the shared business-context invariant parser (parseBusinessContextInvariant in gates/business-context.js) replaces the view re-parse and the packet regex; the decision_required shape check call and the explain decision_context wiring add the rest. No new guard, module or fail site."
+    },
+    {
+      "ticket": "COORD-907",
+      "metric": "production_modules",
+      "from": 371,
+      "to": 372,
+      "reason": "new lazily loaded engine module changed-since-advisory.js (see production_loc entry)"
+    },
+    {
+      "ticket": "COORD-907",
+      "metric": "production_loc",
+      "from": 102463,
+      "to": 102628,
+      "reason": "COORD-907 advisory --changed-since pre-gate: changed-suite and direct-importer impact set over the affected graph, partial native coverage run classified against the measured baseline (text-changed lines vs unchanged finer arms). The advisory body is its own lazily loaded engine module (changed-since-advisory.js) so test-runner.js stays under its budget; advisory only, no baseline write, no gate evidence."
+    },
+    {
+      "ticket": "COORD-1013",
+      "metric": "production_loc",
+      "from": 102628,
+      "to": 102639,
+      "reason": "COORD-1013 anchored ticket-branch matcher: ticketBranchMatches in control-plane-pr-evidence.js (one helper, no new module, guard or fail site) replaces the unanchored id regex at the closeout branch listing, closeout PR-head affiliation and landing merged-PR affiliation; measured from origin/dev 1d318d73 with audit-architecture."
+    },
+    {
+      "ticket": "COORD-934",
+      "metric": "production_modules",
+      "from": 372,
+      "to": 373,
+      "reason": "One new production module: coord/engine/scripts/command-declaration.js, the one declaration of every CLI spelling (permission class, flag promotions, dry-run preview). VERB_CLASSES, FLAG_PROMOTIONS and DRY_RUN_VERBS are derived from it, replacing the duplicated literal lists."
+    },
+    {
+      "ticket": "COORD-934",
+      "metric": "production_loc",
+      "from": 102639,
+      "to": 102756,
+      "reason": "Declaration rows (156 spellings) and the derivation footer in command-declaration.js, net of the removed VERB_CLASSES, FLAG_PROMOTIONS and DRY_RUN_VERBS literals in integration-authority.js and dry-run-policy.js. The cli.js switch is unchanged. Measured after merging origin/dev dadc395d; the value is re-measured by prodloc-closeout before commit."
+    },
+    {
+      "ticket": "COORD-1015",
+      "metric": "production_modules",
+      "from": 373,
+      "to": 374,
+      "reason": "One new production module: coord/engine/scripts/canonical-path.js, the single canonicalCallerPath helper shared by the COORD-1015 git-reported-path comparisons (realpath of the deepest existing ancestor, missing tail re-attached). Replaces per-module copies so no second canonicalization rule is written."
+    },
+    {
+      "ticket": "COORD-1015",
+      "metric": "production_loc",
+      "from": 102756,
+      "to": 102788,
+      "reason": "Canonicalization at the git-reported-path comparison sites (worktree-ops audit, removal and coord registration lookups, doctor-report, control-plane-paths, onboard, governed-workspace-recovery, prompt-index-commit, missing-ticket-lock, test-sharding, arch-checks baseline subtree) plus the canonical-path module, about 32 logical lines in total."
+    },
+    {
+      "ticket": "COORD-1019",
+      "metric": "production_loc",
+      "from": 102788,
+      "to": 102810,
+      "reason": "buildTicketBranchName, its format constants and the slug/handle refusal in control-plane-pr-evidence.js, net of the two inline branch literals removed from ticket-transitions.js. The reuse of escapeRegExp from governance-constants.js keeps the regex escape single-sourced."
+    },
+    {
+      "ticket": "COORD-963",
+      "metric": "production_loc",
+      "from": 102645,
+      "to": 102665,
+      "reason": "Net +20 logical lines: the owner-doing detector findUnrelatedOwnerDoingPairs (followups.js, pure, replaces the retired wip-cap refusal) and its doctor warning builder (doctor-report.js). The start/return-doing refusal blocks and the lock-mirror conflict block (about 30 logical lines) are removed. Guards moved 101 to 100 (cap lowered)."
+    },
+    {
+      "ticket": "COORD-1024",
+      "metric": "production_loc",
+      "from": 102665,
+      "to": 102680,
+      "reason": "Net +15 logical lines, measured by audit-architecture: business-context-pack.js adrSections keeps scenario-required accepted ADRs (run.required_adr_refs or options.requiredAdrs) regardless of score and limit, reusing normalizeAdrRef from adr-reference.js; business-discovery-synthesize.js passes required_adr_refs through only when declared. Human-admin decision 2026-11-16 (Fix pack selection, tests unchanged). Test files and the pilot fixture are not counted."
+    },
+    {
+      "ticket": "COORD-996",
+      "metric": "production_loc",
+      "from": 102680,
+      "to": 102776,
+      "reason": "Org-qualified repo identity (ADR 0030): normalizeOrgSlug and the org-aware deriveRepoId in org-collector.js, the all-or-nothing legacy repo-id migration SqliteSink.migrateLegacyRepoIds run on every ingest, the per-root org in ingest and the CLI --org flag, and the rehash-verifier mirror delegating to the same function. Measured with architecture-audit measureEngine on this branch merged with origin/dev 07678c2f (102680)."
+    },
+    {
+      "ticket": "COORD-1003",
+      "metric": "production_loc",
+      "from": 102776,
+      "to": 102805,
+      "reason": "COORD-1003 start-time-aware owner liveness: one shared ownerLiveness verdict in process-identity.js (dead / live / unknown; zombie and reused pid are dead), consumed by directory-locks.js (lock wording, ownerVerdict, state-lock ownerState) and doctor-recovery.js (governance-lock release). Net production growth 29 lines; no new module, guard or fail site. Measured on the merged tree (origin/dev 25c04c62 + COORD-1003) with audit-architecture; dev cap 102776."
+    },
+    {
+      "ticket": "COORD-899",
+      "metric": "production_modules",
+      "from": 374,
+      "to": 375,
+      "reason": "One new production module: coord/engine/scripts/attempt-ref-lease.js, the bounded ADR 0023 slice (attempt and canonical record schemas, generation token, namespace-restricted exact-lease ref publish primitive and unknown-publish classifier). Not called by any governed verb; no existing module changed."
+    },
+    {
+      "ticket": "COORD-899",
+      "metric": "production_loc",
+      "from": 102805,
+      "to": 102994,
+      "reason": "Logical LOC of attempt-ref-lease.js (countLoc loc 189) on the merged origin/dev a269637c base. No existing production module changed by COORD-899."
+    },
+    {
+      "ticket": "COORD-1025",
+      "metric": "production_modules",
+      "from": 375,
+      "to": 376,
+      "reason": "New module coord/engine/scripts/landing-decision-classifier.js: the pure docs/decisions classifier. Under the human-admin ruling 2026-11-16 it admits ADR metadata edits without a packet and keeps the packet for Status set to Accepted or Superseded and for Approval State changes. Guards moved 100 to 99 (adr-path-packet retired; its sites re-homed to reconcile-approved-packet)."
+    },
+    {
+      "ticket": "COORD-1025",
+      "metric": "production_loc",
+      "from": 102994,
+      "to": 103140,
+      "reason": "Net +146 logical lines, measured by audit-architecture on origin/dev c58ec4c0 plus this ticket: the new landing-decision-classifier.js (line diff, ADR line classification with the Accepted or Superseded Status and Approval State rules, README row pairing) and the landing-decision-packet.js metadata-only admission, blob text read and per-change kind. The guard retirement removes one guard entry (registry data, not production LOC)."
+    },
+    {
+      "ticket": "COORD-974",
+      "metric": "production_modules",
+      "from": 376,
+      "to": 377,
+      "reason": "One new production module: coord/engine/scripts/test-policy-triggers.js (ADR 0025 full-suite triggers: landed-ticket counter, radius threshold, unknown selector fallback; pure)."
+    },
+    {
+      "ticket": "COORD-974",
+      "metric": "production_loc",
+      "from": 103140,
+      "to": 103202,
+      "reason": "Trigger module (about 50 logical lines), resolver and formatPlan trigger lines in test-policy.js, board landing and last-qualified inputs in test-policy-run.js, suites_total in affected-selector.js. Measured with gov audit-architecture on the merge of origin/dev e208483b."
+    },
+    {
+      "ticket": "COORD-1026",
+      "metric": "production_modules",
+      "from": 377,
+      "to": 378,
+      "reason": "One new production module: coord/engine/scripts/promote.js (gov promote per ADR 0028: edge allow-list, gate binding from promotion_edges at the commit, fast-forward enforcement, release provenance tag and journal event). Tests live beside it in promote.test.js."
+    },
+    {
+      "ticket": "COORD-1026",
+      "metric": "production_loc",
+      "from": 103202,
+      "to": 103460,
+      "reason": "promote.js logic (about 240 logical lines) plus the cli.js promote route entry, the command-declaration row, the lifecycle-help dry-run list and the dry-run fixture. Reuses the governed fail and the integration-authority reader; no new LOC rule. The gov promote help line in lifecycle-help.js adds one more line (COORD-645-F3 caught it)."
+    },
+    {
+      "ticket": "COORD-1031",
+      "metric": "production_modules",
+      "from": 378,
+      "to": 379,
+      "reason": "One new production module: coord/engine/scripts/affected-cli-verbs.js (COORD-1031 (d), CLI-verb-to-module edges derived from cli.js route arms and cli-verb pseudo nodes in affected-graph.js). Measured from origin/dev 8c1c72ec with the engine measurement (architecture-audit measureEngine)."
+    },
+    {
+      "ticket": "COORD-1031",
+      "metric": "production_loc",
+      "from": 103582,
+      "to": 103696,
+      "reason": "COORD-1031: about 114 logical lines for the CLI-verb edge module and the buildGraph hook in affected-graph.js; the core-surface trigger in test-policy-triggers.js. No guard, no fail site. Measured from origin/dev 2a516808."
+    },
+    {
+      "ticket": "COORD-1028",
+      "metric": "production_modules",
+      "from": 379,
+      "to": 380,
+      "reason": "One new production module: coord/engine/scripts/attempt-coordination.js (ADR 0023 attempt publish, domain id minting, canonical bootstrap, exact-lease canonical transition and generation and epoch fence), built on attempt-ref-lease.js. Re-measured after merging origin/dev 645f617d."
+    },
+    {
+      "ticket": "COORD-1028",
+      "metric": "production_loc",
+      "from": 103696,
+      "to": 103965,
+      "reason": "attempt-coordination.js plus the gov integration attempts and select verbs and helper lines in integration-commands.js. Measured on the merged tree after origin/dev 645f617d with audit-architecture."
+    },
+    {
+      "ticket": "COORD-1043",
+      "metric": "production_loc",
+      "from": 103965,
+      "to": 103994,
+      "reason": "COORD-1043 gate-manifest binding in promote.js: the producer journals the manifest sha256 (isProducerEventFor, the producer event append, the journal-presence check in readGateManifest) and the journal reader and appender are wired in cli.js and test-policy-run.js. Measured on the merged head over origin/dev 4c2edfb1 (cap 103965). Reuses the existing governed-push-safety fail marks; no new module, guard or fail site beyond those."
+    },
+    {
+      "ticket": "COORD-1044",
+      "metric": "production_modules",
+      "from": 380,
+      "to": 381,
+      "reason": "One new production module: coord/engine/scripts/release-gates.js, the runners for the eight release-edge gates (community-cut-build, donor-hygiene-scan, release-secret-scan, dual-release-verify, install-canaries-npm-sea, enterprise-cut-build, enterprise-qualification, enterprise-ref-scan). Each runner wires to an existing release script; no existing module carries them."
+    },
+    {
+      "ticket": "COORD-1044",
+      "metric": "production_loc",
+      "from": 103994,
+      "to": 104229,
+      "reason": "Release-gate runner module (runners, cut cache and CLI, about 230 logical lines) and the eight GATE_RUNS entries in promote.js, measured on the merged head with origin/dev 837abc50. Reuses the existing release scripts; no duplicate scanner or builder."
+    },
+    {
+      "ticket": "COORD-1041",
+      "metric": "production_loc",
+      "from": 104229,
+      "to": 104297,
+      "reason": "COORD-1041 batch 1 (ADR 0023): verifyFence and the journaled canonical-transition-intent and canonical-transition-abandoned events in integration-commands.js select; the integer authority epoch (migrateEpoch, nextEpoch, epoch advance in claim and handoff) in integration-authority.js; the report-only attempt classification (classifyAttempt, 72 h / 14 d / 30 d) in attempt-coordination.js and the attempts verb. Measured on the merged head (origin/dev 44747f67 + COORD-1041) by prodloc-closeout."
+    },
+    {
+      "ticket": "COORD-1050",
+      "metric": "production_modules",
+      "from": 381,
+      "to": 382,
+      "reason": "One new production module: coord/engine/scripts/test-node-options.js, shared Node option tokenization and isolation-guard filtering used by the test runner and nested architecture gate. It consolidates the tokenizer/filter formerly local to arch-checks.test.js and adds no new guard."
+    },
+    {
+      "ticket": "COORD-1050",
+      "metric": "production_loc",
+      "from": 104297,
+      "to": 104358,
+      "reason": "Net +61 logical production LOC for the shared Node option parser and its test-runner integration plus target-relative LCOV normalization and native source-order preservation in test-sharding.js. Measured by gov audit-architecture; no per-module high-water budget changes."
+    },
+    {
+      "ticket": "COORD-1034",
+      "metric": "production_modules",
+      "from": 382,
+      "to": 383,
+      "reason": "ADR 0031 (COORD-1034) adds the engine-side signed approval verifier and central check in coord/engine/scripts/approval-verifier.js; its __fixtures__ approval helper is excluded from production counts."
+    },
+    {
+      "ticket": "COORD-1034",
+      "metric": "production_loc",
+      "from": 104391,
+      "to": 104653,
+      "reason": "ADR 0031 (COORD-1034): approval-verifier.js (record verification, central requireHumanAdminApproval, claim --transfer-to check, transition window), the signed check call in agent-commands.js, the dry-run approval requirement in claim-transfer-preview.js, and the lifecycle-worker signed-transfer fixture using explicit approval-test-client injection and digest-bound login/retry; net +262 logical LOC measured on the integrated tree after COORD-1046 and COORD-1050 with gov audit-architecture. No guard, production module, or per-module cap added."
+    },
+    {
+      "ticket": "COORD-1046",
+      "metric": "production_loc",
+      "from": 104297,
+      "to": 104314,
+      "reason": "defaultExec in release-gates.js now runs each gate in its own process group (detached, group SIGKILL on return or timeout) and captures output to a spill file: about 17 logical lines. Measured with gov audit-architecture on the COORD-1046 merge of origin/dev af1cf231 (cap 104297)."
+    },
+    {
+      "ticket": "COORD-1046",
+      "metric": "production_loc",
+      "from": 104358,
+      "to": 104391,
+      "reason": "Combined integration preview measured by gov audit-architecture: 104391 LOC, 382 modules and 99 guards. Release timeout and output capture implementation contributes 33 net LOC over ce38757c; no per-module caps changed."
+    },
+    {
+      "ticket": "COORD-1027",
+      "metric": "production_modules",
+      "from": 383,
+      "to": 384,
+      "reason": "One new production module: coord/engine/scripts/config-proposals.js, the closed project.testPolicy proposal/apply service and targeted static config editor. It reuses the existing test-policy validator and governed journal/lock seams; no second generic config engine is introduced."
+    },
+    {
+      "ticket": "COORD-1027",
+      "metric": "production_loc",
+      "from": 104653,
+      "to": 105022,
+      "reason": "Net +369 logical production LOC for the COORD-1027 integrated proposal service and CLI wiring, including signed approval integration and help. Measured by gov audit-architecture on the merged candidate; no guard or per-module cap added."
+    },
+    {
+      "ticket": "COORD-1047",
+      "metric": "production_loc",
+      "from": 105022,
+      "to": 105321,
+      "reason": "COORD-1047 ADR 0023 batch 2 runtime and command wiring adds 299 logical production LOC over origin/dev containing COORD-1050, COORD-1046, COORD-1034 and COORD-1027. Measured by gov audit-architecture at candidate ad62b367; production modules remain 384 and no per-module caps changed."
+    },
+    {
+      "ticket": "COORD-1048",
+      "metric": "production_loc",
+      "from": 105321,
+      "to": 105701,
+      "reason": "ADR 0031 signed human-admin approval coverage across all remaining authority readers and release promotion; includes signed subject construction, central verifier wiring, under-lock revalidation, and related production callers. Initial net +380 countLoc against origin/dev, including structural dedup: doctor-recovery +50, integration-commands +45, approval-verifier +35, session-lifecycle-worker +35, runtime-cleanup +23, lifecycle-ticket-admin +21, promote +21, ticket-transitions +17, managed-evidence-command +16, plan-command +13, landing-corrections +12, test-policy-run +12, ticket-commands +12, journal-snapshots +11, amend-ticket +10, lock-head-repair +9, set-requirement-ids +9, correct-finding-severity +8, identity-v2 +8, cli +6, reconcile-packet +5, lifecycle-maintenance-commands +4, agent-commands +1, governance-session +1, lifecycle -4. Subsequent owner-reviewed all-reader fixes add a measured net +215 countLoc: claim-transfer-approval-state.js (shared transfer subject), agent-commands.js (target/session binding and private capability revalidation), claim-transfer-preview.js (shared preview state), integration-commands.js (stable signed resume state), journal.js (preserve selected baseline during legacy chain anchoring), and doctor-recovery.js (approval verifier dependency). Final audited total 105916. No per-module high-water cap raised; agent-commands and governance-session were structurally deduplicated and lifecycle shrank."
+    },
+    {
+      "ticket": "COORD-1048",
+      "metric": "production_modules",
+      "from": 384,
+      "to": 385,
+      "reason": "One shared production module, coord/engine/scripts/claim-transfer-approval-state.js, now provides the canonical subject builder used by both transfer preview and apply; it avoids separate digest schemas. Measured by gov audit-architecture; no per-module LOC cap changed."
+    },
+    {
+      "ticket": "COORD-1048",
+      "metric": "production_loc",
+      "from": 105701,
+      "to": 105916,
+      "reason": "Follow-up net +215 countLoc for complete transfer state binding, live-session takeover signing, stable integration recovery approval state, and legacy chain-anchor baseline preservation across claim-transfer-approval-state.js, agent-commands.js, claim-transfer-preview.js, integration-commands.js, journal.js and doctor-recovery.js. Measured against the prior COORD-1048 audit by gov audit-architecture; no per-module LOC cap changed."
+    },
+    {
+      "ticket": "COORD-1048",
+      "metric": "production_loc",
+      "from": 105916,
+      "to": 105944,
+      "reason": "Measured net +28 countLoc for extracting signed transfer context/capability operations from agent-commands.js into the existing claim-transfer-approval-state.js helper, plus baseline-preserving snapshot event serialization in journal-snapshots.js. The extraction reduces agent-commands.js to 1199 LOC under its unchanged 1200 cap and journal.js to below its unchanged 1708 cap; no per-module LOC cap changed."
+    },
+    {
+      "ticket": "COORD-1048",
+      "metric": "production_modules",
+      "from": 385,
+      "to": 386,
+      "reason": "One production module, composition-root-wiring.js, performs bounded static AST recognition for pure immutable dependency-bundle wiring in lifecycle composition-root checks; it does not evaluate source or change severity, thresholds, or baseline behavior."
+    },
+    {
+      "ticket": "COORD-1048",
+      "metric": "production_loc",
+      "from": 105944,
+      "to": 106029,
+      "reason": "Measured net +85 countLoc: 78 lines in composition-root-wiring.js and 7 net lines in arch-checks.js for the bounded static dependency-wiring recognizer and its lifecycle source context. Added controls retain fail-closed behavior for impure, mutable, escaped, or non-factory wiring; no per-module cap changed."
+    },
+    {
+      "ticket": "COORD-1060",
+      "metric": "production_loc",
+      "from": 105321,
+      "to": 105344,
+      "reason": "Retained idle-expired session mirror classification and conflict checks add 9 counted lines in lifecycle-lock-commands.js; doctor preserves real activity, validates historical bound-lock timestamps and normalizes rebuilt mirrors (+14). Two unused lock-factory dependencies offset two new wiring entries, leaving lifecycle 2130/2130. No production module or guard added; per-module caps unchanged. Exact baseline blob counts against 5e45b0c4 attribute 23 total lines."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_modules",
+      "from": 384,
+      "to": 385,
+      "reason": "One new production module, coord/engine/scripts/test-census-observer.js, extracts authenticated census descriptor, log and shard-index handling from test-runner.js so the runner remains within its existing 1200 LOC cap. Measured on committed COORD-1052 source by prodloc-closeout; no global cap or per-module budget changed."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_loc",
+      "from": 105321,
+      "to": 105353,
+      "reason": "Net +32 logical production LOC for test-census-observer.js and its runner integration after extracting census transport and report persistence. Measured on committed COORD-1052 source by prodloc-closeout; test-runner.js remains at its existing 1200 LOC cap, with no per-module budget changed."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_loc",
+      "from": 105353,
+      "to": 105371,
+      "reason": "Net +18 logical production LOC in hooks/hook-lib.js to recognize GNU timeout long-option abbreviations and short option clusters that carry signal or kill-after values, keeping protected-ref commands visible to the existing hook decision. Measured with gov audit-architecture on the COORD-1052 candidate; module count, guard count and per-module budgets remain unchanged."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_loc",
+      "from": 105371,
+      "to": 105372,
+      "reason": "Net +1 logical production LOC in test-policy-run.js moves requested-head mismatch refusal before dispatch, preserving the intended promotion source binding without running suites or commands against the wrong checkout. Measured with gov audit-architecture on the COORD-1052 candidate; module count, guard count and per-module budgets remain unchanged."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_loc",
+      "from": 105372,
+      "to": 105377,
+      "reason": "Net +5 logical production LOC in ticket-commands.js: unstart now refuses failed, missing, malformed or unsafe commits-ahead history and unreadable control-plane worktree evidence before workspace cleanup or governed-state writes. Measured with gov audit-architecture on the COORD-1052 candidate; module count, guard count and per-module budgets remain unchanged."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_loc",
+      "from": 105372,
+      "to": 105386,
+      "reason": "Net +14 logical production LOC in session-lifecycle-load.js: track only this invocation's IO output paths, remove only those files, and kill/reap already-started children if startup fails. Prevents deleting another run's files and prevents orphan children on early exit or a later spawn failure. Measured with gov audit-architecture; module count, guard count and per-module budgets remain unchanged."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_loc",
+      "from": 105386,
+      "to": 105390,
+      "reason": "Net +4 logical production LOC in runtime-cleanup.js distinguishes clean Git exit 1 from unavailable, signaled or operationally failing Git results before cleanup; uncertain tracking status now preserves scratch and opted-in plan data. Measured with gov audit-architecture; module count, guard count and per-module budgets remain unchanged."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_loc",
+      "from": 105390,
+      "to": 105386,
+      "reason": "Net -4 logical production LOC in test-runner.js removes the unreachable advisoryEngineCoverage sharding guard. parseArgs never creates this option; its supported changed-since plus sharding combination is refused before inventory or worker dispatch, while valid advisory runs return before sharding. Measured on the COORD-1052 candidate; no guard/module caps or per-module budgets changed."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_loc",
+      "from": 105386,
+      "to": 105384,
+      "reason": "Net -2 logical production LOC in config-proposals.js removes a redundant null check after readStaticTestPolicy has already parsed and validated the same source. Explicit null and malformed policy remain refused by the canonical parser and covered by its existing regression. Measured with gov audit-architecture; module/guard counts and per-module budgets remain unchanged."
+    },
+    {
+      "ticket": "COORD-1055",
+      "metric": "production_loc",
+      "from": 105321,
+      "to": 105489,
+      "reason": "Net +168 logical production LOC for release cut cache integrity: validate candidate-bound attestation/provenance, artifact content and symlinks before reuse; scope caches to a fresh promotion producer; retain the concise failed-gate diagnostic in returned run data after scratch cleanup. Measured by gov audit-architecture on this candidate; production module and per-module caps unchanged."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_loc",
+      "from": 106283,
+      "to": 106281,
+      "reason": "Net -2 logical production LOC in test-sharding-governance.js removes an unreachable qualification-mode fallback. Non-release unsupported modes already refuse in the earlier mode dispatch; release-stage receipts take the separate inventory-validation branch. Measured with gov audit-architecture; module/guard counts and per-module budgets remain unchanged."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_loc",
+      "from": 106281,
+      "to": 106273,
+      "reason": "Consolidated unique source-span matching in coverage-relocation and retained exact owner, site and baseline tuple checks. Measured net reduction of eight production lines."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_loc",
+      "from": 106273,
+      "to": 106263,
+      "reason": "Remove unused dependency forwarding in the governance composition and plan records, and report unresolved promotion commits before validation. The combined change reduces measured production LOC by ten."
+    },
+    {
+      "ticket": "COORD-1052",
+      "metric": "production_loc",
+      "from": 106263,
+      "to": 106294,
+      "reason": "Measured net growth of 31 production lines for release-census evidence path validation, retry-safe worker cleanup and preserving named skip identities in shard summaries. The runner measures 1188 lines after extracting the summary into test-sharding.js."
+    },
+    {
+      "ticket": "COORD-912",
+      "metric": "production_loc",
+      "from": 106294,
+      "to": 106305,
+      "reason": "Route the integration promotion gates through the sharded test policy producer, verify donor qualification, and read its aggregate coverage ratchet. No production module or per-module limit changed."
+    }
+  ]
+}

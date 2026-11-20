@@ -1,0 +1,4 @@
+8731d8143e84f921bb5e5bb03fa85555a232f435b482cce2f0a0c94c8c16e2be coord/docs/decisions/0017-managed-auto-action-ledger-extends-the-action-ledgers-store-with-a-redac.md
+30c29a20bb34b68bfc053eee87ee1efe0fe29f0080adfcde34ae8fc6572f635a coord/docs/decisions/0018-independent-reviews-are-commit-bound-plan-evidence.md
+7f6b5e29e319c81f5e1af652e301cd377bef852a5fa2c13fb8c8342a0ed7fce7 coord/docs/decisions/0019-phase-cost-observations-reuse-the-governed-cost-ledger.md
+9fe8d1027e8f85d22f73be0337920dde71c38ca511ff9d4b95006ac96db3be75 coord/docs/decisions/README.md

@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "adr": "ADR-0031",
+  "description": "Transition window for unsigned overrides (ADR 0031 section 3). Only integration recover --abandon and integration handoff may proceed on a reason alone, and only before window_ends_at. window_ends_at is an absolute UTC timestamp set at landing (landing + 14 days). null means the window is closed.",
+  "window_ends_at": "2026-12-01T05:48:12.789Z"
+}

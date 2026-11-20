@@ -1,0 +1,282 @@
+{
+  "$schema_note": "COORD-143 fixture benchmark for memory-eval.test.js. Tiny synthetic 2-case set used only to exercise the metric math + gate logic deterministically. NOT the real eval ground truth (that is coord/memory/eval/benchmark.json).",
+  "version": 1,
+  "cases": [
+    {
+      "id": "FIX-001",
+      "question": "GR-001",
+      "expected_sources": [{ "type": "decision", "id": "GR-001", "path": "ignored" }],
+      "must_include": ["GR-001"]
+    },
+    {
+      "id": "FIX-002",
+      "question": "GR-002",
+      "expected_sources": [{ "type": "decision", "id": "GR-002", "path": "ignored" }],
+      "must_include": ["GR-002"]
+    }
+  ],
+  "temporal_validity_cases": [
+    {
+      "id": "TV-001",
+      "ticket": "INV-001",
+      "scope": "invoice approval temporal validity",
+      "requirements": ["Preserve current invoice approval threshold and surface stale conflict warnings."],
+      "touched_files": ["backend/src/invoice/approvalPolicy.ts"],
+      "synthesis": {
+        "kind": "concord.business_discovery.synthesis",
+        "generated_at_utc": "2026-06-27T00:00:00.000Z",
+        "context_graph": {
+          "nodes": [
+            {
+              "id": "BD-EV-CURRENT",
+              "type": "evidence",
+              "label": "backend/src/invoice/approvalPolicy.ts",
+              "authority": "approved_policy",
+              "visibility": "internal"
+            },
+            {
+              "id": "BD-EV-OLD-DOC",
+              "type": "evidence",
+              "label": "docs/legacy-invoice-approval.md",
+              "authority": "accepted_decision",
+              "visibility": "internal"
+            },
+            {
+              "id": "BD-EV-RUNTIME",
+              "type": "evidence",
+              "label": "runtime receipt: imported invoice approval check",
+              "authority": "runtime_receipt",
+              "visibility": "internal"
+            },
+            {
+              "id": "BD-REC-CURRENT",
+              "type": "field_rule",
+              "label": "Current invoice approval threshold is enforced by approvalPolicy.ts before posting.",
+              "status": "accepted",
+              "bucket": "accepted"
+            },
+            {
+              "id": "BD-REC-STALE",
+              "type": "field_rule",
+              "label": "Stale invoice approval threshold from the legacy invoice approval document.",
+              "status": "stale",
+              "bucket": "stale"
+            },
+            {
+              "id": "BD-REC-SUPERSEDED",
+              "type": "field_rule",
+              "label": "Superseded invoice approval threshold was tenant-global.",
+              "status": "superseded",
+              "bucket": "superseded",
+              "superseded_by": "BD-REC-CURRENT"
+            },
+            {
+              "id": "BD-REC-CONFLICT",
+              "type": "field_rule",
+              "label": "Runtime receipt contradicts the historical assumption that imported invoices skip approval.",
+              "status": "conflicted",
+              "bucket": "contradicted",
+              "conflicts_with": ["BD-REC-CURRENT"]
+            }
+          ],
+          "edges": [
+            { "from": "BD-REC-CURRENT", "type": "proven_by", "to": "BD-EV-CURRENT" },
+            { "from": "BD-REC-STALE", "type": "proven_by", "to": "BD-EV-OLD-DOC" },
+            { "from": "BD-REC-SUPERSEDED", "type": "proven_by", "to": "BD-EV-OLD-DOC" },
+            { "from": "BD-REC-CONFLICT", "type": "proven_by", "to": "BD-EV-RUNTIME" }
+          ]
+        },
+        "promoted_docs": [
+          { "file": "backend/src/invoice/approvalPolicy.ts", "record_ids": ["BD-REC-CURRENT"] },
+          { "file": "docs/legacy-invoice-approval.md", "record_ids": ["BD-REC-STALE", "BD-REC-SUPERSEDED"] },
+          { "file": "coord/evidence/runtime/imported-invoice-approval.json", "record_ids": ["BD-REC-CONFLICT"] }
+        ],
+        "unknowns": [],
+        "promotion_candidates": []
+      },
+      "expectations": {
+        "active_include": ["BD-REC-CURRENT"],
+        "active_exclude": ["BD-REC-STALE", "BD-REC-SUPERSEDED", "BD-REC-CONFLICT"],
+        "warning_sections": {
+          "stale_sources": ["BD-REC-STALE"],
+          "history": ["BD-REC-SUPERSEDED"],
+          "conflicts": ["BD-REC-CONFLICT"]
+        },
+        "current_authoritative": ["BD-REC-CURRENT"],
+        "old_or_invalid": ["BD-REC-STALE", "BD-REC-SUPERSEDED", "BD-REC-CONFLICT"]
+      }
+    }
+  ],
+  "claim_promotion_cases": [
+    {
+      "id": "CP-001",
+      "description": "Mixed public-safe claim-promotion fixture: implementation workaround, authoritative requirement, stale doc, contradictory rules, adapter contract, and low-evidence claims.",
+      "policy": {
+        "max_claims_per_ticket": 10,
+        "max_claims_per_reviewer": 4
+      },
+      "context": {
+        "change_kind": "behavior_change"
+      },
+      "claims": [
+        {
+          "id": "KC-WORKAROUND",
+          "subject": "Invoice",
+          "statement": "Imported invoices are exempt from approval.",
+          "confidence": "confirmed",
+          "evidence": [
+            {
+              "type": "file",
+              "path": "backend/src/invoice/importPolicy.ts",
+              "authority": "implementation",
+              "visibility": "internal",
+              "freshness": "current"
+            }
+          ]
+        },
+        {
+          "id": "KC-REQUIREMENT",
+          "subject": "Invoice",
+          "statement": "Invoices above the approval threshold require manager approval before posting.",
+          "reviewer_approved": true,
+          "evidence": [
+            {
+              "type": "file",
+              "path": "docs/requirements/invoice-approval.md",
+              "authority": "requirement",
+              "visibility": "internal",
+              "freshness": "current"
+            },
+            {
+              "type": "test",
+              "path": "backend/test/invoiceApproval.workflow.test.ts",
+              "authority": "test_proof",
+              "visibility": "internal",
+              "freshness": "current"
+            }
+          ]
+        },
+        {
+          "id": "KC-STALE-DOC",
+          "subject": "Invoice",
+          "statement": "Legacy invoices can post without approval.",
+          "status": "stale",
+          "evidence": [
+            {
+              "type": "file",
+              "path": "docs/legacy-invoice-rules.md",
+              "authority": "accepted_decision",
+              "visibility": "internal",
+              "freshness": "stale"
+            }
+          ]
+        },
+        {
+          "id": "KC-FRONTEND-RULE",
+          "subject": "Invoice",
+          "predicate": "approval_required_before_posting",
+          "conflict_key": "Invoice.approval_required_before_posting",
+          "statement": "The frontend allows imported invoices to post without manager approval.",
+          "reviewer_approved": true,
+          "evidence": [
+            {
+              "type": "file",
+              "path": "frontend/src/invoice/PostButton.tsx",
+              "authority": "implementation",
+              "visibility": "internal",
+              "freshness": "current"
+            },
+            {
+              "type": "review",
+              "path": "coord/reviews/invoice-ui.md",
+              "authority": "review_comment",
+              "visibility": "internal",
+              "freshness": "current"
+            }
+          ]
+        },
+        {
+          "id": "KC-BACKEND-RULE",
+          "subject": "Invoice",
+          "predicate": "approval_required_before_posting",
+          "conflict_key": "Invoice.approval_required_before_posting",
+          "statement": "The backend requires imported invoices to pass approval policy before posting.",
+          "reviewer_approved": true,
+          "evidence": [
+            {
+              "type": "file",
+              "path": "backend/src/invoice/approvalPolicy.ts",
+              "authority": "approved_policy",
+              "visibility": "internal",
+              "freshness": "current"
+            },
+            {
+              "type": "test",
+              "path": "backend/test/importedInvoiceApproval.test.ts",
+              "authority": "test_proof",
+              "visibility": "internal",
+              "freshness": "current"
+            }
+          ]
+        },
+        {
+          "id": "KC-ADAPTER-CONTRACT",
+          "subject": "InvoiceExport",
+          "statement": "Downstream adapters require stable invoice identifiers and must not join on display names.",
+          "evidence": [
+            {
+              "type": "contract",
+              "path": "coord/contracts/invoice-export-adapter.md",
+              "authority": "requirement",
+              "visibility": "internal",
+              "freshness": "current"
+            },
+            {
+              "type": "test",
+              "path": "backend/test/invoiceExportContract.test.ts",
+              "authority": "test_proof",
+              "visibility": "internal",
+              "freshness": "current"
+            }
+          ]
+        },
+        {
+          "id": "KC-SUMMARY-ONLY",
+          "subject": "Invoice",
+          "statement": "A prior summary said all imported invoices skip approval.",
+          "evidence": [
+            {
+              "type": "summary",
+              "path": "coord/memory/summaries/invoice.md",
+              "authority": "summary",
+              "visibility": "internal",
+              "freshness": "current"
+            }
+          ]
+        },
+        {
+          "id": "KC-NO-EVIDENCE",
+          "subject": "Invoice",
+          "statement": "Invoices below threshold always bypass all checks.",
+          "evidence": []
+        }
+      ],
+      "expectations": {
+        "expected_reviewable": ["KC-WORKAROUND", "KC-REQUIREMENT", "KC-ADAPTER-CONTRACT"],
+        "expected_accepted": ["KC-REQUIREMENT"],
+        "expected_review_required": ["KC-ADAPTER-CONTRACT"],
+        "expected_auto_rejected": ["KC-SUMMARY-ONLY", "KC-NO-EVIDENCE"],
+        "expected_conflicted": ["KC-FRONTEND-RULE", "KC-BACKEND-RULE"],
+        "expected_grounded": [
+          "KC-WORKAROUND",
+          "KC-REQUIREMENT",
+          "KC-FRONTEND-RULE",
+          "KC-BACKEND-RULE",
+          "KC-ADAPTER-CONTRACT"
+        ],
+        "false_authority_claims": ["KC-WORKAROUND"],
+        "max_review_required": 1
+      }
+    }
+  ]
+}

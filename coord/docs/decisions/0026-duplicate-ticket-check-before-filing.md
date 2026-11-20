@@ -1,0 +1,93 @@
+# ADR 0026: Duplicate-ticket check before filing (advisory first, enforcement behind a switch)
+
+- **Status:** Accepted
+- **Ticket:** COORD-975
+- **Date:** 2026-11-14
+- **Linked scope:** `gov file-ticket` (ticket-commands.js), the filing procedure in coord/GOVERNANCE.md, the guard `ticket-id-allocation`, the journal (`--duplicate-of`, `--distinct-from`), `coord/engine/duplicate-check-policy.json`.
+
+## Context
+
+The 2026-11-13 architecture audit (F-08, F-02, F-15) proposed three tickets that overlapped tickets already on the board: F-08 overlapped COORD-958..964 (guard merges and retirements), F-02 overlapped COORD-938 (mode handling in engine-pin and tree-fingerprint), and F-15 overlapped COORD-898 (one shared base-ref resolver). Nothing in `gov file-ticket` looked at the existing board before it created a row, so each overlap was found by hand, after filing.
+
+## Linked Scope
+
+- Governing ticket: COORD-975 (human-admin direction 2026-11-13: duplicate check before filing).
+- Related: ADR 0021 (tiered governance; guard classification changes need a governed ticket), the guard registry (coord/engine/governance-guards.json).
+
+## Decision Criteria
+
+- The check runs on every `file-ticket` and is deterministic: the same board and the same description always give the same candidates and scores.
+- It is advisory first. A likely duplicate never blocks filing while the switch is off.
+- A duplicate is never filed silently. Either the ticket is recorded as a duplicate of an existing ticket (and not filed), or the author records why the new ticket is distinct.
+- Every link is journaled. Nothing is written to the board for a link (see Decision 4).
+
+## Scoring (as implemented)
+
+The candidates are the board rows whose status is not `superseded`. A `done` row is a candidate only when its landing date (`landing_index.recorded_at`) is within the last 90 days; a `done` row with no landing date is kept (the date is unknown, so the row is treated conservatively).
+
+Each candidate is scored against the proposed description on five facets:
+
+| Facet | Source | Match | Weight |
+|---|---|---|---|
+| description | words, lowercased, stemmed, stopwords removed | IDF-weighted overlap over the smaller side | 0.30 |
+| paths | basenames of referenced `.js`, `.json`, `.md`, `.sh`, `.ts` files | overlap over the smaller side | 0.25 |
+| functions | camelCase identifiers | overlap over the smaller side | 0.10 |
+| guards | guard ids from governance-guards.json (and `guard:<id>` text) | overlap over the smaller side | 0.25 |
+| verbs | `gov <verb>` mentions | overlap over the smaller side | 0.10 |
+
+A facet contributes only when both sides name something. The score is the weighted sum, from 0 to 1. A candidate at or above **0.20** (`DUPLICATE_THRESHOLD`) is flagged. The top five candidates are shown with their score and their shared evidence.
+
+Calibration: the threshold and weights were set on the three audit fixtures and the one unrelated fixture in `coord/engine/scripts/__fixtures__/duplicate-check.fixtures.js` (a snapshot of the board rows). Before this ADR is accepted, the threshold must be re-measured on the full board: the number of flagged candidates per filing of the last 30 landed tickets, and the count of false flags, reported with the ADR review. Threshold changes are a governed change to `DUPLICATE_THRESHOLD`, with its pin test.
+
+Results on the fixtures at the calibrated values:
+
+- F-08 flags all seven of COORD-958..964 (the two merge tickets at about 0.39; the retirement tickets at 0.32 to 0.34, and COORD-962 only at exactly 0.200, the threshold). It also flags COORD-938 at 0.296, because both name the engine-pin guard: a false-leaning flag that the author can record as distinct.
+- F-02 flags COORD-938 (shared path `tree-fingerprint.js`) at the top, and COORD-958 at 0.315 (shared guard `engine-pin`).
+- F-15 flags COORD-898 (shared path `landing-resolution.js`) at the top.
+- The near miss (a registry answers-hygiene test) flags COORD-958 and COORD-959 because they share the file `governance-guards.json`. It shares no guard id and no description concept. This is the intended case for `--distinct-from`: a flag is a prompt for a recorded distinction, not a verdict.
+- The unrelated frontend ticket flags nothing.
+
+## Options Evaluated
+
+1. Advisory only, forever. Simple, but duplicates would still be filed unless someone reads the output.
+2. Advisory first, then enforcement behind a policy switch that the human admin turns on when this ADR is accepted (chosen).
+3. Enforcement now. Rejected: the scorer is calibrated on fixtures only, and a false refusal would block filing.
+
+## Decision
+
+1. **Advisory (in force when the code lands).** `gov file-ticket` prints `Duplicate check: N likely duplicate candidate(s)` and the top candidates with score and shared evidence, then files the ticket. With no flag it does nothing else.
+2. **Links.**
+   - `--duplicate-of <ID>`: the ticket is not filed. A note (the proposed description, the recorder, the time) is journaled on the existing ticket, and no row is written.
+   - `--distinct-from <IDs> --reason "<why>"`: the ticket is filed. The distinction is journaled on the new ticket. `--reason` is required with `--distinct-from`.
+   - Both flags together are refused. Unknown ids are refused before any write.
+3. **Enforcement switch.** `coord/engine/duplicate-check-policy.json` holds `"enforcement": "off"`. When it is `"on"`, `file-ticket` refuses a flagged filing that carries neither link, and the refusal names both flags. The switch stays `off` until this ADR is Accepted. Turning it on is a separate governed change that cites this ADR.
+4. **Journaling, not board fields.** The links are recorded in the governance journal event: on the new ticket for `--distinct-from` (`details.distinct_record`), on the existing ticket for `--duplicate-of` (`details.duplicate_note`), and the check result for every filing (`details.duplicate_check`: decision, threshold, enforcement, flagged ids, top scores, links). The board is not changed for links. The board schema (`tasks.schema.json`) is an engine-owned copy with a byte-identical legacy copy under `coord/board/`; adding a board field would need both copies changed. Whether the links should also be a board field is an open question for the human admin (see Revisit Trigger).
+
+## Proposed GOVERNANCE.md filing text (not applied by this ADR)
+
+This ADR does not edit coord/GOVERNANCE.md. When the ADR is accepted, the filing procedure would gain this paragraph under the `gov file-ticket` rule:
+
+> Before filing, `gov file-ticket` compares the proposed ticket with open tickets and tickets done in the last 90 days (description words, named file paths, function names, guard ids and verbs). It prints each candidate at or above the threshold with its score and shared evidence. A filer who finds a duplicate records it with `--duplicate-of <ID>` (the ticket is not filed and the proposal is journaled on the existing ticket). A filer who files a ticket that overlaps a candidate records why it is distinct with `--distinct-from <IDs> --reason "<why>"`. When enforcement is on, a flagged filing without one of these links is refused.
+
+## Consequences
+
+- Overlaps like those in the 2026-11-13 audit are shown before the row is created, with the evidence.
+- A flagged filing costs one extra flag or one extra sentence when it is distinct. False flags are expected at this threshold, which is why enforcement stays off.
+- Links are visible in the journal, not on the board row. A reviewer who wants them on the board needs the board-field decision below.
+- The 90-day window for done tickets relies on landing dates. Done tickets without a landing record are always candidates.
+
+## Alternatives Rejected
+
+- **Enforcement on at once:** rejected; see Options.
+- **Matching on title or ID only:** rejected; the audit overlaps share files and guard ids, not titles.
+- **An LLM judge:** rejected; the check must be deterministic and run offline in the filing transaction.
+
+## Revisit Trigger
+
+- The threshold re-measured on the full board gives more than one false flag in five filings, or misses an overlap a reviewer finds.
+- A reviewer needs the links on the board row (then the board schema change and its legacy-copy sync must be decided together).
+- A mass re-filing shows the check is too slow for the filing transaction (measure before enforcement).
+
+## Approval State
+
+Accepted by the human admin on 2026-11-15 (human-admin decision, given directly in the orchestrator session and recorded under COORD-1024). The record is accepted in its advisory-first form: a duplicate-ticket check before filing, with enforcement staying off until a separate governed change switches it on (`coord/engine/duplicate-check-policy.json`). The open points (a) to (c) above are not decided by this record, and the proposed GOVERNANCE.md filing text is not applied by it.

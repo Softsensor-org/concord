@@ -1,0 +1,84 @@
+# ADR 0025: Full-suite triggers and sharding for per-PR impact-radius gates
+
+- **Status:** Accepted
+- **Ticket:** COORD-966
+- **Date:** 2026-11-13
+- **Linked scope:** affected-test selection (COORD-924, COORD-953 soundness); tier policy (ADR 0021); sharded execution (ADR 0022); `coord/engine/test-policy.json` selection and stages; the nightly and release matrix (2026-11-12 lane ruling).
+
+## Context
+
+ADR 0021 makes every T2 change run the full serial gate, about 37 minutes per lane. Human-admin direction on 2026-11-12 was that PRs into dev should run the tests their change can affect, and that the full suite should run in minutes at landing, nightly and release. The affected-test selector (COORD-924) is sound on its seeded property suite (COORD-953), but it is broad.
+
+Measured breadth on five content commits, selected suites of the suite total (same method as COORD-953; "before" is dev c21fbc34, "after" is this PR):
+
+| Content commit | Suites | Before | After | Before % | After % |
+|---|---|---|---|---|---|
+| COORD-947 (2e42c8da) | 389 | 322 | 260 | 82.8% | 66.8% |
+| COORD-948 (1ac3b319) | 391 | 324 | 259 | 82.8% | 66.2% |
+| COORD-950 (6cb14e4f) | 390 | 323 | 258 | 82.8% | 66.2% |
+| COORD-968 (cf50c498) | 391 | 329 | 266 | 84.1% | 68.0% |
+| COORD-969 (382d8cd2) | 392 | 325 | 260 | 82.9% | 66.3% |
+
+This PR removes about 60 suites per diff. The rest of the breadth comes from unresolved dynamic loads in hub modules (parameter-driven loads such as `require(file)` in shared modules). COORD-953 widens every reader of such a load to be safe, and that reach is about 256 suites on the COORD-947 diff. Reducing it further needs either call-site analysis or a human-admin decision to narrow the COORD-953 rule. Mention-only edges are not cut through hub modules: the COORD-953 oracle requires them, and a seeded run at 300 trees fails when they are cut.
+
+Consequence for the thresholds: a 40% radius trigger fires on every one of the five tickets at the current breadth (66% to 68% after this PR). It is therefore not a usable threshold until breadth is reduced further, or until the threshold is raised.
+
+## Linked Scope
+
+- Governing ticket: COORD-966 (per-PR gates by impact radius; full suite on triggers).
+- Amends ADR 0021 only for the PR stage of T2 changes. ADR 0021's tier classification and direction stay as they are.
+- Uses ADR 0022 for shard execution; it does not change ADR 0022's accounting rules.
+
+## Decision Criteria
+
+- No reduction in assurance: every test that can be affected by a change runs before the change lands, or the full suite runs.
+- Unknown, unattributable or incomplete impact always falls back to the full suite.
+- The full suite is the authority for release and promotion. It is never skipped at those stages.
+- Thresholds are reviewable: each one is stored in `coord/engine/test-policy.json` and reported by `gov test-policy resolve`.
+
+## Options Evaluated
+
+1. Keep the full suite on every T2 PR. Simple, but every engine ticket pays about 37 minutes per lane for a change the selector can bound.
+2. Run the impact-radius selection for every tier and run the full suite only on triggers, with the radius trigger set at a threshold the human admin chooses at acceptance. Options for that threshold, against the measured breadth above:
+   - 40% of suites: fires on all five measured diffs. Not usable at current breadth.
+   - 70% of suites: fires on none of the five measured diffs, and sits just above the measured range. Usable now; it leaves little room for future churn.
+   - 85% of suites: fires only on the heaviest measured diff (COORD-968 at 68% does not fire). Effectively a trigger for "selector unknown" only.
+   - No radius threshold: the full suite runs only on triggers (a) and (c) below, and on any "unknown" fallback.
+3. Run the impact radius only for T0 and T1 and keep the full suite for T2. This is the current rule under another name.
+
+## Decision
+
+1. **PR stage, every tier.** A PR into dev runs the impact-radius selection for its change, for T0, T1 and T2 alike. For a T2 change the PR-stage run is the landing evidence when no full-suite trigger fires. T2 changes still fall back to the full suite when the selector reports `full` with a reason (an unknown or unattributable change, an incomplete analysis, the implementation of a T2 or always-enforced guard, or the policy's own fallback paths).
+2. **Full-suite triggers.** The full suite runs, sharded per ADR 0022 (`--shards auto`), when any of these holds:
+   - (a) at least 10 tickets have landed on dev since the last passing full run, counted from journaled landings and the last full-run manifest (COORD-910);
+   - (b) the blast radius is very large: the affected set exceeds the threshold the human admin sets at acceptance (see Options Evaluated), or any change touches the test runner, the selector, the policy, shared fixtures, the journal or the integration-authority core, or the impact is unknown;
+   - (c) promotion dev to staging, and the nightly run. Nightly keeps the full dual-lane matrix; promotion runs the sharded full suite on Node 22.
+   The landing that crosses trigger (a) or (b) carries the full run. A red full run suspends selection (`gov selection suspend`) until it is fixed.
+3. **Sharding.** Full runs use parallel shards under ADR 0022. The dominant files are split so that shard balance is not set by one file (COORD-904). The shard count and the slowest file are reported with each full run.
+4. **Nightly and release** keep the full matrix and the coverage ratchet. Nothing in this ADR changes them.
+
+**Radius threshold (human-admin choice, 2026-11-15).** The human admin chose the 70% of suites option from Options Evaluated, item 2. The radius trigger in decision 2(b) therefore fires when the affected set exceeds 70% of suites.
+
+## Consequences
+
+- The PR stage no longer pays a full serial run for a change the selector can bound, once the threshold is set.
+- At current breadth (66% to 68% after this PR) the 40% threshold would force the full suite on almost every ticket, which is the current behaviour under another name. The threshold choice therefore decides whether the PR stage gains anything; the human admin picks it at acceptance.
+- Trigger (a) keeps a full run in every window of ten landings, so a regression the selector misses is caught within that window.
+- Engine tier enforcement is not changed by this ADR. Acceptance here does not by itself switch the PR gate; that is a separate, governed change.
+
+## Alternatives Rejected
+
+- **Full suite on every T2 PR:** rejected because it makes every engine ticket pay the full serial run.
+- **Impact radius for T0 and T1 only:** rejected because nearly every engine ticket is T2, so it changes nothing.
+- **A 40% threshold with no breadth work:** rejected because on the measured tickets it would force the full suite on every ticket.
+- **Cutting mention-only edges through hub modules:** rejected because the COORD-953 soundness oracle fails at 300 seeded trees when those edges are cut.
+
+## Revisit Trigger
+
+- The selector misses a regression the full run catches (COORD-893, COORD-871..888, COORD-916, COORD-902 vs COORD-890 are the historical cases the fault suite covers).
+- The measured selected share on ordinary tickets stays above the chosen threshold after breadth work.
+- The sharded full run does not complete in about 10 minutes on the 32-thread host.
+
+## Approval State
+
+Accepted by the human admin on 2026-11-15 (human-admin decision, given directly in the orchestrator session and recorded under COORD-1024). The Decision section is accepted with the radius threshold option of 70% of suites (see the Decision section, radius threshold paragraph). The full-suite triggers are implemented under COORD-974. Acceptance does not change engine tier enforcement; that is a separate governed change. Review by agents is not human approval.

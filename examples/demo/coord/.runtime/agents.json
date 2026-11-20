@@ -1,0 +1,8 @@
+[
+  { "id": "a11", "handle": "claudea11", "provider": "anthropic", "status": "active", "aliases": ["claude1"] },
+  { "id": "a12", "handle": "claudea12", "provider": "anthropic", "status": "active", "aliases": ["claude2"] },
+  { "id": "a13", "handle": "claudea13", "provider": "anthropic", "status": "active", "aliases": ["claude3"] },
+  { "id": "c01", "handle": "codexa01", "provider": "openai", "status": "active", "aliases": ["codex1"] },
+  { "id": "c02", "handle": "codexa02", "provider": "openai", "status": "active", "aliases": ["codex2"] },
+  { "id": "g21", "handle": "geminia21", "provider": "google", "status": "active", "aliases": ["gemini1"] }
+]

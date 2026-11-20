@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "ticket_id": "CLS-200",
+  "critical_invariants": [],
+  "requirement_closure": [
+    "Ticket ask: Wire transactional email receipts via the SMTP gateway.",
+    "Implemented: receipt dispatch on order completion via the SMTP gateway."
+  ],
+  "feature_proof": [],
+  "repo_gates": [],
+  "self_review_cycles": [],
+  "governance": {
+    "expected_closeout": { "method": "no_pr", "base_ref": "main", "provenance_note": null },
+    "review_profile": "standard",
+    "ticket_local_repairs": []
+  }
+}

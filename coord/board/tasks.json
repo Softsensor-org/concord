@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "metadata": {
+    "title": "Project Task Board",
+    "last_updated": "2026-01-01T00:00:00Z",
+    "canonical_references": [
+      "coord/GOVERNANCE.md",
+      "coord/AGENT_STARTUP_CHECKLIST.md",
+      "coord/product/REPOS.md",
+      "coord/product/REQUIREMENTS.md",
+      "coord/product/ARCHITECTURE.md"
+    ],
+    "landing_index_required_from_ticket": "ZZZZ-999",
+    "pr_index_required_from_ticket": "ZZZZ-999",
+    "plan_records_required_from_ticket": "ZZZZ-999",
+    "plan_markdown_render_statuses": [
+      "doing",
+      "review"
+    ],
+    "preamble": [
+      "Before starting any ticket, complete coord/AGENT_STARTUP_CHECKLIST.md.",
+      "Complete SETUP-001..009 in dependency order; each row has a registered prompt.",
+      "Repo codes are defined in coord/project.config.js. Use X for cross-repo / coordination work."
+    ]
+  },
+  "sections": [
+    {
+      "kind": "markdown",
+      "level": 2,
+      "heading": "Getting Started",
+      "separator_before": false,
+      "body": [
+        "This is a starter adoption ladder. Replace these model steps with evidence from your project.",
+        "Each ticket flows todo -> doing -> review -> done via coord/scripts/gov."
+      ]
+    },
+    {
+      "kind": "table",
+      "level": 2,
+      "heading": "Backlog",
+      "separator_before": true,
+      "columns": [
+        "ID",
+        "Repo",
+        "Type",
+        "Pri",
+        "Status",
+        "Owner",
+        "Description",
+        "Depends On"
+      ],
+      "rows": [
+        {
+          "ID": "SETUP-001",
+          "Repo": "X",
+          "Type": "docs",
+          "Pri": "P1",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "Confirm coord/project.config.js repo map and ticket prefixes (configuration seam only).",
+          "Depends On": ""
+        },
+        {
+          "ID": "SETUP-002",
+          "Repo": "X",
+          "Type": "task",
+          "Pri": "P1",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "Author knowledge baseline (REQUIREMENTS, ARCHITECTURE, and REPOS).",
+          "Depends On": "SETUP-001"
+        },
+        {
+          "ID": "SETUP-003",
+          "Repo": "X",
+          "Type": "task",
+          "Pri": "P1",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "Run source-backed discovery and promote accepted facts.",
+          "Depends On": "SETUP-002"
+        },
+        {
+          "ID": "SETUP-004",
+          "Repo": "X",
+          "Type": "task",
+          "Pri": "P1",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "Run the governed gap audit and file the founding backlog.",
+          "Depends On": "SETUP-003"
+        },
+        {
+          "ID": "SETUP-005",
+          "Repo": "X",
+          "Type": "task",
+          "Pri": "P1",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "Wire real per-repo gates and CI evidence.",
+          "Depends On": "SETUP-004"
+        },
+        {
+          "ID": "SETUP-006",
+          "Repo": "X",
+          "Type": "task",
+          "Pri": "P2",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "Record founding ADRs and validate the decision registry.",
+          "Depends On": "SETUP-005"
+        },
+        {
+          "ID": "SETUP-007",
+          "Repo": "X",
+          "Type": "task",
+          "Pri": "P2",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "Import the requirements registry and link tickets.",
+          "Depends On": "SETUP-006"
+        },
+        {
+          "ID": "SETUP-008",
+          "Repo": "X",
+          "Type": "task",
+          "Pri": "P2",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "Record the coverage and test-maturity baseline.",
+          "Depends On": "SETUP-007"
+        },
+        {
+          "ID": "SETUP-009",
+          "Repo": "X",
+          "Type": "task",
+          "Pri": "P2",
+          "Status": "todo",
+          "Owner": "unassigned",
+          "Description": "Generate the readiness report and adoption handoff.",
+          "Depends On": "SETUP-008"
+        }
+      ]
+    }
+  ],
+  "prompt_index": {
+    "SETUP-001": "coord/prompts/tickets/SETUP-001.md",
+    "SETUP-002": "coord/prompts/tickets/SETUP-002.md",
+    "SETUP-003": "coord/prompts/tickets/SETUP-003.md",
+    "SETUP-004": "coord/prompts/tickets/SETUP-004.md",
+    "SETUP-005": "coord/prompts/tickets/SETUP-005.md",
+    "SETUP-006": "coord/prompts/tickets/SETUP-006.md",
+    "SETUP-007": "coord/prompts/tickets/SETUP-007.md",
+    "SETUP-008": "coord/prompts/tickets/SETUP-008.md",
+    "SETUP-009": "coord/prompts/tickets/SETUP-009.md"
+  },
+  "pr_index": {},
+  "landing_index": {},
+  "review_findings": {},
+  "followup_exceptions": {},
+  "waiver_index": {}
+}

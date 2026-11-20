@@ -1,0 +1,2 @@
+{"ts":"2026-01-01T00:00:00.000Z","command":"start","ticket":"FIX-001","after_status":"doing","prev_event_hash":"genesis"}
+{"ts":"2026-01-01T00:01:00.000Z","command":"mark-done","ticket":"FIX-001","after_status":"done","prev_event_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}

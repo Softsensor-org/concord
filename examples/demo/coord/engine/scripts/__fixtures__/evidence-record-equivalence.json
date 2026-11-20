@@ -1,0 +1,436 @@
+{
+  "repo_gate_record": [
+    {
+      "name": "product repo, repo_gates absent",
+      "issues": [
+        {
+          "code": "repo_gates",
+          "message": "Plan state for COORD-959 must record actual repo gate/test commands under \"- Repo gates:\" before move-review.",
+          "next_steps": [
+            "coord/scripts/gov update-plan COORD-959 --repo-gate \"<executed gate command>\""
+          ]
+        }
+      ]
+    },
+    {
+      "name": "product repo, repo_gates empty array",
+      "issues": [
+        {
+          "code": "repo_gates",
+          "message": "Plan state for COORD-959 must record actual repo gate/test commands under \"- Repo gates:\" before move-review.",
+          "next_steps": [
+            "coord/scripts/gov update-plan COORD-959 --repo-gate \"<executed gate command>\""
+          ]
+        }
+      ]
+    },
+    {
+      "name": "product repo, repo_gates blank string",
+      "issues": [
+        {
+          "code": "repo_gates",
+          "message": "Plan state for COORD-959 must record actual repo gate/test commands under \"- Repo gates:\" before move-review.",
+          "next_steps": [
+            "coord/scripts/gov update-plan COORD-959 --repo-gate \"<executed gate command>\""
+          ]
+        }
+      ]
+    },
+    {
+      "name": "product repo, repo_gates not-required (refused)",
+      "issues": [
+        {
+          "code": "repo_gates",
+          "message": "Plan state for COORD-959 must record actual repo gate/test commands under \"- Repo gates:\" before move-review.",
+          "next_steps": [
+            "coord/scripts/gov update-plan COORD-959 --repo-gate \"<executed gate command>\""
+          ]
+        }
+      ]
+    },
+    {
+      "name": "product repo, executed gate recorded (admitted)",
+      "issues": []
+    },
+    {
+      "name": "product repo, light lane, no gate (refused)",
+      "issues": [
+        {
+          "code": "repo_gates",
+          "message": "Plan state for COORD-959 must record actual repo gate/test commands under \"- Repo gates:\" before move-review.",
+          "next_steps": [
+            "coord/scripts/gov update-plan COORD-959 --repo-gate \"<executed gate command>\""
+          ]
+        }
+      ]
+    },
+    {
+      "name": "product repo, light lane, executed gate (admitted)",
+      "issues": []
+    },
+    {
+      "name": "non-product repo, repo_gates absent (refused)",
+      "issues": [
+        {
+          "code": "repo_gates",
+          "message": "Plan state for COORD-959 must record \"- Repo gates:\" with either executed checks or \"not-required\" before move-review.",
+          "next_steps": [
+            "coord/scripts/gov update-plan COORD-959 --repo-gate \"not-required\""
+          ]
+        }
+      ]
+    },
+    {
+      "name": "non-product repo, repo_gates empty (refused)",
+      "issues": [
+        {
+          "code": "repo_gates",
+          "message": "Plan state for COORD-959 must record \"- Repo gates:\" with either executed checks or \"not-required\" before move-review.",
+          "next_steps": [
+            "coord/scripts/gov update-plan COORD-959 --repo-gate \"not-required\""
+          ]
+        }
+      ]
+    },
+    {
+      "name": "non-product repo, not-required (admitted)",
+      "issues": []
+    },
+    {
+      "name": "non-product repo, executed gate (admitted)",
+      "issues": []
+    }
+  ],
+  "gate_plan_receipt": [
+    {
+      "name": "no receipt, plain row (advisory, filtered)",
+      "issues": []
+    },
+    {
+      "name": "no receipt, prod-risk row (blocker gate_plan_receipt)",
+      "issues": [
+        {
+          "code": "gate_plan_receipt",
+          "message": "Plan state for COORD-959 missing gate-plan receipt; record deterministic selected/skipped gate evidence before review.",
+          "next_steps": [
+            "coord/scripts/gov gate-plan COORD-959 --write"
+          ],
+          "severity": "blocker"
+        }
+      ]
+    },
+    {
+      "name": "no receipt, prod-risk row, light lane (no issue)",
+      "issues": []
+    },
+    {
+      "name": "no receipt, advisory included",
+      "issues": [
+        {
+          "code": "gate_plan_receipt",
+          "message": "Plan state for COORD-959 missing gate-plan receipt; record deterministic selected/skipped gate evidence before review.",
+          "next_steps": [
+            "coord/scripts/gov gate-plan COORD-959 --write"
+          ],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "name": "receipt wrong planner_version (gate_plan_stale blocker)",
+      "issues": [
+        {
+          "code": "gate_plan_stale",
+          "message": "Plan state for COORD-959 unsupported gate-plan planner_version; record deterministic selected/skipped gate evidence before review.",
+          "next_steps": [
+            "coord/scripts/gov gate-plan COORD-959 --write"
+          ],
+          "severity": "blocker"
+        }
+      ]
+    },
+    {
+      "name": "receipt older than 14 days, prod-risk (gate_plan_stale blocker)",
+      "issues": [
+        {
+          "code": "gate_plan_stale",
+          "message": "Plan state for COORD-959 gate-plan receipt is older than 14 days; record deterministic selected/skipped gate evidence before review.",
+          "next_steps": [
+            "coord/scripts/gov gate-plan COORD-959 --write"
+          ],
+          "severity": "blocker"
+        }
+      ]
+    },
+    {
+      "name": "receipt older than 14 days, plain (advisory filtered)",
+      "issues": []
+    },
+    {
+      "name": "receipt older than 14 days, plain, advisory included",
+      "issues": [
+        {
+          "code": "gate_plan_stale",
+          "message": "Plan state for COORD-959 gate-plan receipt is older than 14 days; record deterministic selected/skipped gate evidence before review.",
+          "next_steps": [
+            "coord/scripts/gov gate-plan COORD-959 --write"
+          ],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "name": "receipt fresh, valid, full mode (admitted)",
+      "issues": []
+    },
+    {
+      "name": "receipt slice mode without selected array (gate_plan_slice_receipt blocker)",
+      "issues": [
+        {
+          "code": "gate_plan_slice_receipt",
+          "message": "Plan state for COORD-959 claims affected-target slice mode without selected target receipt details.",
+          "next_steps": [
+            "coord/scripts/gov gate-plan COORD-959 --write"
+          ],
+          "severity": "blocker"
+        }
+      ]
+    },
+    {
+      "name": "receipt slice mode with selected array (admitted)",
+      "issues": []
+    },
+    {
+      "name": "blocking receipt, blocker evidence issue (passthrough)",
+      "issues": [
+        {
+          "code": "x_evidence",
+          "message": "missing x",
+          "next_steps": [
+            "coord/scripts/gov gate-plan COORD-959 --write"
+          ],
+          "severity": "blocker"
+        }
+      ]
+    },
+    {
+      "name": "blocking receipt, advisory evidence issue (filtered)",
+      "issues": []
+    },
+    {
+      "name": "warning-first receipt, R3 risk, blocker evidence (passthrough)",
+      "issues": [
+        {
+          "code": "z_evidence",
+          "message": "missing z",
+          "next_steps": [
+            "coord/scripts/gov gate-plan COORD-959 --write"
+          ],
+          "severity": "blocker"
+        }
+      ]
+    },
+    {
+      "name": "warning-first receipt, R1, blocker evidence (filtered)",
+      "issues": []
+    },
+    {
+      "name": "receipt array-shaped (treated as missing)",
+      "issues": []
+    }
+  ],
+  "closeout_landing_evidence": {
+    "runCloseoutPreflight": [
+      {
+        "name": "status not review (refused)",
+        "result": "refused",
+        "message": "Ticket COORD-959 must be in review; current status is \"doing\"."
+      },
+      {
+        "name": "no pr_index evidence (refused)",
+        "result": "refused",
+        "message": "Ticket COORD-959 is review but has no pr_index evidence."
+      },
+      {
+        "name": "empty pr_index list (refused)",
+        "result": "refused",
+        "message": "Ticket COORD-959 is review but has no pr_index evidence."
+      },
+      {
+        "name": "open review finding (refused)",
+        "result": "refused",
+        "message": "Ticket COORD-959 still has open review findings."
+      },
+      {
+        "name": "outstanding follow-up (refused)",
+        "result": "refused",
+        "message": "Ticket COORD-959 cannot close while closeout-blocker follow-up tickets remain open: COORD-990 (todo)."
+      },
+      {
+        "name": "lock present, not closeoutFromDoing (refused)",
+        "result": "refused",
+        "message": "Ticket COORD-959 still has a lock file at <LOCK>"
+      },
+      {
+        "name": "lock present, closeoutFromDoing (admitted)",
+        "result": "admitted",
+        "receipt": {
+          "preflighted": true,
+          "ticketId": "COORD-959",
+          "sourceCommitSha": null
+        }
+      },
+      {
+        "name": "landed unresolvable sha (refused)",
+        "result": "refused",
+        "message": "Ticket COORD-959 uses manual landing evidence but no resolvable commit SHA. Pass --landed \"<canonical-branch commit-sha and closeout note>\". Refusing before the merge (COORD-703): this check previously ran after it, which is how a merged PR came to exist with no board record."
+      },
+      {
+        "name": "landed text with no sha token (refused)",
+        "result": "refused",
+        "message": "Ticket COORD-959 uses manual landing evidence but no resolvable commit SHA. Pass --landed \"<canonical-branch commit-sha and closeout note>\". Refusing before the merge (COORD-703): this check previously ran after it, which is how a merged PR came to exist with no board record."
+      },
+      {
+        "name": "landed resolvable sha (admitted)",
+        "result": "admitted",
+        "receipt": {
+          "preflighted": true,
+          "ticketId": "COORD-959",
+          "sourceCommitSha": null
+        }
+      },
+      {
+        "name": "landed empty array (admitted, no check)",
+        "result": "admitted",
+        "receipt": {
+          "preflighted": true,
+          "ticketId": "COORD-959",
+          "sourceCommitSha": null
+        }
+      },
+      {
+        "name": "landed multi with one resolvable (admitted)",
+        "result": "admitted",
+        "receipt": {
+          "preflighted": true,
+          "ticketId": "COORD-959",
+          "sourceCommitSha": null
+        }
+      },
+      {
+        "name": "sourceCommit unresolvable, product repo (refused)",
+        "result": "refused",
+        "message": "Ticket COORD-959 names source commit \"1234567\", which does not resolve in /fake/B. Refusing before the merge: an unresolvable provenance claim is a defect in the landing, and silently falling back to the worktree head would record a different commit than the one named."
+      },
+      {
+        "name": "sourceCommit resolvable (admitted, explicit)",
+        "result": "admitted",
+        "receipt": {
+          "preflighted": true,
+          "ticketId": "COORD-959",
+          "sourceCommitSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      {
+        "name": "no sourceCommit, resolveSourceCommitSha supplied (admitted)",
+        "result": "admitted",
+        "receipt": {
+          "preflighted": true,
+          "ticketId": "COORD-959",
+          "sourceCommitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      {
+        "name": "no sourceCommit, no resolver (admitted, null)",
+        "result": "admitted",
+        "receipt": {
+          "preflighted": true,
+          "ticketId": "COORD-959",
+          "sourceCommitSha": null
+        }
+      },
+      {
+        "name": "Repo X ticket, landed refused by early return (admitted)",
+        "result": "admitted",
+        "receipt": {
+          "preflighted": true,
+          "ticketId": "COORD-959",
+          "sourceCommitSha": null
+        }
+      },
+      {
+        "name": "Repo X ticket, no resolution (admitted)",
+        "result": "admitted",
+        "receipt": {
+          "preflighted": true,
+          "ticketId": "COORD-959",
+          "sourceCommitSha": null
+        }
+      },
+      {
+        "name": "plan-ready fake throws (passthrough)",
+        "result": "refused",
+        "message": "plan not ready"
+      }
+    ],
+    "mergePrUrl": [
+      {
+        "name": "already merged at other head than qualified (refused)",
+        "result": "refused",
+        "message": "PR https://github.com/o/r/pull/9 was already merged at head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, not the reviewed head bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb the closeout qualified. Refusing to record a merge whose landed head was not measured. Recovery: re-measure the decomposition-proof at the merged head (coord/scripts/gov update-plan <ticket> --repo-gate \"decomposition-proof: ...\") and re-run closeout with --source-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.",
+        "gh_merge_calls": 0
+      },
+      {
+        "name": "already merged at qualified head (admitted, already_merged)",
+        "result": "admitted",
+        "value": {
+          "status": "already_merged",
+          "pr_url": "https://github.com/o/r/pull/9"
+        },
+        "gh_merge_calls": 0
+      },
+      {
+        "name": "already merged, no matchHeadCommit (admitted, already_merged)",
+        "result": "admitted",
+        "value": {
+          "status": "already_merged",
+          "pr_url": "https://github.com/o/r/pull/9"
+        },
+        "gh_merge_calls": 0
+      },
+      {
+        "name": "state CLOSED (refused)",
+        "result": "refused",
+        "message": "PR https://github.com/o/r/pull/9 is in state CLOSED; only OPEN PRs can be merged.",
+        "gh_merge_calls": 0
+      },
+      {
+        "name": "not mergeable BEHIND (refused)",
+        "result": "refused",
+        "message": "PR https://github.com/o/r/pull/9 is not mergeable (mergeStateStatus=BEHIND). Recovery: git fetch origin dev && git merge origin/dev --no-edit (resolve, commit), then a normal git push — no force; land --method squash flattens the merge. (Alternative where force-push is allowed: git rebase origin/dev && git push --force-with-lease.)",
+        "gh_merge_calls": 0
+      },
+      {
+        "name": "not mergeable BLOCKED (refused)",
+        "result": "refused",
+        "message": "PR https://github.com/o/r/pull/9 is not mergeable (mergeStateStatus=BLOCKED). Recovery: Resolve failing status checks or required reviews before merging.",
+        "gh_merge_calls": 0
+      },
+      {
+        "name": "head moved since qualified (refused)",
+        "result": "refused",
+        "message": "PR https://github.com/o/r/pull/9 head is aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, not the reviewed head bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb the closeout qualified. Refusing to merge a head that was not measured: review the new head and re-run closeout with --source-commit <new head>.",
+        "gh_merge_calls": 0
+      },
+      {
+        "name": "qualified head matches, CLEAN (admitted, merge issued)",
+        "result": "admitted",
+        "value": {
+          "status": "merged",
+          "pr_url": "https://github.com/o/r/pull/9"
+        },
+        "gh_merge_calls": 1
+      }
+    ]
+  }
+}

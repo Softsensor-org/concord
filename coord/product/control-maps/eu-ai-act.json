@@ -1,0 +1,32 @@
+{
+  "framework": "EU AI Act",
+  "version": "Regulation (EU) 2024/1689",
+  "note": "Indicative mapping of Concord governed evidence to high-risk-system obligations. Not legal advice; confirm scope with counsel.",
+  "controls": [
+    {
+      "id": "Art. 12",
+      "title": "Record-keeping and automatic logging",
+      "evidence": ["journal_log", "landing_provenance"]
+    },
+    {
+      "id": "Art. 11 / Annex IV",
+      "title": "Technical documentation",
+      "evidence": ["requirement_closure", "feature_proof"]
+    },
+    {
+      "id": "Art. 14",
+      "title": "Human oversight",
+      "evidence": ["review_cycles"]
+    },
+    {
+      "id": "Art. 15",
+      "title": "Accuracy, robustness and cybersecurity",
+      "evidence": ["repo_gates"]
+    },
+    {
+      "id": "Art. 9",
+      "title": "Risk management and residual-risk acceptance",
+      "evidence": ["requirement_closure", "waivers"]
+    }
+  ]
+}

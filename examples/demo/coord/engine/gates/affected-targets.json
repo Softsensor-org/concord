@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-06-28",
+  "full_gate": {
+    "commands": [
+      "node coord/scripts/test-runner.js"
+    ]
+  },
+  "targets": [
+    {
+      "id": "coord:gate-planner",
+      "command": "node --test coord/engine/scripts/gate-plan.test.js coord/engine/scripts/affected-targets.test.js",
+      "files": [
+        "coord/engine/scripts/gate-plan.js",
+        "coord/engine/scripts/gate-plan.test.js",
+        "coord/engine/scripts/affected-targets.js",
+        "coord/engine/scripts/affected-targets.test.js",
+        "coord/engine/gates/affected-targets.json",
+        "coord/gates/affected-targets.json",
+        "coord/engine/gates/affected-targets.schema.json",
+        "coord/gates/affected-targets.schema.json"
+      ]
+    },
+    {
+      "id": "coord:track-evidence",
+      "command": "node --test coord/engine/scripts/track-evidence-policy.test.js",
+      "files": [
+        "coord/engine/scripts/track-evidence-policy.js",
+        "coord/engine/scripts/track-evidence-policy.test.js",
+        "coord/engine/gates/track-evidence-policy.json",
+        "coord/gates/track-evidence-policy.json"
+      ]
+    },
+    {
+      "id": "coord:infra",
+      "command": "node --test coord/engine/scripts/infra-gate.test.js",
+      "files": [
+        "coord/engine/scripts/infra-gate.js",
+        "coord/engine/scripts/infra-gate.test.js"
+      ]
+    },
+    {
+      "id": "coord:authority",
+      "command": "node --test coord/engine/scripts/canonical-derived-authority.test.js",
+      "files": [
+        "coord/engine/scripts/canonical-derived-authority.js",
+        "coord/engine/scripts/canonical-derived-authority.test.js",
+        "coord/product/CANONICAL_DERIVED_AUTHORITY.md"
+      ]
+    },
+    {
+      "id": "coord:lifecycle",
+      "command": "node --test coord/engine/scripts/governance-validation.test.js coord/engine/scripts/plan-records.test.js coord/engine/scripts/lifecycle.test.js",
+      "files": [
+        "coord/engine/scripts/governance-validation.js",
+        "coord/engine/scripts/plan-records.js",
+        "coord/engine/scripts/lifecycle.js",
+        "coord/engine/scripts/cli.js",
+        "coord/board/plan.schema.json"
+      ],
+      "depends_on": [
+        "coord:gate-planner",
+        "coord:track-evidence"
+      ]
+    }
+  ]
+}

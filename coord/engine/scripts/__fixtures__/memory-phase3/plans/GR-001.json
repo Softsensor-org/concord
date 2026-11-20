@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "ticket_id": "GR-001",
+  "requirement_closure": [
+    "Ticket ask: parent graph-fixture ticket",
+    "Implemented: parent work",
+    "Not implemented: none",
+    "Deferred to: GR-003 for the follow-on chore",
+    "Closeout verdict: complete"
+  ],
+  "critical_invariants": [],
+  "self_review_cycles": []
+}

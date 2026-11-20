@@ -1,0 +1,2 @@
+source,source_account,property_or_project,audit_date,exported_at,imported_at,canonical_path,issue_bucket,total_count,commercial_count,ignored_count,new_since_prior,fixed_since_prior,status,superseded_by,owner_ticket,notes
+search-console,example-property,example-site,2026-01-15,2026-01-15T12:00:00Z,2026-01-15T12:30:00Z,data/raw/search-console/2026-01-15/indexing.csv,crawled-not-indexed,12,8,4,3,1,current,,SEO-001,synthetic example row

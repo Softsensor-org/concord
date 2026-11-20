@@ -1,0 +1,213 @@
+[
+  {
+    "name": "no-coverage (no mapping, no waiver, no file)",
+    "preflight": [
+      {
+        "code": "prompt_coverage",
+        "message": "Ticket T-1 cannot start without prompt coverage or a recorded waiver.",
+        "next_steps": [
+          "coord/scripts/gov register-prompt T-1  # if you create coord/prompts/tickets/T-1.md",
+          "coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\""
+        ]
+      }
+    ],
+    "start": {
+      "refused": "Ticket T-1 cannot start without prompt coverage or a recorded waiver."
+    },
+    "preconditions": null,
+    "boardWrites": 0,
+    "writtenMapping": null
+  },
+  {
+    "name": "waiver only, no prompt",
+    "preflight": [],
+    "start": {
+      "admitted": true,
+      "mapping": null
+    },
+    "preconditions": {
+      "ok": true
+    },
+    "boardWrites": 0,
+    "writtenMapping": null
+  },
+  {
+    "name": "stub prompt mapped (COORD-813)",
+    "preflight": [
+      {
+        "code": "prompt_coverage",
+        "message": "Ticket T-1 cannot start: its prompt <ROOT>/coord/prompts/tickets/T-1.hand.md does not satisfy the prompt content contract.\n  - \"## Acceptance Criteria\" has no ticket-specific criteria (only the generated scaffold text, placeholders, or nothing)\nNext: author ticket-specific acceptance (and verification) with `coord/scripts/gov register-prompt T-1 --body-file <file>`, or record the explicit bypass: `coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\"`.",
+        "next_steps": [
+          "coord/scripts/gov register-prompt T-1 --body-file <file>",
+          "coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\""
+        ]
+      }
+    ],
+    "start": {
+      "refused": "Ticket T-1 cannot start: its prompt <ROOT>/coord/prompts/tickets/T-1.hand.md does not satisfy the prompt content contract.\n  - \"## Acceptance Criteria\" has no ticket-specific criteria (only the generated scaffold text, placeholders, or nothing)\nNext: author ticket-specific acceptance (and verification) with `coord/scripts/gov register-prompt T-1 --body-file <file>`, or record the explicit bypass: `coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\"`."
+    },
+    "preconditions": null,
+    "boardWrites": 0,
+    "writtenMapping": null
+  },
+  {
+    "name": "mapped prompt file missing",
+    "preflight": [
+      {
+        "code": "prompt_coverage",
+        "message": "Ticket T-1 cannot start: its prompt <ROOT>/coord/prompts/tickets/T-1.hand.md does not satisfy the prompt content contract.\n  - prompt file is unreadable (ENOENT)\nNext: author ticket-specific acceptance (and verification) with `coord/scripts/gov register-prompt T-1 --body-file <file>`, or record the explicit bypass: `coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\"`.",
+        "next_steps": [
+          "coord/scripts/gov register-prompt T-1 --body-file <file>",
+          "coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\""
+        ]
+      }
+    ],
+    "start": {
+      "refused": "Ticket T-1 cannot start: its prompt <ROOT>/coord/prompts/tickets/T-1.hand.md does not satisfy the prompt content contract.\n  - prompt file is unreadable (ENOENT)\nNext: author ticket-specific acceptance (and verification) with `coord/scripts/gov register-prompt T-1 --body-file <file>`, or record the explicit bypass: `coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\"`."
+    },
+    "preconditions": null,
+    "boardWrites": 0,
+    "writtenMapping": null
+  },
+  {
+    "name": "mapped prompt empty",
+    "preflight": [
+      {
+        "code": "prompt_coverage",
+        "message": "Ticket T-1 cannot start: its prompt <ROOT>/coord/prompts/tickets/T-1.hand.md does not satisfy the prompt content contract.\n  - prompt file is malformed: empty or whitespace-only\nNext: author ticket-specific acceptance (and verification) with `coord/scripts/gov register-prompt T-1 --body-file <file>`, or record the explicit bypass: `coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\"`.",
+        "next_steps": [
+          "coord/scripts/gov register-prompt T-1 --body-file <file>",
+          "coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\""
+        ]
+      }
+    ],
+    "start": {
+      "refused": "Ticket T-1 cannot start: its prompt <ROOT>/coord/prompts/tickets/T-1.hand.md does not satisfy the prompt content contract.\n  - prompt file is malformed: empty or whitespace-only\nNext: author ticket-specific acceptance (and verification) with `coord/scripts/gov register-prompt T-1 --body-file <file>`, or record the explicit bypass: `coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\"`."
+    },
+    "preconditions": null,
+    "boardWrites": 0,
+    "writtenMapping": null
+  },
+  {
+    "name": "mapped prompt without Acceptance heading",
+    "preflight": [
+      {
+        "code": "prompt_coverage",
+        "message": "Ticket T-1 cannot start: its prompt <ROOT>/coord/prompts/tickets/T-1.hand.md does not satisfy the prompt content contract.\n  - no \"## Acceptance\" heading: a ticket-specific prompt must state this ticket's acceptance criteria (only an allowlisted shared role prompt is exempt: an engine-shipped coord/prompts role prompt or a coord/project.config.js promptCoverage.rolePrompts entry)\nNext: author ticket-specific acceptance (and verification) with `coord/scripts/gov register-prompt T-1 --body-file <file>`, or record the explicit bypass: `coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\"`.",
+        "next_steps": [
+          "coord/scripts/gov register-prompt T-1 --body-file <file>",
+          "coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\""
+        ]
+      }
+    ],
+    "start": {
+      "refused": "Ticket T-1 cannot start: its prompt <ROOT>/coord/prompts/tickets/T-1.hand.md does not satisfy the prompt content contract.\n  - no \"## Acceptance\" heading: a ticket-specific prompt must state this ticket's acceptance criteria (only an allowlisted shared role prompt is exempt: an engine-shipped coord/prompts role prompt or a coord/project.config.js promptCoverage.rolePrompts entry)\nNext: author ticket-specific acceptance (and verification) with `coord/scripts/gov register-prompt T-1 --body-file <file>`, or record the explicit bypass: `coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\"`."
+    },
+    "preconditions": null,
+    "boardWrites": 0,
+    "writtenMapping": null
+  },
+  {
+    "name": "mapped prompt with TODO placeholder",
+    "preflight": [
+      {
+        "code": "prompt_coverage",
+        "message": "Ticket T-1 cannot start: its prompt <ROOT>/coord/prompts/tickets/T-1.hand.md does not satisfy the prompt content contract.\n  - unresolved placeholder in \"## Acceptance Criteria\": - TODO: add criteria\nNext: author ticket-specific acceptance (and verification) with `coord/scripts/gov register-prompt T-1 --body-file <file>`, or record the explicit bypass: `coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\"`.",
+        "next_steps": [
+          "coord/scripts/gov register-prompt T-1 --body-file <file>",
+          "coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\""
+        ]
+      }
+    ],
+    "start": {
+      "refused": "Ticket T-1 cannot start: its prompt <ROOT>/coord/prompts/tickets/T-1.hand.md does not satisfy the prompt content contract.\n  - unresolved placeholder in \"## Acceptance Criteria\": - TODO: add criteria\nNext: author ticket-specific acceptance (and verification) with `coord/scripts/gov register-prompt T-1 --body-file <file>`, or record the explicit bypass: `coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\"`."
+    },
+    "preconditions": null,
+    "boardWrites": 0,
+    "writtenMapping": null
+  },
+  {
+    "name": "default on-disk scaffold, unmapped",
+    "preflight": [
+      {
+        "code": "prompt_coverage",
+        "message": "Ticket T-1 cannot start: its prompt ../../../../../../../..<ROOT>/coord/prompts/tickets/T-1.md does not satisfy the prompt content contract.\n  - \"## Acceptance Criteria\" has no ticket-specific criteria (only the generated scaffold text, placeholders, or nothing)\nNext: author ticket-specific acceptance (and verification) with `coord/scripts/gov register-prompt T-1 --body-file <file>`, or record the explicit bypass: `coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\"`.",
+        "next_steps": [
+          "coord/scripts/gov register-prompt T-1 --body-file <file>",
+          "coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\""
+        ]
+      }
+    ],
+    "start": {
+      "refused": "Ticket T-1 cannot start: its prompt coord/prompts/tickets/T-1.md does not satisfy the prompt content contract.\n  - \"## Acceptance Criteria\" has no ticket-specific criteria (only the generated scaffold text, placeholders, or nothing)\nNext: author ticket-specific acceptance (and verification) with `coord/scripts/gov register-prompt T-1 --body-file <file>`, or record the explicit bypass: `coord/scripts/gov set-waiver T-1 --reason \"<why prompt coverage waiver is accepted>\"`."
+    },
+    "preconditions": null,
+    "boardWrites": 0,
+    "writtenMapping": null
+  },
+  {
+    "name": "default on-disk specific, unmapped (COORD-023 discovery)",
+    "preflight": [],
+    "start": {
+      "admitted": true,
+      "mapping": "coord/prompts/tickets/T-1.md"
+    },
+    "preconditions": {
+      "ok": true
+    },
+    "boardWrites": 1,
+    "writtenMapping": "coord/prompts/tickets/T-1.md"
+  },
+  {
+    "name": "waiver over stub prompt",
+    "preflight": [],
+    "start": {
+      "admitted": true,
+      "mapping": "<ROOT>/coord/prompts/tickets/T-1.hand.md"
+    },
+    "preconditions": {
+      "ok": true
+    },
+    "boardWrites": 0,
+    "writtenMapping": null
+  },
+  {
+    "name": "specific prompt, precondition unresolved (COORD-008)",
+    "preflight": [],
+    "start": {
+      "admitted": true,
+      "mapping": "<ROOT>/coord/prompts/tickets/T-1.hand.md"
+    },
+    "preconditions": {
+      "refused": "Ticket T-1 cannot start: its prompt declares precondition artifacts that do not resolve on coord/HEAD. The prompt is stale — it was likely authored ahead of a dependency that has not landed.\nUnresolved preconditions:\n  - path:src/does-not-exist.js (not found on HEAD)\nNext: confirm the founding dependency has landed on HEAD, then update the `## Preconditions` section of <ROOT>/coord/prompts/tickets/T-1.hand.md to match repo reality before retrying `coord/scripts/gov start T-1`."
+    },
+    "boardWrites": 0,
+    "writtenMapping": null
+  },
+  {
+    "name": "specific prompt, precondition resolved",
+    "preflight": [],
+    "start": {
+      "admitted": true,
+      "mapping": "<ROOT>/coord/prompts/tickets/T-1.hand.md"
+    },
+    "preconditions": {
+      "ok": true
+    },
+    "boardWrites": 0,
+    "writtenMapping": null
+  },
+  {
+    "name": "specific prompt, no Preconditions section",
+    "preflight": [],
+    "start": {
+      "admitted": true,
+      "mapping": "<ROOT>/coord/prompts/tickets/T-1.hand.md"
+    },
+    "preconditions": {
+      "ok": true
+    },
+    "boardWrites": 0,
+    "writtenMapping": null
+  }
+]

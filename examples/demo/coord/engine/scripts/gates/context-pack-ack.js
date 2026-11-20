@@ -1,0 +1,235 @@
+"use strict";
+const { resolveEngineModule } = require("../../../paths.js");
+const COORD_DIR = require("node:path").resolve(__dirname, "..", "..", "..");
+
+const { contextPackAckViolation, repairCommand, storedViolationMessage } = require(resolveEngineModule(COORD_DIR, "scripts/context-pack-ack-contract.js"));
+
+const CONTEXT_PACK_ADVISORY_AUTHORITY_PATTERN =
+  /\b(?:candidate|inferred|scratch|stale|private|rejected|conflicted|contradicted|superseded|advisory(?:-only)?)\b/i;
+const CONTEXT_PACK_NONE_PATTERN = /^(?:none|not-required|n\/a)$/i;
+
+function createContextPackAcknowledgementGate(deps) {
+  const {
+    isMeaningfulText,
+    readBusinessContextEvidence,
+    readBusinessContextPack,
+    ticketRequiresAdrDecision,
+    ticketTouchesBusinessContextRisk,
+    toArray,
+  } = deps;
+
+  // COORD-572: every issue below describes a STATE the ack must reach. Describing
+  // the state without naming the writer is the shape of advice that produced the
+  // forbidden hand-edits COORD-612 documents, so each one also carries the
+  // sanctioned `--context-pack-ack` command. context_pack_ack is written as one
+  // whole object, so the writer command is the same for all of them.
+  // guard:context-pack-ack
+  function collectContextPackAcknowledgementIssues(ticketId, row, planState) {
+    // COORD-723: shape first, and for EVERY ticket that stores an ack — not only
+    // the ones this gate would otherwise demand one from. The checks below read
+    // strings and arrays interchangeably, so without this a legacy string-valued
+    // considered.* field passed readiness, PR creation and submit and was caught
+    // only by post-mutation board validation, after the push and the PR. A
+    // malformed object is reported alone: section/authority findings about a
+    // record that is not an acknowledgement would only bury the real repair.
+    const storedAck = planState?.context_pack_ack;
+    const shapeViolation = storedAck === undefined || storedAck === null ? null : contextPackAckViolation(storedAck);
+    if (shapeViolation) {
+      return [{
+        code: "context_pack_ack_shape",
+        message: storedViolationMessage(ticketId, shapeViolation),
+        next_steps: [
+          // Emitted through the contract command builder rather than a
+          // template, so the COORD-572 remediation harvest resolves and parses it.
+          repairCommand(ticketId) + "   # dry-run report; add --confirm to write",
+          "coord/scripts/gov scan-context-pack-acks   # read-only: every malformed acknowledgement in this workspace",
+        ],
+      }];
+    }
+    if (!ticketRequiresContextPackAcknowledgement(row, planState)) {
+      return [];
+    }
+    const ack = planState?.context_pack_ack;
+    if (!ack || typeof ack !== "object" || Array.isArray(ack)) {
+      return [{
+        code: "context_pack_ack",
+        message: `Plan state for ${ticketId} must record a structured context_pack_ack before review, including active constraints, ADRs, business rules, conflicts, stale warnings, open questions, authority use, and closeout learning disposition.`,
+        // COORD-612: this advice used to say only "record context_pack_ack in
+        // the canonical plan record" — with the writer flag absent from every
+        // help surface, three agents read that as an instruction to edit
+        // coord/.runtime/plans/<ticket>.json by hand, which governance forbids.
+        // Name the sanctioned writer instead.
+        next_steps: [
+          `coord/scripts/gov update-plan ${ticketId} --context-pack-ack '{"considered":{"active_constraints":["..."],"adrs":["none"],"business_rules":["none"],"conflicts":["none"],"stale_warnings":["none"],"open_questions":["none"]},"authority":{"constraints":["..."],"advisory_only":["..."]},"closeout_learning":{"decision":"scratch-only","rationale":"..."}}'`,
+          `Run "coord/scripts/gov update-plan --help" for the accepted JSON shape. Do NOT hand-edit coord/.runtime/plans/${ticketId}.json.`,
+          // COORD-557: the dedicated verb shows what each section must answer
+          // and carries the explicit not-applicable path.
+          `Or author it per section: coord/scripts/gov set-context-pack-ack ${ticketId}   # read-only: shows what each section must answer and the authoring command`,
+          `coord/scripts/gov set-context-pack-ack ${ticketId} --not-applicable --reason "<why no context applies>"   # only when no context applies`,
+        ],
+      }];
+    }
+
+    const issues = [];
+    const considered = ack.considered && typeof ack.considered === "object" && !Array.isArray(ack.considered)
+      ? ack.considered
+      : {};
+    const missingConsidered = [
+      "active_constraints",
+      "adrs",
+      "business_rules",
+      "conflicts",
+      "stale_warnings",
+      "open_questions",
+    ].filter((key) => !contextAckValueMeaningful(considered[key]));
+    if (missingConsidered.length > 0) {
+      issues.push({
+        // guard:context-pack-ack
+        code: "context_pack_ack_sections",
+        message: `Plan state for ${ticketId} context_pack_ack must explicitly say which ${missingConsidered.join(", ")} were considered.`,
+        next_steps: [
+          "Complete context_pack_ack.considered for active_constraints, adrs, business_rules, conflicts, stale_warnings, and open_questions.",
+          `Rewrite the whole object through the sanctioned writer: coord/scripts/gov update-plan ${ticketId} --context-pack-ack '<json>'`,
+        ],
+      });
+    }
+
+    const packRefs = Array.from(new Set([
+      ...toArray(ack.refs),
+      ...readBusinessContextEvidence(planState).refs,
+    ].map((value) => String(value || "").trim()).filter(Boolean)));
+    const packSummaries = packRefs.map((ref) => ({ ref, pack: readBusinessContextPack(ref) }));
+    const unreadable = packSummaries.find((entry) => !entry.pack.ok);
+    if (unreadable) {
+      issues.push({
+        // guard:context-pack-ack
+        code: "context_pack_ack_ref",
+        message: `Plan state for ${ticketId} context_pack_ack references ${unreadable.ref}, but it could not be read: ${unreadable.pack.error}.`,
+        next_steps: [`coord/scripts/coord business-context-pack --ticket ${ticketId} --write-default`],
+      });
+    }
+
+    const mandatory = {
+      conflicts: packSectionCount(packSummaries, "conflicts"),
+      stale_warnings: packSectionCount(packSummaries, "stale_sources"),
+      open_questions: packSectionCount(packSummaries, "open_questions"),
+    };
+    const mishandled = Object.entries(mandatory)
+      .filter(([key, count]) => count > 0 && contextAckValueIsNone(considered[key]))
+      .map(([key]) => key);
+    if (mishandled.length > 0) {
+      issues.push({
+        // guard:context-pack-ack
+        code: "context_pack_ack_mandatory_sections",
+        message: `Plan state for ${ticketId} context_pack_ack marks mandatory section(s) ${mishandled.join(", ")} as none even though the context pack contains matching items.`,
+        next_steps: [
+          "Update context_pack_ack.considered with handled conflict, stale-warning, and open-question details.",
+          `Rewrite the whole object through the sanctioned writer: coord/scripts/gov update-plan ${ticketId} --context-pack-ack '<json>'`,
+        ],
+      });
+    }
+
+    const authorityConstraints = toArray(ack.authority?.constraints);
+    const advisoryUsedAsAuthority = authorityConstraints
+      .filter((entry) => CONTEXT_PACK_ADVISORY_AUTHORITY_PATTERN.test(String(entry || "")));
+    const packAdvisoryIds = advisoryPackItemIds(packSummaries);
+    const advisoryIdSet = new Set(packAdvisoryIds.map((id) => String(id).toLowerCase()));
+    const advisoryIdsUsedAsAuthority = authorityConstraints
+      .map((entry) => String(entry || "").trim())
+      .filter((entry) => advisoryIdSet.has(entry.toLowerCase()));
+    if (advisoryUsedAsAuthority.length > 0 || advisoryIdsUsedAsAuthority.length > 0) {
+      issues.push({
+        // guard:context-pack-ack
+        code: "context_pack_advisory_authority",
+        message: `Plan state for ${ticketId} uses advisory, stale, private, rejected, inferred, or conflicted memory as implementation authority. Advisory memory may be cited only as advisory context or investigation input.`,
+        next_steps: [
+          "Move advisory, stale, private, rejected, inferred, or conflicted entries from context_pack_ack.authority.constraints to authority.advisory_only.",
+          `Rewrite the whole object through the sanctioned writer: coord/scripts/gov update-plan ${ticketId} --context-pack-ack '<json>'`,
+        ],
+      });
+    }
+
+    const closeout = ack.closeout_learning && typeof ack.closeout_learning === "object" && !Array.isArray(ack.closeout_learning)
+      ? ack.closeout_learning
+      : {};
+    const closeoutDecision = String(closeout.decision || "").trim();
+    const hasLearningBucket =
+      toArray(closeout.promote).some(isMeaningfulText) ||
+      toArray(closeout.demote).some(isMeaningfulText) ||
+      toArray(closeout.scratch_only).some(isMeaningfulText);
+    if (!closeoutDecision && !hasLearningBucket) {
+      issues.push({
+        // guard:context-pack-ack
+        code: "context_pack_closeout_learning",
+        message: `Plan state for ${ticketId} context_pack_ack must record whether new learning should be promoted, demoted, or left scratch-only before closeout.`,
+        next_steps: [
+          "Set context_pack_ack.closeout_learning.decision to promote, demote, scratch-only, mixed, or none.",
+          `Rewrite the whole object through the sanctioned writer: coord/scripts/gov update-plan ${ticketId} --context-pack-ack '<json>'`,
+        ],
+      });
+    }
+
+    return issues;
+  }
+
+  function ticketRequiresContextPackAcknowledgement(row, planState) {
+    const evidence = readBusinessContextEvidence(planState);
+    return (
+      evidence.hasContextRef ||
+      ticketTouchesBusinessContextRisk(row, planState) ||
+      ticketRequiresAdrDecision(row, planState) ||
+      Boolean(planState?.live_mcp) ||
+      Boolean(planState?.bootstrap_risk)
+    );
+  }
+
+  function contextAckValueMeaningful(value) {
+    if (Array.isArray(value)) return value.some(isMeaningfulText);
+    return isMeaningfulText(value);
+  }
+
+  function contextAckValueIsNone(value) {
+    const values = Array.isArray(value) ? value : [value];
+    const meaningful = values.map((entry) => String(entry || "").trim()).filter(Boolean);
+    return meaningful.length > 0 && meaningful.every((entry) => CONTEXT_PACK_NONE_PATTERN.test(entry));
+  }
+
+  function packSectionCount(packSummaries, sectionName) {
+    return packSummaries.reduce((total, entry) => {
+      if (!entry.pack.ok) return total;
+      const items = entry.pack.value?.sections?.[sectionName]?.items;
+      return total + (Array.isArray(items) ? items.length : 0);
+    }, 0);
+  }
+
+  function advisoryPackItemIds(packSummaries) {
+    const advisorySections = ["conflicts", "stale_sources", "open_questions", "history", "adr_history"];
+    const ids = [];
+    for (const entry of packSummaries) {
+      if (!entry.pack.ok) continue;
+      for (const sectionName of advisorySections) {
+        for (const item of entry.pack.value?.sections?.[sectionName]?.items || []) {
+          const id = item?.id || item?.record_id || item?.source_record_id;
+          if (id) ids.push(String(id));
+        }
+      }
+      for (const item of entry.pack.value?.proposed_ticket_recommendations || []) {
+        if (item?.source_record_id) ids.push(String(item.source_record_id));
+      }
+    }
+    return Array.from(new Set(ids));
+  }
+
+  return {
+    advisoryPackItemIds,
+    collectContextPackAcknowledgementIssues,
+    contextAckValueIsNone,
+    contextAckValueMeaningful,
+    packSectionCount,
+    ticketRequiresContextPackAcknowledgement,
+  };
+}
+
+module.exports = {
+  createContextPackAcknowledgementGate,
+};

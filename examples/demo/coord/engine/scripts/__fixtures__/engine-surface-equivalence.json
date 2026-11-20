@@ -1,0 +1,486 @@
+{
+  "ticket": "COORD-958",
+  "captured_on": "pre-merge origin/dev f533e4aa (unmodified worktree base)",
+  "captured_cases": 43,
+  "cases": [
+    {
+      "name": "check: all exact items match passes",
+      "outcome": {
+        "exit": 0,
+        "output": "Template sync manifest: coord/TEMPLATE_SYNC_MANIFEST.json\nManifest version: fixture-1\nRepo root: <FIXTURE>\n[PASS] coord/engine/scripts/lifecycle.js\nSummary: 1 passed, 0 warnings, 0 failures.\n"
+      }
+    },
+    {
+      "name": "check: exact checksum drift fails",
+      "outcome": {
+        "exit": 1,
+        "output": "Template sync manifest: coord/TEMPLATE_SYNC_MANIFEST.json\nManifest version: fixture-1\nRepo root: <FIXTURE>\n[FAIL] Checksum drift for coord/engine/scripts/lifecycle.js: expected sha256=87428fc522803d31065e7bce3cf03fe475096631e5e07bbd7a0fde60c4cf25c7 bytes=2, got sha256=7f8b1dfc466b6249f06cbe55c9174df2578e7754da793fded244ef5cba2a38f1 bytes=8\nSummary: 0 passed, 0 warnings, 1 failures.\n"
+      }
+    },
+    {
+      "name": "check: exact missing file fails",
+      "outcome": {
+        "exit": 1,
+        "output": "Template sync manifest: coord/TEMPLATE_SYNC_MANIFEST.json\nManifest version: fixture-1\nRepo root: <FIXTURE>\n[FAIL] Missing file: coord/engine/scripts/lifecycle.js\nSummary: 0 passed, 0 warnings, 1 failures.\n"
+      }
+    },
+    {
+      "name": "check: advisory drift warns and passes",
+      "outcome": {
+        "exit": 0,
+        "output": "Template sync manifest: coord/TEMPLATE_SYNC_MANIFEST.json\nManifest version: fixture-1\nRepo root: <FIXTURE>\n[WARN] Checksum drift for coord/engine/scripts/lifecycle.js: expected sha256=87428fc522803d31065e7bce3cf03fe475096631e5e07bbd7a0fde60c4cf25c7 bytes=2, got sha256=7f8b1dfc466b6249f06cbe55c9174df2578e7754da793fded244ef5cba2a38f1 bytes=8\nSummary: 0 passed, 1 warnings, 0 failures.\n"
+      }
+    },
+    {
+      "name": "check: advisory drift fails under --strict",
+      "outcome": {
+        "exit": 1,
+        "output": "Template sync manifest: coord/TEMPLATE_SYNC_MANIFEST.json\nManifest version: fixture-1\nRepo root: <FIXTURE>\n[FAIL] Checksum drift for coord/engine/scripts/lifecycle.js: expected sha256=87428fc522803d31065e7bce3cf03fe475096631e5e07bbd7a0fde60c4cf25c7 bytes=2, got sha256=7f8b1dfc466b6249f06cbe55c9174df2578e7754da793fded244ef5cba2a38f1 bytes=8\nSummary: 0 passed, 0 warnings, 1 failures.\n"
+      }
+    },
+    {
+      "name": "check: duplicate manifest path refused",
+      "outcome": {
+        "exit": 1,
+        "output": "ERROR: Manifest contains duplicate path coord/engine/scripts/lifecycle.js.\n"
+      }
+    },
+    {
+      "name": "check: item without sha256 contract refused",
+      "outcome": {
+        "exit": 1,
+        "output": "ERROR: Manifest item coord/engine/scripts/lifecycle.js is missing a valid sha256 checksum contract.\n"
+      }
+    },
+    {
+      "name": "check: unsupported schema_version refused",
+      "outcome": {
+        "exit": 1,
+        "output": "ERROR: Unsupported manifest schema_version 2.\n"
+      }
+    },
+    {
+      "name": "check: empty items refused",
+      "outcome": {
+        "exit": 1,
+        "output": "ERROR: Manifest must contain a non-empty items array.\n"
+      }
+    },
+    {
+      "name": "check: unparseable manifest refused",
+      "outcome": {
+        "exit": 1,
+        "output": "ERROR: Could not parse template sync manifest at <FIXTURE>/coord/TEMPLATE_SYNC_MANIFEST.json: Expected property name or '}' in JSON at position 2 (line 1 column 3)\n"
+      }
+    },
+    {
+      "name": "check: absent manifest refused",
+      "outcome": {
+        "exit": 1,
+        "output": "ERROR: Could not read template sync manifest at <FIXTURE>/coord/TEMPLATE_SYNC_MANIFEST.json: ENOENT: no such file or directory, open '<FIXTURE>/coord/TEMPLATE_SYNC_MANIFEST.json'\n"
+      }
+    },
+    {
+      "name": "check: --json output on drift",
+      "outcome": {
+        "exit": 1,
+        "output": "{\n  \"ok\": false,\n  \"repo_root\": \"<FIXTURE>\",\n  \"manifest_path\": \"coord/TEMPLATE_SYNC_MANIFEST.json\",\n  \"manifest_version\": \"fixture-1\",\n  \"strict\": false,\n  \"counts\": {\n    \"total\": 1,\n    \"passed\": 0,\n    \"warnings\": 0,\n    \"failures\": 1\n  },\n  \"failures\": [\n    {\n      \"path\": \"coord/engine/scripts/lifecycle.js\",\n      \"policy\": \"exact\",\n      \"version_stamp\": null,\n      \"expected\": {\n        \"algo\": \"sha256\",\n        \"hex\": \"87428fc522803d31065e7bce3cf03fe475096631e5e07bbd7a0fde60c4cf25c7\",\n        \"bytes\": 2\n      },\n      \"actual\": {\n        \"algo\": \"sha256\",\n        \"hex\": \"7f8b1dfc466b6249f06cbe55c9174df2578e7754da793fded244ef5cba2a38f1\",\n        \"bytes\": 8\n      },\n      \"status\": \"mismatch\",\n      \"message\": \"Checksum drift for coord/engine/scripts/lifecycle.js: expected sha256=87428fc522803d31065e7bce3cf03fe475096631e5e07bbd7a0fde60c4cf25c7 bytes=2, got sha256=7f8b1dfc466b6249f06cbe55c9174df2578e7754da793fded244ef5cba2a38f1 bytes=8\"\n    }\n  ],\n  \"warnings\": [],\n  \"results\": [\n    {\n      \"path\": \"coord/engine/scripts/lifecycle.js\",\n      \"policy\": \"exact\",\n      \"version_stamp\": null,\n      \"expected\": {\n        \"algo\": \"sha256\",\n        \"hex\": \"87428fc522803d31065e7bce3cf03fe475096631e5e07bbd7a0fde60c4cf25c7\",\n        \"bytes\": 2\n      },\n      \"actual\": {\n        \"algo\": \"sha256\",\n        \"hex\": \"7f8b1dfc466b6249f06cbe55c9174df2578e7754da793fded244ef5cba2a38f1\",\n        \"bytes\": 8\n      },\n      \"status\": \"mismatch\",\n      \"message\": \"Checksum drift for coord/engine/scripts/lifecycle.js: expected sha256=87428fc522803d31065e7bce3cf03fe475096631e5e07bbd7a0fde60c4cf25c7 bytes=2, got sha256=7f8b1dfc466b6249f06cbe55c9174df2578e7754da793fded244ef5cba2a38f1 bytes=8\"\n    }\n  ]\n}\n"
+      }
+    },
+    {
+      "name": "coverage: untracked engine-managed file fails (COORD-606/607)",
+      "outcome": {
+        "exit": 1,
+        "output": "Template sync manifest: coord/TEMPLATE_SYNC_MANIFEST.json\nManifest version: fixture-1\nRepo root: <FIXTURE>\n[PASS] coord/engine/scripts/lifecycle.js\nSummary: 1 passed, 0 warnings, 1 failures.\nCoverage audit (rule-based, git): 2 engine-managed file(s) under coord/scripts, coord/board, coord/engine; 1 untracked; 0 excluded with a recorded reason.\n[UNTRACKED] coord/engine/scripts/journal.js\n"
+      }
+    },
+    {
+      "name": "coverage: fully tracked engine surface passes",
+      "outcome": {
+        "exit": 0,
+        "output": "Template sync manifest: coord/TEMPLATE_SYNC_MANIFEST.json\nManifest version: fixture-1\nRepo root: <FIXTURE>\n[PASS] coord/engine/scripts/lifecycle.js\n[PASS] coord/engine/scripts/journal.js\nSummary: 2 passed, 0 warnings, 0 failures.\nCoverage audit (rule-based, git): 2 engine-managed file(s) under coord/scripts, coord/board, coord/engine; 0 untracked; 0 excluded with a recorded reason.\n"
+      }
+    },
+    {
+      "name": "check: unknown option is a usage error",
+      "outcome": {
+        "exit": 2,
+        "output": "Unknown option: --bogus\nUsage: coord/scripts/check-template-sync.sh [options]\n\nVerify reusable template-canonical governance surfaces against\ncoord/TEMPLATE_SYNC_MANIFEST.json.\n\nOptions:\n  --repo-root <path>   Project root to validate. Defaults to the current template/project root.\n  --manifest <path>    Manifest file to use. Defaults to coord/TEMPLATE_SYNC_MANIFEST.json.\n  --strict             Treat advisory drift as a failure.\n  --audit-coverage     Also verify that the manifest tracks every engine-managed\n                       file discovered by the COORD-607 rule over the roots in\n                       coord/engine/docs/GCV4_ENGINE_CONFIG_SEAM.md, minus the reasoned\n                       exclusions in coord/engine/scripts/template-sync-discovery.js.\n                       An untracked engine-managed file FAILS the check (COORD-606\n                       made this report-only; COORD-607 made coverage enforceable\n                       because a silent gap is what let engine code drift unseen).\n  --json               Emit machine-readable JSON instead of plain text.\n  -h, --help           Show this help text.\n\nExit codes:\n  0  All exact-match surfaces passed (advisory drift may still be present unless --strict is used)\n  1  Manifest error, a required drift check failed, or (with --audit-coverage) an\n     engine-managed file is untracked\n"
+      }
+    },
+    {
+      "name": "pin: verify with no pin reports no_pin",
+      "outcome": {
+        "ok": false,
+        "pinned": false,
+        "problems": [
+          {
+            "code": "no_pin",
+            "detail": "No engine pin recorded. Run `gov verify-engine --pin` to pin the current engine surface."
+          }
+        ]
+      }
+    },
+    {
+      "name": "pin: verify is in-sync immediately after pin",
+      "outcome": {
+        "ok": true,
+        "pinned": true,
+        "manifest_fingerprint_drift": false,
+        "drifted_files": [],
+        "problems": []
+      }
+    },
+    {
+      "name": "pin: engine file edit reports changed with the path",
+      "outcome": {
+        "ok": false,
+        "pinned": true,
+        "manifest_fingerprint_drift": false,
+        "drifted_files": [
+          {
+            "path": "coord/engine/scripts/lifecycle.js",
+            "kind": "changed",
+            "detail": "pinned sha256=f2ee8bd4718dfbdf6dee8d1fde539806a10126b6476e966726ed17d478dc8e3c bytes=9, live sha256=68f01b289aedcf28e96fce1f9444365e83b9bfc7e1bf32df20f1f15966835316 bytes=7"
+          }
+        ],
+        "problems": [
+          {
+            "code": "engine_file_drift",
+            "detail": "1 engine file(s) drifted from the pin",
+            "files": [
+              {
+                "path": "coord/engine/scripts/lifecycle.js",
+                "kind": "changed",
+                "detail": "pinned sha256=f2ee8bd4718dfbdf6dee8d1fde539806a10126b6476e966726ed17d478dc8e3c bytes=9, live sha256=68f01b289aedcf28e96fce1f9444365e83b9bfc7e1bf32df20f1f15966835316 bytes=7"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "pin: manifest edit reports manifest_fingerprint_drift",
+      "outcome": {
+        "ok": false,
+        "pinned": true,
+        "manifest_fingerprint_drift": true,
+        "drifted_files": [],
+        "problems": [
+          {
+            "code": "manifest_fingerprint_drift",
+            "detail": "TEMPLATE_SYNC_MANIFEST.json fingerprint changed: pinned sha256=92316ae12e92b2c6735246eba16c5b08c3b81342736c8e163aa932091ec1abed bytes=578, live sha256=9392bc1eaaee4e7eed2a3a8881308f077cf44cac96a7cf22c51a6c0ba0d415ef bytes=598",
+            "pinned": {
+              "sha256": "92316ae12e92b2c6735246eba16c5b08c3b81342736c8e163aa932091ec1abed",
+              "bytes": 578
+            },
+            "live": {
+              "sha256": "9392bc1eaaee4e7eed2a3a8881308f077cf44cac96a7cf22c51a6c0ba0d415ef",
+              "bytes": 598
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "pin: deleted engine file reports missing",
+      "outcome": {
+        "ok": false,
+        "pinned": true,
+        "manifest_fingerprint_drift": false,
+        "drifted_files": [
+          {
+            "path": "coord/engine/scripts/lifecycle.js",
+            "kind": "missing",
+            "detail": "tracked file is missing on disk"
+          }
+        ],
+        "problems": [
+          {
+            "code": "engine_file_drift",
+            "detail": "1 engine file(s) drifted from the pin",
+            "files": [
+              {
+                "path": "coord/engine/scripts/lifecycle.js",
+                "kind": "missing",
+                "detail": "tracked file is missing on disk"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "pin: newly tracked item reports added",
+      "outcome": {
+        "ok": false,
+        "pinned": true,
+        "manifest_fingerprint_drift": true,
+        "drifted_files": [
+          {
+            "path": "coord/engine/scripts/extra.js",
+            "kind": "added",
+            "detail": "file not in pin (added to surface)"
+          }
+        ],
+        "problems": [
+          {
+            "code": "manifest_fingerprint_drift",
+            "detail": "TEMPLATE_SYNC_MANIFEST.json fingerprint changed: pinned sha256=92316ae12e92b2c6735246eba16c5b08c3b81342736c8e163aa932091ec1abed bytes=578, live sha256=f5600661960d6c436c8e67b8567d92ed461bf8b7e32f79a3d845795e3892bd9b bytes=825",
+            "pinned": {
+              "sha256": "92316ae12e92b2c6735246eba16c5b08c3b81342736c8e163aa932091ec1abed",
+              "bytes": 578
+            },
+            "live": {
+              "sha256": "f5600661960d6c436c8e67b8567d92ed461bf8b7e32f79a3d845795e3892bd9b",
+              "bytes": 825
+            }
+          },
+          {
+            "code": "engine_file_drift",
+            "detail": "1 engine file(s) drifted from the pin",
+            "files": [
+              {
+                "path": "coord/engine/scripts/extra.js",
+                "kind": "added",
+                "detail": "file not in pin (added to surface)"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "pin: dropped item reports removed",
+      "outcome": {
+        "ok": false,
+        "pinned": true,
+        "manifest_fingerprint_drift": true,
+        "drifted_files": [
+          {
+            "path": "coord/engine/scripts/journal.js",
+            "kind": "removed",
+            "detail": "file in pin no longer tracked by manifest"
+          }
+        ],
+        "problems": [
+          {
+            "code": "manifest_fingerprint_drift",
+            "detail": "TEMPLATE_SYNC_MANIFEST.json fingerprint changed: pinned sha256=92316ae12e92b2c6735246eba16c5b08c3b81342736c8e163aa932091ec1abed bytes=578, live sha256=2b8450ffd01d28382db909b91ddd49d84e0dd98739e82f8b3ed31adcfafcb090 bytes=329",
+            "pinned": {
+              "sha256": "92316ae12e92b2c6735246eba16c5b08c3b81342736c8e163aa932091ec1abed",
+              "bytes": 578
+            },
+            "live": {
+              "sha256": "2b8450ffd01d28382db909b91ddd49d84e0dd98739e82f8b3ed31adcfafcb090",
+              "bytes": 329
+            }
+          },
+          {
+            "code": "engine_file_drift",
+            "detail": "1 engine file(s) drifted from the pin",
+            "files": [
+              {
+                "path": "coord/engine/scripts/journal.js",
+                "kind": "removed",
+                "detail": "file in pin no longer tracked by manifest"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "pin: file absent at pin time reports appeared",
+      "outcome": {
+        "ok": false,
+        "pinned": true,
+        "manifest_fingerprint_drift": false,
+        "drifted_files": [
+          {
+            "path": "coord/engine/scripts/lifecycle.js",
+            "kind": "appeared",
+            "detail": "file was missing at pin time, now present"
+          }
+        ],
+        "problems": [
+          {
+            "code": "engine_file_drift",
+            "detail": "1 engine file(s) drifted from the pin",
+            "files": [
+              {
+                "path": "coord/engine/scripts/lifecycle.js",
+                "kind": "appeared",
+                "detail": "file was missing at pin time, now present"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "pin: executable-bit flip reports mode-changed",
+      "outcome": {
+        "ok": false,
+        "pinned": true,
+        "manifest_fingerprint_drift": false,
+        "drifted_files": [
+          {
+            "path": "coord/engine/scripts/lifecycle.js",
+            "kind": "mode-changed",
+            "detail": "pinned Git mode=644, live Git mode=755"
+          }
+        ],
+        "problems": [
+          {
+            "code": "engine_file_drift",
+            "detail": "1 engine file(s) drifted from the pin",
+            "files": [
+              {
+                "path": "coord/engine/scripts/lifecycle.js",
+                "kind": "mode-changed",
+                "detail": "pinned Git mode=644, live Git mode=755"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "pin: advisory items are not pinned",
+      "outcome": {
+        "pinned_files": [
+          "coord/engine/scripts/journal.js",
+          "coord/engine/scripts/lifecycle.js"
+        ]
+      }
+    },
+    {
+      "name": "pin: verifyManifest clean on a consistent tree",
+      "outcome": {
+        "ok": true,
+        "failures": []
+      }
+    },
+    {
+      "name": "pin: verifyManifest reports checksum-drift (COORD-591 manifest-vs-files)",
+      "outcome": {
+        "ok": false,
+        "pinned": true,
+        "problems": [
+          {
+            "path": "coord/engine/scripts/lifecycle.js",
+            "kind": "checksum-drift",
+            "detail": "expected sha256=f2ee8bd4718dfbdf6dee8d1fde539806a10126b6476e966726ed17d478dc8e3c bytes=9, got sha256=893105a87e63183bf7c064d2248bffc21f64f311cf22c700cf89d211d50e355d bytes=8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "pin: verifyManifest reports a missing tracked file",
+      "outcome": {
+        "ok": false,
+        "failures": [
+          {
+            "path": "coord/engine/scripts/journal.js",
+            "kind": "missing"
+          }
+        ]
+      }
+    },
+    {
+      "name": "pin: pin without a manifest refused",
+      "outcome": {
+        "refused": "Engine manifest not found: <FIXTURE>/coord/TEMPLATE_SYNC_MANIFEST.json"
+      }
+    },
+    {
+      "name": "pin: invalid manifest JSON refused",
+      "outcome": {
+        "refused": "Engine manifest is not valid JSON: <FIXTURE>/coord/TEMPLATE_SYNC_MANIFEST.json (Expected property name or '}' in JSON at position 2 (line 1 column 3))"
+      }
+    },
+    {
+      "name": "pin: invalid pin JSON refused",
+      "outcome": {
+        "refused": "Engine pin file is not valid JSON: <FIXTURE>/coord/engine-pin.json (Expected property name or '}' in JSON at position 2 (line 1 column 3))"
+      }
+    },
+    {
+      "name": "closeout: non-engine ticket with pin drift admitted",
+      "outcome": {
+        "admitted": true,
+        "value": null
+      }
+    },
+    {
+      "name": "closeout: engine-facing clean surface admitted",
+      "outcome": {
+        "admitted": true,
+        "value": null
+      }
+    },
+    {
+      "name": "closeout: engine-facing manifest drift refused",
+      "outcome": {
+        "refused": "Ticket COORD-958 is Repo X with engine-facing changes (coord/engine/scripts/lifecycle.js) but the donor integrity surfaces are DRIFTED — check-template-sync drift: coord/engine/scripts/lifecycle.js (checksum-drift). Marking done now would publish an engine change without re-stamped integrity (COORD-591; the COORD-512 sequence). Re-stamp coord/TEMPLATE_SYNC_MANIFEST.json and re-pin with `gov verify-engine --pin` as part of the reviewed change, merge that into the workspace branch, then retry."
+      }
+    },
+    {
+      "name": "closeout: engine-facing pin drift refused with named files",
+      "outcome": {
+        "refused": "Ticket COORD-958 is Repo X with engine-facing changes (coord/engine/scripts/lifecycle.js) but the donor integrity surfaces are DRIFTED — verify-engine drift: coord/engine/scripts/lifecycle.js (changed). Marking done now would publish an engine change without re-stamped integrity (COORD-591; the COORD-512 sequence). Re-stamp coord/TEMPLATE_SYNC_MANIFEST.json and re-pin with `gov verify-engine --pin` as part of the reviewed change, merge that into the workspace branch, then retry."
+      }
+    },
+    {
+      "name": "closeout: engine-facing no pin refused",
+      "outcome": {
+        "refused": "Ticket COORD-958 is Repo X with engine-facing changes (coord/engine/scripts/lifecycle.js) but the donor integrity surfaces are DRIFTED — verify-engine drift: no_pin. Marking done now would publish an engine change without re-stamped integrity (COORD-591; the COORD-512 sequence). Re-stamp coord/TEMPLATE_SYNC_MANIFEST.json and re-pin with `gov verify-engine --pin` as part of the reviewed change, merge that into the workspace branch, then retry."
+      }
+    },
+    {
+      "name": "closeout: both surfaces drifted refused together",
+      "outcome": {
+        "refused": "Ticket COORD-958 is Repo X with engine-facing changes (coord/engine/scripts/lifecycle.js) but the donor integrity surfaces are DRIFTED — check-template-sync drift: coord/engine/scripts/lifecycle.js (missing); verify-engine drift: manifest_fingerprint_drift. Marking done now would publish an engine change without re-stamped integrity (COORD-591; the COORD-512 sequence). Re-stamp coord/TEMPLATE_SYNC_MANIFEST.json and re-pin with `gov verify-engine --pin` as part of the reviewed change, merge that into the workspace branch, then retry."
+      }
+    },
+    {
+      "name": "closeout: manifest change in plan surface is engine-facing",
+      "outcome": {
+        "refused": "Ticket COORD-958 is Repo X with engine-facing changes (coord/TEMPLATE_SYNC_MANIFEST.json) but the donor integrity surfaces are DRIFTED — check-template-sync drift: coord/engine/scripts/lifecycle.js (checksum-drift). Marking done now would publish an engine change without re-stamped integrity (COORD-591; the COORD-512 sequence). Re-stamp coord/TEMPLATE_SYNC_MANIFEST.json and re-pin with `gov verify-engine --pin` as part of the reviewed change, merge that into the workspace branch, then retry."
+      }
+    },
+    {
+      "name": "closeout: engine-facing without pin wiring refused",
+      "outcome": {
+        "refused": "createLifecycleRepoXCloseout requires an enginePin surface to verify Repo X engine integrity (COORD-591)."
+      }
+    },
+    {
+      "name": "closeout: fixture pin overrides a drifted live pin",
+      "outcome": {
+        "admitted": true,
+        "value": null
+      }
+    },
+    {
+      "name": "closeout: drifted fixture pin refused without override",
+      "outcome": {
+        "refused": "Ticket COORD-958 is Repo X with engine-facing changes (coord/engine/scripts/lifecycle.js) but the donor integrity surfaces are DRIFTED — verify-engine drift: coord/engine/scripts/journal.js (changed). Marking done now would publish an engine change without re-stamped integrity (COORD-591; the COORD-512 sequence). Re-stamp coord/TEMPLATE_SYNC_MANIFEST.json and re-pin with `gov verify-engine --pin` as part of the reviewed change, merge that into the workspace branch, then retry."
+      }
+    },
+    {
+      "name": "closeout: real pin on an edited engine file refused",
+      "outcome": {
+        "refused": "Ticket COORD-958 is Repo X with engine-facing changes (coord/engine/scripts/lifecycle.js) but the donor integrity surfaces are DRIFTED — check-template-sync drift: coord/engine/scripts/lifecycle.js (checksum-drift); verify-engine drift: coord/engine/scripts/lifecycle.js (changed). Marking done now would publish an engine change without re-stamped integrity (COORD-591; the COORD-512 sequence). Re-stamp coord/TEMPLATE_SYNC_MANIFEST.json and re-pin with `gov verify-engine --pin` as part of the reviewed change, merge that into the workspace branch, then retry."
+      }
+    },
+    {
+      "name": "closeout: real pin clean on pinned tree admitted",
+      "outcome": {
+        "admitted": true,
+        "value": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,1347 @@
+{
+  "schema_version": 1,
+  "ticket": "COORD-863",
+  "description": "Registered same-name compatibility shims left at legacy coord/ paths by the COORD-589 engine migration. Paths are coord-relative. Each shim names its canonical engine target (always engine/<path>) and a kind: permanent shims are the stable adopter entrypoints listed in stable_entrypoints and stay at coord/scripts indefinitely; every other shim is removable once no live reference spells its legacy path. A removable internal-module shim is exactly `module.exports = require(resolveEngineModule(coordDir, \"engine-only:<path>\"))`; a CLI shim re-dispatches the engine module's main. An ES module shim (.mjs) re-exports the named and default bindings of its engine target by fixed relative specifier and, as a CLI shim, calls the engine main when it is the entrypoint. Test suites (*.test.js) are never entrypoints. coord/paths.js validates this file; the engine-coverage census keeps registered shims out of the production census.",
+  "stable_entrypoints": [
+    "scripts/gov",
+    "scripts/agent",
+    "scripts/coord",
+    "scripts/governance.js",
+    "scripts/coord-cli.js",
+    "scripts/hooks/*.js",
+    "scripts/runtime-authority-hook.js",
+    "scripts/test-runner.js",
+    "scripts/check-template-sync.sh",
+    "scripts/template-sync-discovery.js",
+    "scripts/governance-mcp.js",
+    "scripts/mcp-optional-launcher.js",
+    "scripts/quality-propose-cron.js"
+  ],
+  "shims": [
+    {
+      "path": "scripts/adapters/live-case-adapter-reference.js",
+      "target": "engine/scripts/adapters/live-case-adapter-reference.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/adapters/live-case-fixture-promotion.js",
+      "target": "engine/scripts/adapters/live-case-fixture-promotion.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/adapters/temp-access-cleanup-reference.js",
+      "target": "engine/scripts/adapters/temp-access-cleanup-reference.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/board-rebuild.js",
+      "target": "engine/scripts/board-rebuild.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/continuity-cockpit-model.js",
+      "target": "engine/scripts/continuity-cockpit-model.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coord-ui-access-core.js",
+      "target": "engine/scripts/coord-ui-access-core.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coord-ui-bootstrap-risk-view-model.js",
+      "target": "engine/scripts/coord-ui-bootstrap-risk-view-model.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coord-ui-launch.js",
+      "target": "engine/scripts/coord-ui-launch.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coord-ui-live-mcp-view-model.js",
+      "target": "engine/scripts/coord-ui-live-mcp-view-model.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coord-ui-path-boundary.js",
+      "target": "engine/scripts/coord-ui-path-boundary.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/feature-proof-resolution.js",
+      "target": "engine/scripts/feature-proof-resolution.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-artifact-model.js",
+      "target": "engine/scripts/requirements-artifact-model.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-baseline-gate.js",
+      "target": "engine/scripts/requirements-baseline-gate.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-cockpit-model.js",
+      "target": "engine/scripts/requirements-cockpit-model.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-command-contracts.js",
+      "target": "engine/scripts/requirements-command-contracts.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-conformance.js",
+      "target": "engine/scripts/requirements-conformance.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-domain-boundary.js",
+      "target": "engine/scripts/requirements-domain-boundary.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-donor-derived.js",
+      "target": "engine/scripts/requirements-donor-derived.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-donor-reuse.js",
+      "target": "engine/scripts/requirements-donor-reuse.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-evidence-policy.js",
+      "target": "engine/scripts/requirements-evidence-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-generalization-audit.js",
+      "target": "engine/scripts/requirements-generalization-audit.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-import.js",
+      "target": "engine/scripts/requirements-import.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-linkage-backfill.js",
+      "target": "engine/scripts/requirements-linkage-backfill.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-linkage.js",
+      "target": "engine/scripts/requirements-linkage.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-persona-workflow.js",
+      "target": "engine/scripts/requirements-persona-workflow.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-review-pack.js",
+      "target": "engine/scripts/requirements-review-pack.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-screen-coverage.js",
+      "target": "engine/scripts/requirements-screen-coverage.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-sequencing.js",
+      "target": "engine/scripts/requirements-sequencing.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-stale-impact.js",
+      "target": "engine/scripts/requirements-stale-impact.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-surface-conformance.js",
+      "target": "engine/scripts/requirements-surface-conformance.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-traceability.js",
+      "target": "engine/scripts/requirements-traceability.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-walking-skeleton.js",
+      "target": "engine/scripts/requirements-walking-skeleton.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/requirements-workflow-alignment.js",
+      "target": "engine/scripts/requirements-workflow-alignment.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/business-context-pack-test-fixtures.js",
+      "target": "engine/scripts/business-context-pack-test-fixtures.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/business-context-pack.js",
+      "target": "engine/scripts/business-context-pack.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/business-discovery-source.js",
+      "target": "engine/scripts/business-discovery-source.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/business-discovery-synthesize.js",
+      "target": "engine/scripts/business-discovery-synthesize.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/business-discovery.js",
+      "target": "engine/scripts/business-discovery.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/decision-extractor.js",
+      "target": "engine/scripts/decision-extractor.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/domain-discovery-adapters.js",
+      "target": "engine/scripts/domain-discovery-adapters.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/memory-classification.js",
+      "target": "engine/scripts/memory-classification.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/memory-corpus-guard.js",
+      "target": "engine/scripts/memory-corpus-guard.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/memory-eval.js",
+      "target": "engine/scripts/memory-eval.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/memory-graph.js",
+      "target": "engine/scripts/memory-graph.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/memory-vector.js",
+      "target": "engine/scripts/memory-vector.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/onboard.js",
+      "target": "engine/scripts/onboard.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/recall.js",
+      "target": "engine/scripts/recall.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/evidence-authority.js",
+      "target": "engine/scripts/evidence-authority.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/static-config-declaration.js",
+      "target": "engine/scripts/static-config-declaration.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/knowledge-claim-compiler.js",
+      "target": "engine/scripts/knowledge-claim-compiler.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/insight-reports.js",
+      "target": "engine/scripts/insight-reports.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/prework-pack.js",
+      "target": "engine/scripts/prework-pack.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/summary-tiers.js",
+      "target": "engine/scripts/summary-tiers.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/learned-rule-promotion.js",
+      "target": "engine/scripts/learned-rule-promotion.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/track-presets.js",
+      "target": "engine/scripts/track-presets.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/exploration-promotion.js",
+      "target": "engine/scripts/exploration-promotion.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/a11y-policy.js",
+      "target": "engine/scripts/a11y-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/affected-targets.js",
+      "target": "engine/scripts/affected-targets.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/arch-checks.js",
+      "target": "engine/scripts/arch-checks.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/audit-policy.js",
+      "target": "engine/scripts/audit-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/contract-policy.js",
+      "target": "engine/scripts/contract-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coverage-maturity.js",
+      "target": "engine/scripts/coverage-maturity.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coverage-policy.js",
+      "target": "engine/scripts/coverage-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coverage-rollup-cron.js",
+      "target": "engine/scripts/coverage-rollup-cron.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gate-artifact-schema.js",
+      "target": "engine/scripts/gate-artifact-schema.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gate-plan.js",
+      "target": "engine/scripts/gate-plan.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gate-proc-registry.js",
+      "target": "engine/scripts/gate-proc-registry.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gate-result.js",
+      "target": "engine/scripts/gate-result.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gate-runtime.js",
+      "target": "engine/scripts/gate-runtime.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gates.js",
+      "target": "engine/scripts/gates.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gates/adr.js",
+      "target": "engine/scripts/gates/adr.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gates/business-context.js",
+      "target": "engine/scripts/gates/business-context.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gates/context-pack-ack.js",
+      "target": "engine/scripts/gates/context-pack-ack.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gates/managed-evidence.js",
+      "target": "engine/scripts/gates/managed-evidence.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gates/readiness.js",
+      "target": "engine/scripts/gates/readiness.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gates/registry.js",
+      "target": "engine/scripts/gates/registry.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/gates/review-closeout.js",
+      "target": "engine/scripts/gates/review-closeout.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/perf-budget-policy.js",
+      "target": "engine/scripts/perf-budget-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/sast-policy.js",
+      "target": "engine/scripts/sast-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/supply-chain-policy.js",
+      "target": "engine/scripts/supply-chain-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/track-evidence-policy.js",
+      "target": "engine/scripts/track-evidence-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/analytics-gate.js",
+      "target": "engine/scripts/analytics-gate.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/content-gate.js",
+      "target": "engine/scripts/content-gate.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/infra-gate.js",
+      "target": "engine/scripts/infra-gate.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/data-contract-gate.js",
+      "target": "engine/scripts/data-contract-gate.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/decomposition-proof-gate.js",
+      "target": "engine/scripts/decomposition-proof-gate.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/quality-propose-cron.js",
+      "target": "engine/scripts/quality-propose-cron.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/bounded-process-runner.js",
+      "target": "engine/scripts/bounded-process-runner.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/comment-lexer.js",
+      "target": "engine/scripts/comment-lexer.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/prodloc-attribution.js",
+      "target": "engine/scripts/prodloc-attribution.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/track-registry.js",
+      "target": "engine/scripts/track-registry.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/adr-reference.js",
+      "target": "engine/scripts/adr-reference.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/adr-validator.js",
+      "target": "engine/scripts/adr-validator.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/check-testing-baseline.js",
+      "target": "engine/scripts/check-testing-baseline.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/quality-scan.js",
+      "target": "engine/scripts/quality-scan.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/triage-core.js",
+      "target": "engine/scripts/triage-core.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/review-lens-catalog.js",
+      "target": "engine/scripts/review-lens-catalog.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/prompt-coverage.js",
+      "target": "engine/scripts/prompt-coverage.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/prompt-paths.js",
+      "target": "engine/scripts/prompt-paths.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/publishability-check.js",
+      "target": "engine/scripts/publishability-check.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/journal.js",
+      "target": "engine/scripts/journal.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/journal-chain.js",
+      "target": "engine/scripts/journal-chain.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/journal-loss-guard.js",
+      "target": "engine/scripts/journal-loss-guard.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/journal-repair.js",
+      "target": "engine/scripts/journal-repair.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/journal-retention.js",
+      "target": "engine/scripts/journal-retention.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/journal-seal.js",
+      "target": "engine/scripts/journal-seal.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/journal-signature-trust.js",
+      "target": "engine/scripts/journal-signature-trust.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/journal-signing.js",
+      "target": "engine/scripts/journal-signing.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/journal-snapshots.js",
+      "target": "engine/scripts/journal-snapshots.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/chain-migration-signing.js",
+      "target": "engine/scripts/chain-migration-signing.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/chain-transition-signer.js",
+      "target": "engine/scripts/chain-transition-signer.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governance-side-effects.js",
+      "target": "engine/scripts/governance-side-effects.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/otlp-export.js",
+      "target": "engine/scripts/otlp-export.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/landing-audit-vocabulary.js",
+      "target": "engine/scripts/landing-audit-vocabulary.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/landing-audit.js",
+      "target": "engine/scripts/landing-audit.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/landing-corrections.js",
+      "target": "engine/scripts/landing-corrections.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/landing-decision-packet.js",
+      "target": "engine/scripts/landing-decision-packet.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/landing-gh.js",
+      "target": "engine/scripts/landing-gh.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/landing-reconciliation.js",
+      "target": "engine/scripts/landing-reconciliation.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/landing-resolution.js",
+      "target": "engine/scripts/landing-resolution.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/control-plane-fulfillment.js",
+      "target": "engine/scripts/control-plane-fulfillment.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/control-plane-landing.js",
+      "target": "engine/scripts/control-plane-landing.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/control-plane-merge-history.js",
+      "target": "engine/scripts/control-plane-merge-history.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/control-plane-paths.js",
+      "target": "engine/scripts/control-plane-paths.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/control-plane-push-history.js",
+      "target": "engine/scripts/control-plane-push-history.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/control-plane-push.js",
+      "target": "engine/scripts/control-plane-push.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/closeout.js",
+      "target": "engine/scripts/closeout.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/closeout-summary.js",
+      "target": "engine/scripts/closeout-summary.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/git-ops.js",
+      "target": "engine/scripts/git-ops.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/worktree-ops.js",
+      "target": "engine/scripts/worktree-ops.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/pr-ops.js",
+      "target": "engine/scripts/pr-ops.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-repox-closeout.js",
+      "target": "engine/scripts/lifecycle-repox-closeout.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governed-external-effect.js",
+      "target": "engine/scripts/governed-external-effect.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governed-workspace-recovery.js",
+      "target": "engine/scripts/governed-workspace-recovery.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/reconcile-packet.js",
+      "target": "engine/scripts/reconcile-packet.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/workspace-container-witness.js",
+      "target": "engine/scripts/workspace-container-witness.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/conformance-attestation.js",
+      "target": "engine/scripts/conformance-attestation.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/conformance-verbs.js",
+      "target": "engine/scripts/conformance-verbs.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coord-conformance.js",
+      "target": "engine/scripts/coord-conformance.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coord-init-starter-board.js",
+      "target": "engine/scripts/coord-init-starter-board.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coord-init-wizard.js",
+      "target": "engine/scripts/coord-init-wizard.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coord-init.js",
+      "target": "engine/scripts/coord-init.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coord-upgrade.js",
+      "target": "engine/scripts/coord-upgrade.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/engine-pin.js",
+      "target": "engine/scripts/engine-pin.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/sync-provenance.js",
+      "target": "engine/scripts/sync-provenance.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/template-sync-discovery.js",
+      "target": "engine/scripts/template-sync-discovery.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/upgrade-lock.js",
+      "target": "engine/scripts/upgrade-lock.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/upgrade-release-source.js",
+      "target": "engine/scripts/upgrade-release-source.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/adoption-profile-registry.js",
+      "target": "engine/scripts/adoption-profile-registry.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governance-phase-model.js",
+      "target": "engine/scripts/governance-phase-model.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/readiness-doctor.js",
+      "target": "engine/scripts/readiness-doctor.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/agent-shim-validator.js",
+      "target": "engine/scripts/agent-shim-validator.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/tree-mutation-safety.js",
+      "target": "engine/scripts/tree-mutation-safety.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/canonical-derived-authority.js",
+      "target": "engine/scripts/canonical-derived-authority.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/check-template-sync.sh",
+      "target": "engine/scripts/check-template-sync.sh",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/auto-mode-adapters.js",
+      "target": "engine/scripts/auto-mode-adapters.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/auto-mode-containment.js",
+      "target": "engine/scripts/auto-mode-containment.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/auto-mode-ledger.js",
+      "target": "engine/scripts/auto-mode-ledger.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/auto-mode-policy.js",
+      "target": "engine/scripts/auto-mode-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/capability-broker.js",
+      "target": "engine/scripts/capability-broker.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/managed-auto-ledger.js",
+      "target": "engine/scripts/managed-auto-ledger.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/managed-auto-policy.js",
+      "target": "engine/scripts/managed-auto-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/managed-auto-runner.js",
+      "target": "engine/scripts/managed-auto-runner.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/runtime-evidence.js",
+      "target": "engine/scripts/runtime-evidence.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/live-mcp-lifecycle.js",
+      "target": "engine/scripts/live-mcp-lifecycle.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/bootstrap-via-live-mcp.js",
+      "target": "engine/scripts/bootstrap-via-live-mcp.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/bootstrap-advisory.js",
+      "target": "engine/scripts/bootstrap-advisory.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/backfill-query-advisory.js",
+      "target": "engine/scripts/backfill-query-advisory.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/agent-commands.js",
+      "target": "engine/scripts/agent-commands.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/missing-ticket-lock.js",
+      "target": "engine/scripts/missing-ticket-lock.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/concurrent-burnin-worker.js",
+      "target": "engine/scripts/concurrent-burnin-worker.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/fleet-golden-path.js",
+      "target": "engine/scripts/fleet-golden-path.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/token-economics.js",
+      "target": "engine/scripts/token-economics.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/dispatch-context-budget.js",
+      "target": "engine/scripts/dispatch-context-budget.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/sequencer-grouping.js",
+      "target": "engine/scripts/sequencer-grouping.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/code-context.js",
+      "target": "engine/scripts/code-context.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governance-mcp.js",
+      "target": "engine/scripts/governance-mcp.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/mcp-optional-launcher.js",
+      "target": "engine/scripts/mcp-optional-launcher.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/hooks/hook-lib.js",
+      "target": "engine/scripts/hooks/hook-lib.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/hooks/hook-stdin.js",
+      "target": "engine/scripts/hooks/hook-stdin.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/hooks/post-bash.js",
+      "target": "engine/scripts/hooks/post-bash.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/hooks/pre-bash-guard.js",
+      "target": "engine/scripts/hooks/pre-bash-guard.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/hooks/session-start.js",
+      "target": "engine/scripts/hooks/session-start.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/runtime-authority-hook.js",
+      "target": "engine/scripts/runtime-authority-hook.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/runtime-authority.js",
+      "target": "engine/scripts/runtime-authority.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/runtime-authority-decision.js",
+      "target": "engine/scripts/runtime-authority-decision.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/runtime-authority-subagent.js",
+      "target": "engine/scripts/runtime-authority-subagent.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/mutation-policy.js",
+      "target": "engine/scripts/mutation-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/sensitive-path-policy.js",
+      "target": "engine/scripts/sensitive-path-policy.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/shell-cwd-targets.js",
+      "target": "engine/scripts/shell-cwd-targets.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/identity-v2.js",
+      "target": "engine/scripts/identity-v2.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/human-agent-platform.js",
+      "target": "engine/scripts/human-agent-platform.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/cli-surface.js",
+      "target": "engine/scripts/cli-surface.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/cli.js",
+      "target": "engine/scripts/cli.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/command-registry.js",
+      "target": "engine/scripts/command-registry.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/context-pack-ack-commands.js",
+      "target": "engine/scripts/context-pack-ack-commands.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/context-pack-ack-contract.js",
+      "target": "engine/scripts/context-pack-ack-contract.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/coord-cli.js",
+      "target": "engine/scripts/coord-cli.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/doctor-recovery.js",
+      "target": "engine/scripts/doctor-recovery.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/doctor-report.js",
+      "target": "engine/scripts/doctor-report.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/factory-deps.js",
+      "target": "engine/scripts/factory-deps.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/followups.js",
+      "target": "engine/scripts/followups.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governance-board-state.js",
+      "target": "engine/scripts/governance-board-state.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governance-constants.js",
+      "target": "engine/scripts/governance-constants.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governance-context.js",
+      "target": "engine/scripts/governance-context.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governance-plan-shape.js",
+      "target": "engine/scripts/governance-plan-shape.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governance-repair.js",
+      "target": "engine/scripts/governance-repair.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governance-session.js",
+      "target": "engine/scripts/governance-session.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governance-tier.js",
+      "target": "engine/scripts/governance-tier.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governance-validation.js",
+      "target": "engine/scripts/governance-validation.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/governance.js",
+      "target": "engine/scripts/governance.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/idempotency.js",
+      "target": "engine/scripts/idempotency.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/independent-review-command.js",
+      "target": "engine/scripts/independent-review-command.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle.js",
+      "target": "engine/scripts/lifecycle.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/managed-evidence-command.js",
+      "target": "engine/scripts/managed-evidence-command.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/plan-command.js",
+      "target": "engine/scripts/plan-command.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/plan-governance-options.js",
+      "target": "engine/scripts/plan-governance-options.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/plan-record-field-validators.js",
+      "target": "engine/scripts/plan-record-field-validators.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/plan-records.js",
+      "target": "engine/scripts/plan-records.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/plan-scaffold-text.js",
+      "target": "engine/scripts/plan-scaffold-text.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/plan-update-options.js",
+      "target": "engine/scripts/plan-update-options.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/question-commands.js",
+      "target": "engine/scripts/question-commands.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/question-resolution.js",
+      "target": "engine/scripts/question-resolution.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/questions.js",
+      "target": "engine/scripts/questions.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/recovery-session.js",
+      "target": "engine/scripts/recovery-session.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/repo-registry.js",
+      "target": "engine/scripts/repo-registry.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/runtime-cleanup.js",
+      "target": "engine/scripts/runtime-cleanup.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/session-binding-order.js",
+      "target": "engine/scripts/session-binding-order.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/session-lifecycle-mutations.js",
+      "target": "engine/scripts/session-lifecycle-mutations.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/session-lifecycle-test-utils.js",
+      "target": "engine/scripts/session-lifecycle-test-utils.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/session-lifecycle-worker.js",
+      "target": "engine/scripts/session-lifecycle-worker.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/session-lock-records.js",
+      "target": "engine/scripts/session-lock-records.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/sqlite-runtime.js",
+      "target": "engine/scripts/sqlite-runtime.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/state-io.js",
+      "target": "engine/scripts/state-io.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/test-isolation-guard.js",
+      "target": "engine/scripts/test-isolation-guard.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/test-runner.js",
+      "target": "engine/scripts/test-runner.js",
+      "kind": "permanent"
+    },
+    {
+      "path": "scripts/testing-infra-audit.js",
+      "target": "engine/scripts/testing-infra-audit.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/testing-infra-paths.js",
+      "target": "engine/scripts/testing-infra-paths.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/ticket-commands.js",
+      "target": "engine/scripts/ticket-commands.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/ticket-guidance.js",
+      "target": "engine/scripts/ticket-guidance.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/ticket-lock-service.js",
+      "target": "engine/scripts/ticket-lock-service.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/ticket-queue-service.js",
+      "target": "engine/scripts/ticket-queue-service.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/ticket-transitions.js",
+      "target": "engine/scripts/ticket-transitions.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/verb-parity.js",
+      "target": "engine/scripts/verb-parity.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/evidence-export.mjs",
+      "target": "engine/scripts/evidence-export.mjs",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-board-commands.js",
+      "target": "engine/scripts/lifecycle-board-commands.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-board-validate.js",
+      "target": "engine/scripts/lifecycle-board-validate.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-evidence.js",
+      "target": "engine/scripts/lifecycle-evidence.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-execution-context.js",
+      "target": "engine/scripts/lifecycle-execution-context.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-flags.js",
+      "target": "engine/scripts/lifecycle-flags.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-gate-code-commands.js",
+      "target": "engine/scripts/lifecycle-gate-code-commands.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-help.js",
+      "target": "engine/scripts/lifecycle-help.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-journal-queries.js",
+      "target": "engine/scripts/lifecycle-journal-queries.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-landing-governance.js",
+      "target": "engine/scripts/lifecycle-landing-governance.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-lock-commands.js",
+      "target": "engine/scripts/lifecycle-lock-commands.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-lock-lookup.js",
+      "target": "engine/scripts/lifecycle-lock-lookup.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-maintenance-commands.js",
+      "target": "engine/scripts/lifecycle-maintenance-commands.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-review-state.js",
+      "target": "engine/scripts/lifecycle-review-state.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-session-reaping.js",
+      "target": "engine/scripts/lifecycle-session-reaping.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-ticket-admin.js",
+      "target": "engine/scripts/lifecycle-ticket-admin.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-ticket-helpers.js",
+      "target": "engine/scripts/lifecycle-ticket-helpers.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/lifecycle-utils.js",
+      "target": "engine/scripts/lifecycle-utils.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/guided-closeout.js",
+      "target": "engine/scripts/guided-closeout.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/prodloc-closeout.js",
+      "target": "engine/scripts/prodloc-closeout.js",
+      "kind": "removable"
+    },
+    {
+      "path": "scripts/dispatch.mjs",
+      "target": "engine/scripts/dispatch.mjs",
+      "kind": "removable"
+    }
+  ]
+}

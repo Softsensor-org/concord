@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "tracks": {
+    "development": {
+      "required": [
+        { "id": "repo_gate", "label": "executed repo gate or focused test evidence", "blocking_from": "R2" }
+      ]
+    },
+    "marketing": {
+      "required": [
+        { "id": "content_gate_report", "label": "content-gate report", "blocking_from": "R2" },
+        { "id": "preview_or_skip", "label": "preview URL or explicit skip reason", "blocking_from": "R2" }
+      ]
+    },
+    "devops": {
+      "required": [
+        { "id": "infra_report", "label": "infra gate report", "blocking_from": "R2" },
+        { "id": "deploy_smoke_or_non_runtime", "label": "deploy smoke evidence or explicit non-runtime scope", "blocking_from": "R4" }
+      ]
+    },
+    "product-engineering": {
+      "required": [
+        { "id": "live_mcp_receipt", "label": "bounded live-MCP receipt", "blocking_from": "R3" },
+        { "id": "redaction_cleanup", "label": "redaction and cleanup disposition", "blocking_from": "R3" }
+      ]
+    },
+    "data-analytics": {
+      "required": [
+        { "id": "data_contract", "label": "data contract / certification registry", "blocking_from": "R2" },
+        { "id": "dq_reconciliation", "label": "data quality and reconciliation proof", "blocking_from": "R3" }
+      ]
+    }
+  },
+  "bootstrap_overlay": {
+    "high_risk_classes": ["server_bootstrap_job", "derived_data_job", "production_repair"],
+    "required": [
+      { "id": "resource_envelope", "label": "resource envelope with memory/timeout/batch bounds" },
+      { "id": "bounded_data_access", "label": "bounded/streamed data access shape" },
+      { "id": "idempotency_or_checkpoint", "label": "idempotency and checkpoint/lease strategy" },
+      { "id": "runtime_verification_signal", "label": "verification signal distinct from /readyz" },
+      { "id": "rollback_or_disable", "label": "rollback or disable switch" },
+      { "id": "observability", "label": "logs/metrics/receipts that prove job progress" },
+      { "id": "output_or_row_count_proof", "label": "row-count/output proof for derived data jobs" }
+    ]
+  }
+}

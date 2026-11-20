@@ -1,0 +1,22 @@
+{
+  "created": 1760954400.123456,
+  "duration": 0.512,
+  "exitcode": 1,
+  "root": "/work/repo",
+  "environment": { "Python": "3.12.1", "Platform": "Linux-6.1-x86_64" },
+  "summary": { "passed": 2, "failed": 1, "skipped": 1, "xfailed": 1, "error": 1, "total": 6, "collected": 6 },
+  "tests": [
+    { "nodeid": "tests/test_cart.py::TestCart::test_adds", "lineno": 4, "outcome": "passed",
+      "setup": { "duration": 0.0001, "outcome": "passed" }, "call": { "duration": 0.002, "outcome": "passed" }, "teardown": { "duration": 0.00005, "outcome": "passed" } },
+    { "nodeid": "tests/test_cart.py::TestCart::test_total[eur-1]", "lineno": 9, "outcome": "failed",
+      "setup": { "duration": 0.0001, "outcome": "passed" }, "call": { "duration": 0.01, "outcome": "failed", "longrepr": "assert 3 == 4" }, "teardown": { "duration": 0.0001, "outcome": "passed" } },
+    { "nodeid": "tests/test_cart.py::test_skip", "lineno": 20, "outcome": "skipped",
+      "setup": { "duration": 0.00002, "outcome": "skipped" }, "teardown": { "duration": 0.00001, "outcome": "passed" } },
+    { "nodeid": "tests/test_price.py::test_known_bug", "lineno": 3, "outcome": "xfailed",
+      "setup": { "duration": 0.0001, "outcome": "passed" }, "call": { "duration": 0.0003, "outcome": "skipped" }, "teardown": { "duration": 0.0001, "outcome": "passed" } },
+    { "nodeid": "tests/test_price.py::test_rounding", "lineno": 8, "outcome": "passed",
+      "setup": { "duration": 1e-05, "outcome": "passed" }, "call": { "duration": 0.25, "outcome": "passed" }, "teardown": { "duration": 0, "outcome": "passed" } },
+    { "nodeid": "tests/test_price.py::test_fixture_broken", "lineno": 12, "outcome": "error",
+      "setup": { "duration": 0.003, "outcome": "failed" }, "teardown": { "duration": 0.0001, "outcome": "passed" } }
+  ]
+}
